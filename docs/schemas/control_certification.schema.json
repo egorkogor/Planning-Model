@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/control_certification.schema.json",
+  "title": "Pre-outcome control certification manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "certification_id",
+    "stage",
+    "split",
+    "task_id",
+    "canonical_task_hash",
+    "goal_hash",
+    "reachable_state_count",
+    "certified_state_count",
+    "unavailable_state_count",
+    "task_included",
+    "mapping_file_sha256",
+    "domain_sha256",
+    "catalog_sha256",
+    "control_contract_sha256",
+    "certification_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "certification_id": {
+      "type": "string",
+      "pattern": "^control-cert-[0-9a-f]{16}$"
+    },
+    "stage": {
+      "enum": [
+        "STAGE1A_INTERFACE",
+        "STAGE1B_END_TO_END"
+      ]
+    },
+    "split": {
+      "$ref": "common.schema.json#/$defs/split"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "canonical_task_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "goal_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "reachable_state_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "certified_state_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unavailable_state_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "task_included": {
+      "type": "boolean"
+    },
+    "mapping_file_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "domain_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "catalog_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "control_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "certification_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

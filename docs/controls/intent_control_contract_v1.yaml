@@ -1,0 +1,54 @@
+schema_version: work-planner/1.13
+control_id: intent-control/1.6
+intent_block_attended_tokens: 32
+compatibility:
+  oracle: normative BFS
+  definition:
+  - compute all shortest first TypedActions
+  - label each shortest first action with frozen intent labeler
+  - compatible intents are unique labels
+  wrong_intent_requirement:
+  - selected intent not in compatible intents
+  - selected intent differs from target oracle intent
+selection:
+  seed_payload_fields:
+  - state_hash
+  - goal_hash
+  - stage
+  - split
+  - catalog_hash
+  - control_contract_hash
+  digest: sha256
+  start_index: first_8_digest_bytes_as_big_endian_uint64_mod_7
+  scan: cyclic_ascending_intent_id
+  no_candidate_policy: CONTROL_UNAVAILABLE
+pre_outcome_certification:
+  stage1a: certify every frozen snapshot before any LLM call
+  stage1b: enumerate all domain-valid states reachable within max_steps from each task initial under any valid action;
+    certify every state-goal pair before any arm is run
+  task_policy: if any reachable non-goal state lacks a wrong intent, exclude the whole task from all arms before
+    outcomes are generated
+  coverage_manifest_required: true
+  manifest_frozen_before_confirmatory: true
+  post_trajectory_exclusion_forbidden: true
+  stage1b_algorithm:
+    state_graph: build and hash one complete valid-state transition graph per block_count; reuse across tasks
+    reachable_set: forward BFS from task initial to depth max_steps on the frozen graph
+    goal_table: reverse BFS once per distinct canonical goal hash to obtain exact distances and all shortest first
+      actions
+    certification: intersect reachable non-goal states with the goal table and assign a deterministic incompatible
+      intent
+    caching_keys:
+    - domain_hash
+    - block_count
+    - canonical_initial_state_hash
+    - canonical_goal_hash
+    approximation: forbidden
+mapping_hash_payload:
+- state_hash
+- goal_hash
+- selected_intent_id
+- catalog_hash
+- control_contract_hash
+causal_interpretation: incompatibility is a semantic control; it does not guarantee the LLM action makes no oracle
+  progress. E2/I2 equivalence to neutral is tested empirically.

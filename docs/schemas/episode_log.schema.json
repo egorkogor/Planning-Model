@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/episode_log.schema.json",
+  "title": "EpisodeLog v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "episode_id",
+    "trajectory_id",
+    "stage",
+    "task_id",
+    "snapshot_id",
+    "canonical_task_hash",
+    "split",
+    "arm",
+    "rollout_mode",
+    "goal_success",
+    "progress_success",
+    "steps_accepted",
+    "attempts_total",
+    "retries_total",
+    "planner_calls",
+    "oracle_length",
+    "executed_length",
+    "optimality_ratio",
+    "semantic_resolver_calls",
+    "semantic_unresolved_count",
+    "unseen_support_signature_count",
+    "terminal_error",
+    "error_tags",
+    "total_tokens_in",
+    "total_attended_tokens",
+    "total_tokens_out",
+    "total_latency_ms",
+    "final_state_hash",
+    "pair_group_hash",
+    "prompt_budget_violation_count",
+    "contract_violation_count",
+    "hash_violation_count",
+    "base_task_id",
+    "trajectory_policy",
+    "experiment_freeze_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "episode_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trajectory_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "$ref": "common.schema.json#/$defs/stage"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "snapshot_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^snap-[0-9a-f]{16}$"
+    },
+    "canonical_task_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "split": {
+      "$ref": "common.schema.json#/$defs/split"
+    },
+    "arm": {
+      "$ref": "common.schema.json#/$defs/arm"
+    },
+    "rollout_mode": {
+      "$ref": "common.schema.json#/$defs/rollout_mode"
+    },
+    "goal_success": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "progress_success": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "steps_accepted": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16
+    },
+    "attempts_total": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 80
+    },
+    "retries_total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "planner_calls": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16
+    },
+    "oracle_length": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 16
+    },
+    "executed_length": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16
+    },
+    "optimality_ratio": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "semantic_resolver_calls": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16
+    },
+    "semantic_unresolved_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16
+    },
+    "unseen_support_signature_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16
+    },
+    "terminal_error": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/issue_code"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "error_tags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/issue_code"
+      }
+    },
+    "total_tokens_in": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "total_attended_tokens": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "total_tokens_out": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "total_latency_ms": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "final_state_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "pair_group_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "prompt_budget_violation_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "contract_violation_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "hash_violation_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "base_task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "trajectory_policy": {
+      "type": "string",
+      "enum": [
+        "oracle_snapshot",
+        "independent_receding_horizon"
+      ]
+    },
+    "experiment_freeze_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "rollout_mode": {
+            "const": "RAW"
+          }
+        },
+        "required": [
+          "rollout_mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "retries_total": {
+            "const": 0
+          }
+        }
+      }
+    }
+  ]
+}

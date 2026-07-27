@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/contract_lock.schema.json",
+  "title": "Two-level scientific or implementation lock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "lock_kind",
+    "run_id",
+    "protocol_version",
+    "policy_sha256",
+    "created_at",
+    "protected_files",
+    "manifest_hash",
+    "source_candidate_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-lock/1.1"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "protocol_version": {
+      "const": "work-planner/1.13"
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "protected_files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "lock_kind": {
+      "enum": [
+        "SCIENTIFIC",
+        "IMPLEMENTATION"
+      ]
+    },
+    "policy_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "source_candidate_sha256": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "lock_kind": {
+            "const": "SCIENTIFIC"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "source_candidate_sha256": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lock_kind": {
+            "const": "IMPLEMENTATION"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "source_candidate_sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        }
+      }
+    }
+  ]
+}

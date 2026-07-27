@@ -1,0 +1,129 @@
+schema_version: work-planner/1.13
+prompt_contract_id: stage1-prompt/1.8
+language: en
+selection:
+  candidate_grid: docs/prompt/prompt_development_contract_v1.yaml
+  selected_candidate_lock: locks/stage1-prompt.lock.json
+  selection_phase: P11
+  change_after_lock: forbidden
+surface_aliases:
+  source: contiguous ledger numeric slot
+  mapping:
+    '@B0': block_0
+    '@B1': block_1
+    '@B2': block_2
+    '@B3': block_3
+    '@B4': block_4
+    '@B5': block_5
+    '@B6': block_6
+    '@B7': block_7
+  regex: ^block_[0-7]$
+  unique_within_task: true
+  display_surface_field_ignored: true
+  internal_refs_forbidden_in_rendered_prompt: true
+messages:
+  source: selected candidate message_sequence_template_exact
+  materialization:
+  - copy every role/content_exact entry byte-for-byte in listed order
+  - replace only the final RUNTIME_USER_PROMPT_UTF8 content_source with canonical user prompt bytes
+  - apply the pinned tokenizer chat template once with add_generation_prompt=true
+  few_shot_candidates:
+  - C02
+  - C04
+  few_shot_representation: separate user and assistant chat messages, never concatenated into system or runtime user content
+  mutation: forbidden after candidate bootstrap hash
+  user_sections_exact_order:
+  - TASK
+  - AVAILABLE_BLOCKS
+  - CURRENT_STATE
+  - GOAL
+  - GUIDANCE_BLOCK
+  - ACTION_SIGNATURES
+  - OUTPUT_FORMAT
+  state_rendering:
+    canonical_sort: predicate_rank_then_arg_indices
+    forms:
+    - block_i is on block_j
+    - block_i is on the table
+    - block_i is clear
+    - the hand holds block_i
+    - the hand is empty
+  goal_rendering:
+    canonical_sort: predicate_rank_then_arg_indices
+    forms:
+    - block_i must be on block_j
+    - block_i must be on the table
+  action_signatures_literal: loaded verbatim from selected candidate action_signatures_exact
+  output_format_literal: loaded verbatim from selected candidate output_format_exact
+guidance_blocks:
+  wrapper: 'GUIDANCE: {content}'
+  intent_source: catalog intent_text
+  neutral_content: consider the current configuration before selecting the next action
+  attended_token_budget: 32
+  build_rule: load exact frozen entry from locks/guidance-token-artifacts.json; runtime token construction forbidden
+  padding_vocabulary_forbidden_content:
+  - block_alias
+  - action_name
+  - predicate
+  - goal_word
+  - number
+  token_sequence_hash_required: true
+  artifact_contract: docs/prompt/guidance_artifact_contract_v1.yaml
+  runtime_padding_search: forbidden
+chat_rendering:
+  use_pinned_model_chat_template: true
+  add_generation_prompt: true
+  truncation: forbidden
+  maximum_unpadded_input_tokens: 512
+  canonical_artifact: unpadded_input_ids_attention_mask_and_position_ids
+  generation:
+    standard_decoder_only_generate_allowed: true
+    tokenizer_padding_side_for_batches: left
+    left_pad_token_attention_mask: 0
+    position_ids: cumulative_attention_mask_minus_one_clamped_at_zero
+    logits_source: last_attended_token
+  stage1a:
+    all_arms_same_base_prompt: true
+    all_guidance_blocks_exactly_32_tokens: true
+    total_unpadded_input_length_equal_within_pair: true
+  stage1b:
+    independent_trajectory_total_lengths_may_differ: true
+    equalized_quantity: guidance_block_attended_tokens_32
+    total_input_tokens_logged_for_cost_analysis: true
+  right_padding: forbidden
+  canonical_message_artifact: exact ordered role/content array after runtime-user substitution
+  prompt_hash_payload: canonical_message_artifact plus rendered unpadded tensors
+parser:
+  accept_exactly_one_json_object: true
+  required_keys_exactly:
+  - schema_version
+  - action
+  - args
+  schema_version_const: work-planner/1.13
+  markdown_fences_forbidden: true
+  prefix_suffix_text_forbidden: true
+  extra_keys_forbidden: true
+  silent_repair_forbidden: true
+  alias_to_ref: exact_dictionary_lookup
+  arity_by_action:
+    PICK_UP: 1
+    PUT_DOWN: 1
+    UNSTACK: 2
+    STACK: 2
+    END: 0
+  unknown_alias: PARSE_FAILED
+  duplicate_or_ambiguous_alias: CONTRACT_VIOLATION
+golden_prompt_requirements:
+  minimum_cases: 8
+  cover_each_action_signature: true
+  cover_hand_modes:
+  - HAND_EMPTY
+  - HOLDING
+  verify:
+  - rendered_UTF8_bytes
+  - unpadded_input_ids
+  - attention_mask
+  - position_ids
+  - optional_left_padded_batch_tensors
+  - prompt_hash
+  - internal_refs_absent

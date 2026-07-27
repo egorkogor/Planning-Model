@@ -1,0 +1,49 @@
+{
+  "bootstrap": {
+    "differences": [
+      1,
+      0,
+      1,
+      -1,
+      0,
+      1,
+      0,
+      1
+    ],
+    "seed": 7301,
+    "resamples": 1000
+  },
+  "sample_size": {
+    "sd": 0.4,
+    "target_effect": 0.05,
+    "half_width": 0.025,
+    "equivalence_margin": 0.02,
+    "expected_selected_n_min": 2500
+  },
+  "gates": [
+    {
+      "rule": "estimate_gte_and_ci_low_gt",
+      "estimate": 0.06,
+      "ci_low": 0.01,
+      "ci_high": 0.11,
+      "threshold": 0.05,
+      "pass": true
+    },
+    {
+      "rule": "ci_within_symmetric_margin",
+      "estimate": 0.0,
+      "ci_low": -0.01,
+      "ci_high": 0.015,
+      "threshold": 0.02,
+      "pass": true
+    },
+    {
+      "rule": "ci_within_symmetric_margin",
+      "estimate": 0.0,
+      "ci_low": -0.03,
+      "ci_high": 0.01,
+      "threshold": 0.02,
+      "pass": false
+    }
+  ]
+}

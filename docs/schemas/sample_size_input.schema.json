@@ -1,0 +1,345 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/sample_size_input.schema.json",
+  "title": "Estimator-matched paired-binary pilot inputs for sample-size simulation v1.4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "stage",
+    "pilot_result_manifest_path",
+    "pilot_result_manifest_sha256",
+    "input_builder_sha256",
+    "requirements",
+    "missing_pair_fraction",
+    "created_at",
+    "input_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-sample-size-input/1.4"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "PLANNER",
+        "STAGE1A",
+        "STAGE1B"
+      ]
+    },
+    "pilot_result_manifest_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pilot_result_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "input_builder_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primary_ci": {
+          "$ref": "#/$defs/requirement"
+        },
+        "primary_power": {
+          "$ref": "#/$defs/requirement"
+        },
+        "current_vs_shuffled_power": {
+          "$ref": "#/$defs/requirement"
+        },
+        "equivalence_TOST_power": {
+          "$ref": "#/$defs/requirement"
+        }
+      }
+    },
+    "missing_pair_fraction": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 0.02
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "input_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "pair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pair_id",
+        "left",
+        "right",
+        "difference"
+      ],
+      "properties": {
+        "pair_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "left": {
+          "type": "integer",
+          "enum": [
+            0,
+            1
+          ]
+        },
+        "right": {
+          "type": "integer",
+          "enum": [
+            0,
+            1
+          ]
+        },
+        "difference": {
+          "type": "integer",
+          "enum": [
+            -1,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    "planner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparison",
+        "analysis_type",
+        "complete_pair_count",
+        "seed_groups"
+      ],
+      "properties": {
+        "comparison": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analysis_type": {
+          "const": "PLANNER_HIERARCHICAL"
+        },
+        "complete_pair_count": {
+          "type": "integer",
+          "minimum": 20
+        },
+        "seed_groups": {
+          "type": "object",
+          "minProperties": 3,
+          "maxProperties": 3,
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 20,
+            "items": {
+              "$ref": "#/$defs/pair"
+            }
+          }
+        }
+      }
+    },
+    "stage1a": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparison",
+        "analysis_type",
+        "complete_pair_count",
+        "task_clusters"
+      ],
+      "properties": {
+        "comparison": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analysis_type": {
+          "const": "STAGE1A_CLUSTERED"
+        },
+        "complete_pair_count": {
+          "type": "integer",
+          "minimum": 20
+        },
+        "task_clusters": {
+          "type": "object",
+          "minProperties": 20,
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/$defs/pair"
+            }
+          }
+        }
+      }
+    },
+    "stage1b": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparison",
+        "analysis_type",
+        "complete_pair_count",
+        "pairs"
+      ],
+      "properties": {
+        "comparison": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analysis_type": {
+          "const": "TASK_PAIRED"
+        },
+        "complete_pair_count": {
+          "type": "integer",
+          "minimum": 20
+        },
+        "pairs": {
+          "type": "array",
+          "minItems": 20,
+          "items": {
+            "$ref": "#/$defs/pair"
+          }
+        }
+      }
+    },
+    "requirement": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/planner"
+        },
+        {
+          "$ref": "#/$defs/stage1a"
+        },
+        {
+          "$ref": "#/$defs/stage1b"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "PLANNER"
+          }
+        },
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requirements": {
+            "properties": {
+              "primary_ci": {
+                "$ref": "#/$defs/planner"
+              },
+              "primary_power": {
+                "$ref": "#/$defs/planner"
+              },
+              "current_vs_shuffled_power": {
+                "$ref": "#/$defs/planner"
+              },
+              "equivalence_TOST_power": {
+                "$ref": "#/$defs/planner"
+              }
+            },
+            "required": [
+              "primary_ci",
+              "primary_power",
+              "current_vs_shuffled_power"
+            ],
+            "not": {
+              "required": [
+                "equivalence_TOST_power"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "STAGE1A"
+          }
+        },
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requirements": {
+            "properties": {
+              "primary_ci": {
+                "$ref": "#/$defs/stage1a"
+              },
+              "primary_power": {
+                "$ref": "#/$defs/stage1a"
+              },
+              "current_vs_shuffled_power": {
+                "$ref": "#/$defs/stage1a"
+              },
+              "equivalence_TOST_power": {
+                "$ref": "#/$defs/stage1a"
+              }
+            },
+            "required": [
+              "primary_ci",
+              "primary_power",
+              "current_vs_shuffled_power",
+              "equivalence_TOST_power"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "STAGE1B"
+          }
+        },
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requirements": {
+            "properties": {
+              "primary_ci": {
+                "$ref": "#/$defs/stage1b"
+              },
+              "primary_power": {
+                "$ref": "#/$defs/stage1b"
+              },
+              "current_vs_shuffled_power": {
+                "$ref": "#/$defs/stage1b"
+              },
+              "equivalence_TOST_power": {
+                "$ref": "#/$defs/stage1b"
+              }
+            },
+            "required": [
+              "primary_ci",
+              "primary_power",
+              "current_vs_shuffled_power",
+              "equivalence_TOST_power"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

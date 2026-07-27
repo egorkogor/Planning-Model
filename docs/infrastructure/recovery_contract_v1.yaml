@@ -1,0 +1,26 @@
+schema_version: work-planner/1.13
+contract_id: recovery/1.0
+idempotency:
+  every_phase_has_run_id: true
+  artifact_writes_atomic: true
+  completed_step_reexecution: forbidden_unless_hash_identical
+checkpointing:
+  model_training_every_optimizer_steps: 1000
+  long_dataset_jobs_every_items: 10000
+  graph_build_every_seconds: 900
+  sync_to_durable_storage_every_minutes: 15
+resume:
+  require_environment_lock_match: true
+  require_contract_lock_match: true
+  require_input_manifest_hash_match: true
+  resume_from_last_verified_checkpoint: true
+  corrupt_checkpoint_action: rollback_to_previous_verified
+failures:
+  transient_retry_count: 2
+  exponential_backoff_seconds: [30, 120]
+  third_failure: BLOCKED
+artifacts:
+  partial_suffix: .partial
+  completed_marker: .complete.json
+  stdout_stderr_preserved: true
+  resource_usage_preserved: true

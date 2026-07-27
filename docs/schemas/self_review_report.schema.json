@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/self_review_report.schema.json",
+  "title": "Phase self-review report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "phase_id",
+    "cycle_count",
+    "test_evidence_hashes",
+    "findings",
+    "clean_restore_status",
+    "final_status",
+    "report_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-agent/1.2"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "phase_id": {
+      "pattern": "^P(?:0[0-9]|1[0-9]|20)$"
+    },
+    "cycle_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "test_evidence_hashes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "common.schema.json#/$defs/sha256"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "finding_id",
+          "severity",
+          "description",
+          "status",
+          "evidence"
+        ],
+        "properties": {
+          "finding_id": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "P0",
+              "P1",
+              "P2"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "FIXED",
+              "ACCEPTED_RISK",
+              "BLOCKED"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "clean_restore_status": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "final_status": {
+      "enum": [
+        "PASS",
+        "BLOCKED"
+      ]
+    },
+    "report_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

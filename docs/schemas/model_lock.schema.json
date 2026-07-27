@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/model_lock.schema.json",
+  "title": "Immutable Hugging Face model lock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "model_id",
+    "revision",
+    "resolved_at",
+    "files",
+    "aggregate_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-lock/1.0"
+    },
+    "model_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "resolved_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256",
+          "size_bytes"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "aggregate_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

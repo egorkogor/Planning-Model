@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/public_key_registry.schema.json",
+  "title": "Execution-role Ed25519 public key registry with challenge attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "keys",
+    "created_at",
+    "registry_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-keys/1.0"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "keys": {
+      "type": "array",
+      "minItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key_id",
+          "role",
+          "algorithm",
+          "public_key_b64",
+          "identity_sha256",
+          "challenge_nonce_b64",
+          "challenge_signature_b64",
+          "attested_at",
+          "environment_identity_sha256",
+          "credential_principal_sha256"
+        ],
+        "properties": {
+          "key_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "role": {
+            "enum": [
+              "DATA_SEALER",
+              "EVALUATION_RUNNER",
+              "AUDITOR",
+              "STATISTICAL_REVIEWER"
+            ]
+          },
+          "algorithm": {
+            "const": "ed25519"
+          },
+          "public_key_b64": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9+/]{43}=$"
+          },
+          "identity_sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "challenge_nonce_b64": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9+/]{43}=$"
+          },
+          "challenge_signature_b64": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9+/]{86}==$"
+          },
+          "attested_at": {
+            "$ref": "common.schema.json#/$defs/timestamp"
+          },
+          "environment_identity_sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "credential_principal_sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "registry_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

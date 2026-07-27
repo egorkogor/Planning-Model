@@ -1,0 +1,79 @@
+schema_version: work-planner/1.13
+contract_id: provisioning/1.0
+execution_roles:
+  builder:
+    purpose: implementation, development, pilot, freeze creation
+    minimum_cpu_cores: 8
+    minimum_ram_gb: 32
+    minimum_disk_free_gb: 100
+    minimum_gpu_vram_gb: 8
+    gpu_optional_until_model_training: true
+  data_sealer:
+    purpose: generate sealed confirmatory datasets from an internally generated hidden seed and contracts
+    minimum_cpu_cores: 4
+    minimum_ram_gb: 16
+    minimum_disk_free_gb: 50
+    separate_credentials_from_builder: true
+    may_share_machine_with_evaluator: false
+    must_use_separate_os_identity_or_container: true
+    required_identity_type: SERVICE_PROCESS
+  evaluator:
+    purpose: sealed confirmatory execution only
+    minimum_cpu_cores: 8
+    minimum_ram_gb: 32
+    minimum_disk_free_gb: 100
+    minimum_gpu_vram_gb: 16
+    separate_credentials_from_builder: true
+    must_use_separate_os_identity_or_container: true
+    required_identity_type: SERVICE_PROCESS
+  auditor:
+    purpose: read-only verification and clean reproduction
+    minimum_cpu_cores: 8
+    minimum_ram_gb: 32
+    minimum_disk_free_gb: 100
+    repository_write_access: false
+selection_policy:
+  prefer_existing_compliant_machine: true
+  cloud_only_if_local_noncompliant: true
+  provider_allowlist:
+  - runpod
+  - vast_ai
+  - operator_preconfigured
+  cheapest_compliant_instance: true
+  spot_allowed_for_builder: true
+  spot_allowed_for_confirmatory_evaluator: false
+budget:
+  currency: USD
+  maximum_total: 100
+  manual_approval_required_when_estimated_spend_gt: 0
+  hard_shutdown_at_maximum: true
+security:
+  secrets_in_repository: forbidden
+  ssh_host_key_verification: required
+  evaluator_dataset_key_visible_to_builder: false
+  evaluator_write_access_to_source_repository: false
+  sealer_plaintext_visible_to_builder: false
+  sealer_key_delivery: direct_to_evaluator_secret_store
+shutdown:
+  stop_idle_after_minutes: 30
+  terminate_ephemeral_instances_after_artifact_sync: true
+identity_contract:
+  schema: docs/schemas/role_identity.schema.json
+  every_role_must_record:
+  - agent_provider
+  - model_family
+  - model_revision
+  - system_prompt_hash
+  - environment_identity
+  - credential_principal
+  - public_signing_key_id
+  unique_credential_principal_across_roles: true
+  builder_environment_must_differ_from:
+  - data_sealer
+  - evaluator
+  - auditor
+  - statistical_reviewer
+  independent_judgment:
+    auditor: HUMAN_STATISTICIAN or different model_family from Builder
+    statistical_reviewer: HUMAN_STATISTICIAN or different model_family from Builder
+  all_environment_identities_unique: true

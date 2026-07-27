@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/task_spec.schema.json",
+  "title": "TaskSpec v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "base_task_id",
+    "domain",
+    "split",
+    "ledger",
+    "initial",
+    "goal",
+    "canonical_task_hash",
+    "generator_seed",
+    "generator_version",
+    "difficulty"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "base_task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "domain": {
+      "const": "blocks_world_v1"
+    },
+    "split": {
+      "$ref": "common.schema.json#/$defs/split"
+    },
+    "ledger": {
+      "type": "object",
+      "minProperties": 2,
+      "maxProperties": 8,
+      "propertyNames": {
+        "pattern": "^@B[0-7]$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "surface_alias"
+        ],
+        "properties": {
+          "type": {
+            "const": "BLOCK"
+          },
+          "surface_alias": {
+            "$ref": "common.schema.json#/$defs/surface_alias"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          }
+        }
+      }
+    },
+    "initial": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/predicate"
+      }
+    },
+    "goal": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/goal_predicate"
+      }
+    },
+    "canonical_task_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "generator_seed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "generator_version": {
+      "const": "blocks-generator/1.6"
+    },
+    "difficulty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_count",
+        "oracle_length",
+        "horizon_bucket"
+      ],
+      "properties": {
+        "block_count": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 8
+        },
+        "oracle_length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "horizon_bucket": {
+          "enum": [
+            "short_1_5",
+            "medium_6_10",
+            "long_11_16"
+          ]
+        }
+      }
+    },
+    "permutation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^perm-[0-9]{2}$"
+    }
+  },
+  "$defs": {
+    "on": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "ON"
+        },
+        {
+          "$ref": "common.schema.json#/$defs/internal_ref"
+        },
+        {
+          "$ref": "common.schema.json#/$defs/internal_ref"
+        }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "on_table": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "ON_TABLE"
+        },
+        {
+          "$ref": "common.schema.json#/$defs/internal_ref"
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "clear": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "CLEAR"
+        },
+        {
+          "$ref": "common.schema.json#/$defs/internal_ref"
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "holding": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "HOLDING"
+        },
+        {
+          "$ref": "common.schema.json#/$defs/internal_ref"
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "hand_empty": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "HAND_EMPTY"
+        }
+      ],
+      "items": false,
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "predicate": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/on"
+        },
+        {
+          "$ref": "#/$defs/on_table"
+        },
+        {
+          "$ref": "#/$defs/clear"
+        },
+        {
+          "$ref": "#/$defs/holding"
+        },
+        {
+          "$ref": "#/$defs/hand_empty"
+        }
+      ]
+    },
+    "goal_predicate": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/on"
+        },
+        {
+          "$ref": "#/$defs/on_table"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "split": {
+            "const": "test_ref_perm"
+          }
+        },
+        "required": [
+          "split"
+        ]
+      },
+      "then": {
+        "required": [
+          "permutation_id"
+        ],
+        "properties": {
+          "permutation_id": {
+            "type": "string"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "permutation_id": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

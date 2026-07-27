@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/work_plan.schema.json",
+  "title": "WorkPlan v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "plan_id",
+    "plan_version",
+    "task_id",
+    "canonical_task_hash",
+    "planner_checkpoint_sha256",
+    "planner_config_sha256",
+    "planner_seed",
+    "semantic_artifact_manifest_sha256",
+    "state_hash",
+    "steps",
+    "created_at",
+    "planner_variant",
+    "representation",
+    "plan_content_hash",
+    "plan_artifact_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "plan_id": {
+      "type": "string",
+      "pattern": "^plan-[A-Za-z0-9._-]+$"
+    },
+    "plan_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "canonical_task_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "planner_checkpoint_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "planner_config_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "planner_seed": {
+      "type": "integer",
+      "enum": [
+        1,
+        2,
+        3
+      ]
+    },
+    "semantic_artifact_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "state_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 17,
+      "items": {
+        "$ref": "planner_step.schema.json"
+      }
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "planner_variant": {
+      "$ref": "common.schema.json#/$defs/planner_variant"
+    },
+    "representation": {
+      "$ref": "common.schema.json#/$defs/representation"
+    },
+    "plan_content_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "plan_artifact_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A1"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "TOKEN_GRAMMAR"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A2"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "TYPED_ONLY"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A2b"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "DISCRETE_INTENT"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A2c"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "STRUCTURED_DISCRETE"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A3"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "CONTINUOUS_LATENT"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A4"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "CONTINUOUS_LATENT"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A5"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "CONTINUOUS_LATENT"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "representation": {
+            "const": "CONTINUOUS_LATENT"
+          }
+        },
+        "required": [
+          "representation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "semantic_artifact_manifest_sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "semantic_artifact_manifest_sha256": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

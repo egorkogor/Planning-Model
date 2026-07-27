@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/model_training_report.schema.json",
+  "title": "Model training report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "variant",
+    "config_id",
+    "seed",
+    "dataset_manifest_sha256",
+    "environment_lock_sha256",
+    "history",
+    "best_checkpoint_sha256",
+    "resource_usage",
+    "report_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-training/1.0"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "variant": {
+      "type": "string"
+    },
+    "config_id": {
+      "type": "string"
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "dataset_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "environment_lock_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "history": {
+      "type": "array"
+    },
+    "best_checkpoint_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "resource_usage": {
+      "type": "object"
+    },
+    "report_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

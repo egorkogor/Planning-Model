@@ -1,0 +1,48 @@
+schema_version: work-planner/1.13
+contract_id: planner-hyperparameter-search/1.1
+search_partition: development
+confirmatory_access: forbidden
+grid:
+  learning_rate:
+  - 0.0001
+  - 0.0003
+  dropout:
+  - 0.0
+  - 0.1
+  decoder_layers:
+  - 4
+  encoder_layers:
+  - 4
+  d_model:
+  - 256
+  attention_heads:
+  - 8
+  ffn_dim:
+  - 1024
+  batch_size_examples:
+  - 128
+config_order: lexicographic_by_parameter_name_then_value
+max_configs: 4
+run_each_config_seeds:
+- 17
+selection:
+  per_arm_validation_composite: 0.70*goal_success + 0.20*valid_action_rate + 0.10*exact_plan_match
+  arms_ranked:
+  - A1
+  - A2
+  - A2b
+  - A2c
+  - A3
+  primary_score: mean_rank_of_per_arm_validation_composite; lower_is_better
+  ranking_tie_policy: average_rank_for_exact_ties
+  eligibility_floors:
+    all_arms_minimum_valid_action_rate: 0.9
+    A3_minimum_goal_success: 0.5
+  tie_breaks:
+  - higher_A3_validation_composite
+  - lower_mean_train_flops_across_A1_A2_A2b_A2c_A3
+  - lexicographically_lower_config_id
+  no_candidate_meets_floor: BLOCKED_MODEL_DEVELOPMENT
+post_selection:
+  freeze_config_before_final_seeds: true
+  rerun_grid_after_final_seed_results: forbidden

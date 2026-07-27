@@ -1,0 +1,34 @@
+schema_version: work-planner/1.13
+contract_id: bootstrap-integrity/1.1
+manifest_path: release/BOOTSTRAP_MANIFEST.json
+schema: docs/schemas/bootstrap_manifest.schema.json
+verify_command: python validation/verify_release_manifest.py
+required_before:
+  - P00
+  - every_manual_gate
+  - scientific_lock_creation_P02
+manifest_scope: SCIENTIFIC_TRUST_ROOT_ONLY
+manifest_source: docs/operator/scientific_lock_v1.yaml protected_paths plus bootstrap verifier/build trust root
+rationale: implementation-only files may change before G06, while trust-topology and scientific verifiers remain immutable; runtime artifacts are added to the Scientific lock at P02
+implementation_integrity_after_P02:
+  before_P06: approved implementation_patch records plus repeated toy preflight
+  after_G06_approval: locks/implementation.lock.json
+excluded_runtime_paths:
+  - release/BOOTSTRAP_MANIFEST.json
+  - SHA256SUMS.txt
+  - .git/**
+  - RUN_STATUS.md
+  - RUN_STATUS.json
+  - reports/**
+  - results/**
+  - artifacts/**
+  - locks/trust-topology.lock.json
+  - locks/infrastructure-plan.json
+  - locks/public-keys.json
+  - locks/environment.lock.json
+  - locks/llm_model_lock.json
+  - locks/semantic_target_model_lock.json
+  - locks/scientific.lock.json
+  - locks/implementation.lock.json
+mismatch_action: BLOCKED_BOOTSTRAP_INTEGRITY
+operator_override: forbidden

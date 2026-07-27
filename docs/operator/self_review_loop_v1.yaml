@@ -1,0 +1,24 @@
+schema_version: work-planner/1.13
+contract_id: self-review-loop/1.0
+applies_to: every_phase_and_release_build
+cycle:
+- implement
+- run_declared_tests
+- run_adversarial_tests
+- inspect_diff_against_locked_contracts
+- clean_restore_or_clean_checkout_test
+- write_self_review_findings
+- fix_P0_and_P1_findings
+- repeat_until_no_P0_and_no_unresolved_P1_or_mark_BLOCKED
+maximum_cycles_per_phase: 3
+unresolved_P0: BLOCKED
+unresolved_P1_requires:
+- explicit risk record
+- operator visibility at next gate
+release_requires:
+- all tests pass
+- bootstrap manifest pass
+- SHA256SUMS pass
+- zip clean extraction pass
+- git bundle clone pass
+- tar clean extraction pass

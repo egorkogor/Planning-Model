@@ -1,0 +1,77 @@
+schema_version: work-planner-agent/1.11
+contract_id: phase-machine-checks/1.3
+canonical_phase_report_path: reports/phase-{phase_id}.json
+core_checks:
+  P00_pre_01: bootstrap_manifest
+  P00_pre_02: scope_version
+  P00_pre_03: confirmatory_absent
+  P00_pre_04: evidence_sealed
+  P01_pre_01: resource_plan_schema
+  P01_pre_02: role_independence
+  P01_pre_03: budget_limit
+  P01_pre_04: public_key_binding
+  P02_exec_01: immutable_model_revisions
+  P02_exec_02: bundle_tests
+  P02_exec_03: scientific_lock
+  P02_exec_04: bootstrap_covers_trust_verifiers
+  P03_exec_01: scientific_lock
+  P04_exec_04: scientific_lock
+  P05_exec_05: scientific_lock
+  P06_pre_01: scientific_lock
+  P06_pre_06: implementation_audit
+  P07_pre_06: evidence_sealed
+  P07_pre_07: scientific_lock
+  P07_pre_08: implementation_lock
+  P08_exec_04: implementation_lock
+  P08_exec_05: scientific_lock
+  P09_exec_04: scientific_lock
+  P09_exec_05: implementation_lock
+  P10_exec_04: implementation_lock
+  P10_exec_05: scientific_lock
+  P11_exec_04: implementation_lock
+  P11_exec_05: scientific_lock
+  P12_pre_06: evidence_sealed
+  P12_pre_07: scientific_lock
+  P12_pre_08: implementation_lock
+  P13_exec_04: scientific_lock
+  P13_exec_05: implementation_lock
+  P14_exec_04: scientific_lock
+  P14_exec_05: implementation_lock
+  P15_exec_04: implementation_lock
+  P15_exec_05: scientific_lock
+  P16_pre_06: evidence_sealed
+  P16_pre_07: scientific_lock
+  P16_pre_08: implementation_lock
+  P17_exec_04: scientific_lock
+  P17_exec_05: implementation_lock
+  P18_exec_04: scientific_lock
+  P18_exec_05: implementation_lock
+  P19_exec_06: scientific_lock
+  P19_exec_07: implementation_lock
+  P20_pre_03: evidence_sealed
+  P20_pre_04: scientific_lock
+  P20_pre_05: implementation_lock
+  P02_exec_05: runtime_stack_lock
+  P06_pre_04: statistical_audit
+  P06_pre_05: statistical_audit
+  P06_pre_07: implementation_audit
+  P06_pre_08: evidence_sealed
+  P06_pre_02: implementation_candidate
+  P01_pre_05: trust_topology_lock
+  P02_exec_06: trust_topology_lock
+  P20_pre_06: operator_identity
+runtime_checker:
+  module: src.validation.phase_checks
+  command_template: python -m src.validation.phase_checks --phase {phase_id} --check {check_id} --phase-report reports/phase-{phase_id}.json
+  stdout_schema: docs/schemas/machine_check_result.schema.json
+  missing_module_action: BLOCKED_MISSING_RUNTIME_CHECKER
+  nonzero_exit_action: BLOCKED_FAILED_MACHINE_CHECK
+rules:
+  every_pre_or_execution_check_has_locked_verifier: true
+  post_gate_checks_are_recomputed_inside_verify_gate: true
+  runtime_check_must_return_exact_phase_and_check_id: true
+  runtime_check_status_must_be_PASS: true
+  runtime_checker_source_enters_implementation_lock: true
+  phase_report_check_status_is_not_trusted_without_rerun: true
+  builder_runtime_checker_is_not_independent_evidence: true
+  confirmatory_dispatch_requires_both_G06_signed_audits: true

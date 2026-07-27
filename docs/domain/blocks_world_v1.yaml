@@ -1,0 +1,227 @@
+schema_version: work-planner/1.13
+domain_id: blocks_world_v1
+domain_revision: blocks-world-contract/1.6
+max_blocks: 8
+state_representation:
+  closed_world: true
+  positive_predicates:
+  - name: 'ON'
+    arity: 2
+    roles:
+    - moving
+    - support
+  - name: ON_TABLE
+    arity: 1
+    roles:
+    - block
+  - name: CLEAR
+    arity: 1
+    roles:
+    - block
+  - name: HOLDING
+    arity: 1
+    roles:
+    - block
+  - name: HAND_EMPTY
+    arity: 0
+    roles: []
+  invariants:
+  - id: exactly_one_location_mode
+    rule: each block is exactly one of ON_TABLE(block), ON(block, support), or HOLDING(block)
+  - id: acyclic_on_graph
+    rule: ON graph is acyclic and contains no self edge
+  - id: single_support_per_moving_block
+    rule: for each moving block, at most one support satisfies ON(moving, support)
+  - id: single_block_per_support
+    rule: for each support, at most one moving block satisfies ON(moving, support)
+  - id: single_held_block
+    rule: at most one HOLDING fact exists
+  - id: hand_empty_iff_no_holding
+    rule: HAND_EMPTY exists iff no HOLDING fact exists
+  - id: clear_definition
+    rule: CLEAR(block) exists iff no block is ON(_, block) and block is not HOLDING
+  - id: ledger_closure
+    rule: every object reference in a fact exists in the task ledger
+actions:
+- name: PICK_UP
+  rank: 0
+  arguments:
+  - role: block
+    type: BLOCK
+  constraints: []
+  preconditions:
+  - predicate: ON_TABLE
+    args:
+    - block
+  - predicate: CLEAR
+    args:
+    - block
+  - predicate: HAND_EMPTY
+    args: []
+  add_effects:
+  - predicate: HOLDING
+    args:
+    - block
+  delete_effects:
+  - predicate: ON_TABLE
+    args:
+    - block
+  - predicate: CLEAR
+    args:
+    - block
+  - predicate: HAND_EMPTY
+    args: []
+- name: UNSTACK
+  rank: 1
+  arguments:
+  - role: moving
+    type: BLOCK
+  - role: support
+    type: BLOCK
+  constraints:
+  - moving != support
+  preconditions:
+  - predicate: 'ON'
+    args:
+    - moving
+    - support
+  - predicate: CLEAR
+    args:
+    - moving
+  - predicate: HAND_EMPTY
+    args: []
+  add_effects:
+  - predicate: HOLDING
+    args:
+    - moving
+  - predicate: CLEAR
+    args:
+    - support
+  delete_effects:
+  - predicate: 'ON'
+    args:
+    - moving
+    - support
+  - predicate: CLEAR
+    args:
+    - moving
+  - predicate: HAND_EMPTY
+    args: []
+- name: PUT_DOWN
+  rank: 2
+  arguments:
+  - role: block
+    type: BLOCK
+  constraints: []
+  preconditions:
+  - predicate: HOLDING
+    args:
+    - block
+  add_effects:
+  - predicate: ON_TABLE
+    args:
+    - block
+  - predicate: CLEAR
+    args:
+    - block
+  - predicate: HAND_EMPTY
+    args: []
+  delete_effects:
+  - predicate: HOLDING
+    args:
+    - block
+- name: STACK
+  rank: 3
+  arguments:
+  - role: moving
+    type: BLOCK
+  - role: support
+    type: BLOCK
+  constraints:
+  - moving != support
+  preconditions:
+  - predicate: HOLDING
+    args:
+    - moving
+  - predicate: CLEAR
+    args:
+    - support
+  add_effects:
+  - predicate: 'ON'
+    args:
+    - moving
+    - support
+  - predicate: CLEAR
+    args:
+    - moving
+  - predicate: HAND_EMPTY
+    args: []
+  delete_effects:
+  - predicate: HOLDING
+    args:
+    - moving
+  - predicate: CLEAR
+    args:
+    - support
+- name: END
+  rank: 4
+  arguments: []
+  constraints: []
+  runtime_precondition: GoalVerifier.PASS
+  preconditions: []
+  add_effects: []
+  delete_effects: []
+goal_semantics:
+  kind: positive_conjunction
+  allowed_predicates:
+  - 'ON'
+  - ON_TABLE
+  pass_rule: every listed goal predicate is present in the current closed-world state
+  unspecified_facts: ignored
+  END_not_counted_in_oracle_length: true
+oracle:
+  objective: shortest_number_of_non_END_actions
+  search: breadth_first_search
+  canonicalize_before_search: true
+  max_non_END_actions: 16
+  transition_sort_key:
+    fields:
+    - action_rank
+    - arg1_canonical_ref_rank
+    - arg2_canonical_ref_rank
+    missing_arg_rank: -1
+  tie_break: lexicographically_smallest_transition_tuple_sequence_among_shortest
+  map_back_to_task_refs_after_tie_break: true
+state_space_golden_counts:
+  '1':
+    hand_empty: 1
+    holding: 1
+    total: 2
+  '2':
+    hand_empty: 3
+    holding: 2
+    total: 5
+  '3':
+    hand_empty: 13
+    holding: 9
+    total: 22
+  '4':
+    hand_empty: 73
+    holding: 52
+    total: 125
+  '5':
+    hand_empty: 501
+    holding: 365
+    total: 866
+  '6':
+    hand_empty: 4051
+    holding: 3006
+    total: 7057
+  '7':
+    hand_empty: 37633
+    holding: 28357
+    total: 65990
+  '8':
+    hand_empty: 394353
+    holding: 301064
+    total: 695417

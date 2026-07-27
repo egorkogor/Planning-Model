@@ -1,0 +1,576 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/attempt_log.schema.json",
+  "title": "AttemptLog v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "episode_id",
+    "trajectory_id",
+    "stage",
+    "task_id",
+    "snapshot_id",
+    "canonical_task_hash",
+    "split",
+    "arm",
+    "rollout_mode",
+    "state_source",
+    "step_index",
+    "attempt_index",
+    "planner_checkpoint_sha256",
+    "planner_config_sha256",
+    "planner_seed",
+    "planner_support_status",
+    "planner_support_signature_hash",
+    "plan_content_hash",
+    "plan_artifact_hash",
+    "plan_step_id",
+    "semantic_ref",
+    "semantic_artifact_hash",
+    "semantic_resolution_status",
+    "semantic_resolution_method",
+    "semantic_bank_hash",
+    "semantic_top1_intent_id",
+    "semantic_top1_similarity",
+    "semantic_top2_intent_id",
+    "semantic_top2_similarity",
+    "semantic_margin",
+    "semantic_min_similarity",
+    "semantic_min_margin",
+    "intent_text_hash",
+    "control_source_intent_id",
+    "compatible_intent_ids",
+    "control_mapping_hash",
+    "intent_compatibility_hash",
+    "control_certification_hash",
+    "prompt_hash",
+    "prompt_artifact",
+    "prompt_token_ids_hash",
+    "attention_mask_hash",
+    "position_ids_hash",
+    "model_id",
+    "model_revision",
+    "tokenizer_revision",
+    "chat_template_hash",
+    "prompt_tokens_total",
+    "attended_prompt_tokens",
+    "padded_sequence_length",
+    "padding_side",
+    "added_block_tokens",
+    "matched_control_tokens",
+    "state_before_hash",
+    "state_after_hash",
+    "oracle_distance_before",
+    "oracle_distance_after",
+    "progress_success",
+    "raw_output",
+    "raw_output_bytes_hash",
+    "raw_unmasked_action",
+    "raw_unmasked_args",
+    "mask_applied",
+    "mask_hash",
+    "parsed_typed_action",
+    "parse_status",
+    "validation_status",
+    "issue_code",
+    "candidate_source",
+    "tokens_in",
+    "tokens_out",
+    "queue_ms",
+    "inference_ms",
+    "total_ms",
+    "timestamp",
+    "pair_group_hash",
+    "goal_hash",
+    "guidance_block_token_ids_hash",
+    "parsed_llm_response",
+    "base_prompt_hash",
+    "candidate_typed_action",
+    "base_task_id",
+    "trajectory_policy",
+    "experiment_freeze_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "episode_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trajectory_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "$ref": "common.schema.json#/$defs/stage"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "snapshot_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^snap-[0-9a-f]{16}$"
+    },
+    "canonical_task_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "split": {
+      "$ref": "common.schema.json#/$defs/split"
+    },
+    "arm": {
+      "$ref": "common.schema.json#/$defs/arm"
+    },
+    "rollout_mode": {
+      "$ref": "common.schema.json#/$defs/rollout_mode"
+    },
+    "state_source": {
+      "$ref": "common.schema.json#/$defs/state_source"
+    },
+    "step_index": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 15
+    },
+    "attempt_index": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    },
+    "planner_checkpoint_sha256": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "planner_config_sha256": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "planner_seed": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "planner_support_status": {
+      "$ref": "common.schema.json#/$defs/support_status"
+    },
+    "planner_support_signature_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "plan_content_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "plan_artifact_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "plan_step_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/step_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "semantic_ref": {
+      "$ref": "common.schema.json#/$defs/nullable_semantic_ref"
+    },
+    "semantic_artifact_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "semantic_resolution_status": {
+      "$ref": "common.schema.json#/$defs/semantic_resolution_status"
+    },
+    "semantic_resolution_method": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "semantic_bank_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "semantic_top1_intent_id": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 6
+    },
+    "semantic_top1_similarity": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": -1,
+      "maximum": 1
+    },
+    "semantic_top2_intent_id": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 6
+    },
+    "semantic_top2_similarity": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": -1,
+      "maximum": 1
+    },
+    "semantic_margin": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 2
+    },
+    "semantic_min_similarity": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": -1,
+      "maximum": 1
+    },
+    "semantic_min_margin": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 2
+    },
+    "intent_text_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "control_source_intent_id": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 6
+    },
+    "compatible_intent_ids": {
+      "oneOf": [
+        {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 6
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "control_mapping_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "intent_compatibility_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "control_certification_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "prompt_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "prompt_artifact": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "prompt_token_ids_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "attention_mask_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "position_ids_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "model_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "model_revision": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tokenizer_revision": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "chat_template_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "prompt_tokens_total": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "attended_prompt_tokens": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "padded_sequence_length": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "added_block_tokens": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "matched_control_tokens": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "state_before_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "state_after_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "oracle_distance_before": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 16
+    },
+    "oracle_distance_after": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 16
+    },
+    "progress_success": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "raw_output": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "raw_output_bytes_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "raw_unmasked_action": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "raw_unmasked_args": {
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "mask_applied": {
+      "type": "boolean"
+    },
+    "mask_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "parsed_typed_action": {
+      "oneOf": [
+        {
+          "$ref": "typed_action.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "parse_status": {
+      "$ref": "common.schema.json#/$defs/parse_status"
+    },
+    "validation_status": {
+      "$ref": "common.schema.json#/$defs/validation_status"
+    },
+    "issue_code": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/issue_code"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "candidate_source": {
+      "$ref": "common.schema.json#/$defs/candidate_source"
+    },
+    "tokens_in": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "tokens_out": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "queue_ms": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "inference_ms": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "total_ms": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "timestamp": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "pair_group_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "goal_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "guidance_block_token_ids_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "parsed_llm_response": {
+      "oneOf": [
+        {
+          "$ref": "llm_step_response.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "base_prompt_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "candidate_typed_action": {
+      "oneOf": [
+        {
+          "$ref": "typed_action.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "base_task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "trajectory_policy": {
+      "type": "string",
+      "enum": [
+        "oracle_snapshot",
+        "independent_receding_horizon"
+      ]
+    },
+    "experiment_freeze_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "padding_side": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "NONE",
+        "LEFT",
+        null
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "rollout_mode": {
+            "const": "RAW"
+          }
+        },
+        "required": [
+          "rollout_mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "attempt_index": {
+            "const": 0
+          },
+          "mask_applied": {
+            "const": false
+          },
+          "mask_hash": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

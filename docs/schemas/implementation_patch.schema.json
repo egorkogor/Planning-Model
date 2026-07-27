@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/implementation_patch.schema.json",
+  "title": "Pre-lock implementation-only patch record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "patch_id",
+    "run_id",
+    "phase_id",
+    "base_commit",
+    "patched_commit",
+    "diff_sha256",
+    "changed_paths",
+    "classification",
+    "outcome_relevant_fields_unchanged",
+    "preflight_report_path",
+    "preflight_report_sha256",
+    "created_at",
+    "record_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-patch/1.0"
+    },
+    "patch_id": {
+      "type": "string",
+      "pattern": "^IP-[0-9]{4}$"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "phase_id": {
+      "enum": [
+        "P03",
+        "P04",
+        "P05",
+        "P06"
+      ]
+    },
+    "base_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "patched_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "diff_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "changed_paths": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "classification": {
+      "const": "IMPLEMENTATION_ONLY"
+    },
+    "outcome_relevant_fields_unchanged": {
+      "const": true
+    },
+    "preflight_report_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "record_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "preflight_report_path": {
+      "type": "string",
+      "pattern": "^reports/preflight-(?:toy|final)\\.json$"
+    }
+  }
+}

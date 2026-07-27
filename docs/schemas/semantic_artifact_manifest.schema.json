@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/semantic_artifact_manifest.schema.json",
+  "title": "SemanticArtifactManifest v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "task_id",
+    "canonical_task_hash",
+    "state_hash",
+    "planner_checkpoint_sha256",
+    "planner_config_sha256",
+    "artifacts",
+    "manifest_content_hash",
+    "manifest_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "manifest_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "canonical_task_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "state_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "planner_checkpoint_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "planner_config_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "$ref": "semantic_artifact.schema.json"
+      }
+    },
+    "manifest_content_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

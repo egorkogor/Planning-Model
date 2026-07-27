@@ -1,0 +1,113 @@
+schema_version: work-planner/1.13
+agent_execution_contract_id: work-planner-agent/1.5
+operator_role: observe progress, approve scope/budget/frozen packages, and accept or stop the final run
+execution_roles:
+  builder_agent:
+    duties: implementation, development, pilot, freeze construction
+    confirmatory_plaintext_access: forbidden
+  data_sealer:
+    duties: deterministic confirmatory generation, immediate authenticated encryption, plaintext destruction and commitment publication
+    repository_write_access: forbidden
+    builder_credentials_access: forbidden
+    confirmatory_outcomes_access: forbidden
+  evaluation_runner:
+    duties: sealed confirmatory execution from approved freeze
+    repository_write_access: forbidden
+  audit_agent:
+    duties: read-only independent verification and clean reproduction
+    repository_write_access: forbidden
+agent_rules:
+- execute exactly one declared phase at a time
+- verify release/BOOTSTRAP_MANIFEST.json before P00 and before every manual gate
+- treat every declared manual gate as mandatory and require an externally signed DecisionRecord
+- dispatch confirmatory dataset generation only to Data Sealer; Builder never receives plaintext
+- use only exact statistics code and thresholds locked in docs/statistics/statistics_contract_v1.yaml
+- use exact prompt candidate files; inventing prompt text is forbidden
+- select the next phase only through phase_state_machine_v1.yaml
+- read all phase sources before editing
+- verify scientific lock before and after every phase from P02
+- verify implementation lock before and after every phase from P06
+- never skip, weaken, reinterpret, or silently patch a gate
+- never change scientific-lock paths after P02
+- allow implementation-only patches before P06 only through schema-valid patch records and repeated toy preflight
+- never change implementation-lock paths after P06
+- write a phase plan before changes and a schema-valid phase report after checks
+- validate every persisted JSON through report_registry_v1.yaml and cross-object validators
+- never open confirmatory plaintext or outcomes from builder role
+- retry technical failures at most two times; third failure becomes BLOCKED
+- never ask operator to choose undocumented technical defaults
+- ask operator only at declared manual gates
+- update RUN_STATUS.md and RUN_STATUS.json atomically after material actions and every 15 minutes during long jobs
+- save commands, stdout, stderr, resource use, cost, hashes and artifacts
+- create implementation commit excluding mutable status/report files, then evidence-seal commit
+- on manual gate seal WAITING_APPROVAL before requesting a decision
+- after approval create DecisionRecord, ApprovedFreezePointer when applicable, and ledgers in a separate commit
+- never put evidence-seal commit hash inside the report contained in that same commit
+- dispatch confirmatory only to the separate evaluation runner
+- require clean independent reproduction in P19; it is not optional
+- require externally signed Trust Topology lock at P01; Builder must never access operator private key
+- verify Trust Topology lock before and after every phase from P02
+- create Scientific lock only after runtime/model manifests and Trust Topology lock exist
+- after G06 never implement or modify parser, resolver, prototype builder, control-certification, sealer, evaluator or analysis code
+status_states:
+- NOT_STARTED
+- RUNNING
+- PASS
+- FAIL
+- BLOCKED
+- WAITING_APPROVAL
+- SKIPPED_BY_CONTRACT
+manual_approval_gates:
+- G00_SCOPE
+- G01_TRUST_AND_RESOURCES
+- G06_STATISTICAL_IMPLEMENTATION_AUDIT
+- G07_PLANNER_CONFIRMATORY_FREEZE
+- G12_STAGE1A_CONFIRMATORY_FREEZE
+- G16_STAGE1B_CONFIRMATORY_FREEZE
+- G20_FINAL_ACCEPTANCE
+resubmission_policy:
+  maximum_per_gate: 1
+  rejected_freeze_may_change: development evidence and candidate freeze only
+  protected_contract_change: forbidden; start a new protocol version instead
+forbidden_operator_requests:
+- write code manually
+- run shell commands manually
+- pick an undocumented threshold or model parameter
+- inspect confirmatory results before approval
+- approve a failed automated gate
+monitoring_files:
+- RUN_STATUS.md
+- RUN_STATUS.json
+- reports/phase-PXX.json
+- reports/gate-ledger.jsonl
+- reports/decision-log.jsonl
+- artifacts/index.json
+- reports/resource-usage.jsonl
+commit_policy:
+  branch_prefix: agent/work-planner-
+  implementation_commit_format: 'phase PXX: imperative implementation summary'
+  evidence_commit_format: 'phase PXX: seal evidence'
+  approval_commit_format: 'phase PXX: record gate decision'
+  dirty_tree_at_gate: forbidden
+  scientific_lock_diff_after_P02: forbidden
+  implementation_lock_diff_after_P06: forbidden
+  implementation_only_patch_P03_to_P06: requires implementation_patch.schema.json and clean preflight rerun
+independent_judgment_gate:
+  gate_id: G06_STATISTICAL_IMPLEMENTATION_AUDIT
+  reviewer_requirement: HUMAN_STATISTICIAN or different model_family from Builder
+  same_model_family_as_builder: forbidden
+  must_pass_before: P07
+  required_reports:
+  - reports/statistical-implementation-audit.json
+  - reports/independent-implementation-audit.json
+execution_topology:
+  builder_llm: may orchestrate dispatches but may execute only BUILDER phases
+  data_sealer: deterministic SERVICE_PROCESS under a distinct OS/container identity and credential principal
+  evaluation_runner: deterministic SERVICE_PROCESS under a distinct OS/container identity and credential principal
+  statistical_reviewer: human or model from a different model_family than Builder
+  audit_agent: human or model from a different model_family than Builder; read-only clean checkout
+  single_session_role_impersonation: forbidden
+  all_environment_identities_unique: true
+  all_credential_principals_unique: true
+  cross_role_transfer: signed dispatch records and content hashes only
+  operator_trust_root: external Ed25519 key; private key never stored in repository or Builder environment

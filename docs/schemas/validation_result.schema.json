@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/validation_result.schema.json",
+  "title": "ValidationResult v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "valid",
+    "code",
+    "evidence",
+    "normalized_action"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "valid": {
+      "type": "boolean"
+    },
+    "code": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/issue_code"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "normalized_action": {
+      "oneOf": [
+        {
+          "$ref": "typed_action.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "valid": {
+            "const": true
+          }
+        },
+        "required": [
+          "valid"
+        ]
+      },
+      "then": {
+        "properties": {
+          "code": {
+            "type": "null"
+          },
+          "normalized_action": {
+            "$ref": "typed_action.schema.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "valid": {
+            "const": false
+          }
+        },
+        "required": [
+          "valid"
+        ]
+      },
+      "then": {
+        "properties": {
+          "code": {
+            "$ref": "common.schema.json#/$defs/issue_code"
+          },
+          "normalized_action": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

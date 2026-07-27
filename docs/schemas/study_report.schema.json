@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/study_report.schema.json",
+  "title": "Pilot or confirmatory execution report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "stage",
+    "partition",
+    "arms",
+    "task_count",
+    "attempt_count",
+    "validity",
+    "metrics",
+    "input_manifest_sha256",
+    "raw_result_manifest_sha256",
+    "report_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-study/1.0"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "stage": {
+      "type": "string"
+    },
+    "partition": {
+      "type": "string"
+    },
+    "arms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "task_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "attempt_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "validity": {
+      "type": "object"
+    },
+    "metrics": {
+      "type": "object"
+    },
+    "input_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "raw_result_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "report_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

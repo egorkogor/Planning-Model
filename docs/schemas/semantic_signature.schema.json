@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/semantic_signature.schema.json",
+  "title": "SemanticSignature",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "intent_id",
+    "hand_mode",
+    "goal_relation",
+    "moving_clear",
+    "support_clear",
+    "obstruction_depth_bucket",
+    "remaining_distance_bucket"
+  ],
+  "properties": {
+    "intent_id": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 6
+    },
+    "hand_mode": {
+      "enum": [
+        "HAND_EMPTY",
+        "HOLDING"
+      ]
+    },
+    "goal_relation": {
+      "enum": [
+        "ON",
+        "ON_TABLE",
+        "SATISFIED"
+      ]
+    },
+    "moving_clear": {
+      "enum": [
+        "YES",
+        "NO",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "support_clear": {
+      "enum": [
+        "YES",
+        "NO",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "obstruction_depth_bucket": {
+      "enum": [
+        "ZERO",
+        "ONE",
+        "TWO_PLUS",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "remaining_distance_bucket": {
+      "enum": [
+        "ZERO",
+        "ONE_TWO",
+        "THREE_FIVE",
+        "SIX_TEN",
+        "ELEVEN_SIXTEEN"
+      ]
+    }
+  }
+}

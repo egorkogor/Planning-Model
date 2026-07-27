@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/decision_log_entry.schema.json",
+  "title": "Decision log entry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "decision_id",
+    "gate_id",
+    "decision",
+    "record_hash",
+    "timestamp"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-agent/1.2"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "decision_id": {
+      "type": "string"
+    },
+    "gate_id": {
+      "enum": [
+        "G00_SCOPE",
+        "G01_TRUST_AND_RESOURCES",
+        "G06_STATISTICAL_IMPLEMENTATION_AUDIT",
+        "G07_PLANNER_CONFIRMATORY_FREEZE",
+        "G12_STAGE1A_CONFIRMATORY_FREEZE",
+        "G16_STAGE1B_CONFIRMATORY_FREEZE",
+        "G20_FINAL_ACCEPTANCE"
+      ]
+    },
+    "decision": {
+      "enum": [
+        "APPROVE",
+        "REJECT",
+        "STOP"
+      ]
+    },
+    "record_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "timestamp": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    }
+  }
+}

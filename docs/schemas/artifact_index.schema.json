@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/artifact_index.schema.json",
+  "title": "Artifact index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "artifacts",
+    "index_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-agent/1.2"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "sha256",
+          "schema_id",
+          "phase_id"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "schema_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phase_id": {
+            "type": "string"
+          },
+          "immutable": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "index_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

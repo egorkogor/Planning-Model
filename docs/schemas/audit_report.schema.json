@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/audit_report.schema.json",
+  "title": "Independent audit report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "auditor_environment_sha256",
+    "clean_checkout_commit",
+    "audit_profile",
+    "checks",
+    "recomputed_metrics",
+    "mismatches",
+    "status",
+    "report_hash",
+    "auditor",
+    "auditor_identity_sha256",
+    "signature_algorithm",
+    "public_key_id",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-audit/1.0"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "auditor_environment_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "clean_checkout_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 11,
+      "uniqueItems": false,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "check_id",
+          "status",
+          "evidence_hashes"
+        ],
+        "properties": {
+          "check_id": {
+            "enum": [
+              "verify_scientific_lock",
+              "verify_implementation_lock",
+              "verify_environment_and_model_locks",
+              "verify_freeze_approval_lineage",
+              "verify_dataset_commitments",
+              "validate_all_registered_artifacts",
+              "recompute_aggregate_metrics_from_raw_logs",
+              "rerun_statistical_analysis",
+              "compare_reported_and_recomputed_values_exactly",
+              "run_full_test_suite",
+              "reproduce_required_executed_splits_from_manifests"
+            ]
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL"
+            ]
+          },
+          "evidence_hashes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "common.schema.json#/$defs/sha256"
+            }
+          }
+        }
+      }
+    },
+    "recomputed_metrics": {
+      "type": "object",
+      "minProperties": 1
+    },
+    "mismatches": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "report_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "auditor": {
+      "allOf": [
+        {
+          "$ref": "role_identity.schema.json"
+        },
+        {
+          "properties": {
+            "role": {
+              "const": "AUDITOR"
+            }
+          }
+        }
+      ]
+    },
+    "auditor_identity_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "signature_algorithm": {
+      "const": "ed25519"
+    },
+    "public_key_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]{86}==$"
+    },
+    "audit_profile": {
+      "enum": [
+        "PLANNER_STOP",
+        "PLANNER_DIAGNOSTIC_ONLY",
+        "INTERFACE_STOP",
+        "END_TO_END"
+      ]
+    }
+  }
+}

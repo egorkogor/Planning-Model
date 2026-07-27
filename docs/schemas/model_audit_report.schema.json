@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/model_audit_report.schema.json",
+  "title": "Planner model audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "variants",
+    "architecture_contract_sha256",
+    "parameter_tolerance_pass",
+    "same_information_pass",
+    "raw_rollout_pass",
+    "checks",
+    "status",
+    "report_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-model-audit/1.0"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "variants": {
+      "type": "array",
+      "minItems": 7
+    },
+    "architecture_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "parameter_tolerance_pass": {
+      "type": "boolean"
+    },
+    "same_information_pass": {
+      "type": "boolean"
+    },
+    "raw_rollout_pass": {
+      "type": "boolean"
+    },
+    "checks": {
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "report_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

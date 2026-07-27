@@ -1,0 +1,72 @@
+schema_version: work-planner/1.13
+contract_id: implementation-lock/1.2
+created_phase: P06 after APPROVE_G06_AUDITS
+purpose: Freeze all executable interpretation after P03–P06 implementation and independent G06 audits; later phases may only
+  run locked code and create data/results.
+protected_paths:
+- docs/schemas/**
+- docs/domain/**
+- docs/architecture/task_encoding_v1.yaml
+- docs/architecture/a1_token_grammar_v1.yaml
+- docs/semantic/semantic_target_v1.yaml
+- docs/prompt/stage1_prompt_v1.yaml
+- docs/prompt/guidance_artifact_contract_v1.yaml
+- docs/validation_contract.md
+- validation/**
+- src/**
+- scripts/**
+- pyproject.toml
+- requirements-validation.txt
+- docs/architecture/planner_architecture_v1.yaml
+- analysis/**
+- docs/operator/report_registry_v1.yaml
+- prompts/P*.md
+- scripts/generate_phase_prompts.py
+manifest_path: locks/implementation.lock.json
+pre_lock_patch_window:
+  opens_after: P02
+  closes_before: P06 pre-gate evidence seal
+  outcome_data_access: forbidden
+  required_record_schema: docs/schemas/implementation_patch.schema.json
+  required_checks:
+  - scientific lock VERIFIED
+  - exact git diff stored
+  - reason classified IMPLEMENTATION_ONLY
+  - toy preflight repeated from clean checkout
+  - no threshold, arm, endpoint, split, seed, N method or decision rule changed
+  reopens_after_rejection: once, only after REJECT_G06_AUDITS DecisionRecord; requires new candidate, audit and full preflight
+  allowed_path_globs:
+  - src/planner_llm_mvp/runtime/**
+  - src/planner_llm_mvp/io/**
+  - src/planner_llm_mvp/storage/**
+  - src/planner_llm_mvp/device/**
+  - configs/runtime/**
+  - docs/implementation_notes/**
+  - tests/runtime/**
+  forbidden_outcome_relevant_change_classes:
+  - DOMAIN_SEMANTICS
+  - INTENT_LABELS
+  - SEMANTIC_TARGET
+  - MODEL_DIMENSIONS
+  - MODEL_WIRING
+  - LOSS
+  - ARM
+  - ENDPOINT
+  - SPLIT
+  - SEED
+  - THRESHOLD
+  - STATISTICAL_METHOD
+  - DECISION_RULE
+  - PROMPT_CONTENT
+  - CONTROL_LOGIC
+  diff_policy: every changed path must match allowed_path_globs; forbidden scientific paths and outcome-relevant tokens are
+    rejected by validator
+post_lock_change_policy:
+  in_run_change: forbidden
+  operator_override: forbidden
+  required_action: increment protocol version and start a new run
+activation:
+  candidate: freezes/implementation-lock.candidate.json
+  approval_gate: G06_STATISTICAL_IMPLEMENTATION_AUDIT
+  active_manifest: locks/implementation.lock.json
+  active_lock_created_only_after_approval: true

@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/sealer_manifest.schema.json",
+  "title": "Sealed dataset manifest v1.2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "dispatch_id",
+    "dispatch_hash",
+    "run_id",
+    "stage",
+    "partition",
+    "generator_seed_commitment",
+    "contract_hashes",
+    "encrypted_blob_sha256",
+    "task_count",
+    "strata_counts",
+    "canonical_order_commitment",
+    "created_by_role",
+    "plaintext_deleted_verified",
+    "key_recipient",
+    "created_at",
+    "manifest_hash",
+    "sealer_identity_sha256",
+    "auditor_seed_envelope_artifact",
+    "auditor_seed_envelope_sha256",
+    "seed_reveal_policy",
+    "deletion_evidence",
+    "signature_algorithm",
+    "public_key_id",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-sealer/1.2"
+    },
+    "dataset_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "PLANNER",
+        "STAGE1A",
+        "STAGE1B"
+      ]
+    },
+    "partition": {
+      "type": "string"
+    },
+    "contract_hashes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "common.schema.json#/$defs/sha256"
+      }
+    },
+    "encrypted_blob_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "task_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "strata_counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "canonical_order_commitment": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "created_by_role": {
+      "const": "DATA_SEALER"
+    },
+    "plaintext_deleted_verified": {
+      "const": true
+    },
+    "key_recipient": {
+      "const": "EVALUATION_RUNNER"
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "sealer_identity_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "deletion_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspace_scan_artifact",
+        "workspace_scan_sha256",
+        "process_log_artifact",
+        "process_log_sha256",
+        "volume_destroy_artifact",
+        "volume_destroy_sha256",
+        "encrypted_blob_closed_before_scan",
+        "plaintext_path_absent",
+        "temporary_volume_destroyed",
+        "attested_at"
+      ],
+      "properties": {
+        "workspace_scan_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "process_log_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "encrypted_blob_closed_before_scan": {
+          "const": true
+        },
+        "plaintext_path_absent": {
+          "const": true
+        },
+        "attested_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "workspace_scan_artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "process_log_artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "volume_destroy_artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "volume_destroy_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "temporary_volume_destroyed": {
+          "const": true
+        }
+      }
+    },
+    "signature_algorithm": {
+      "const": "ed25519"
+    },
+    "public_key_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/=]{40,}$"
+    },
+    "generator_seed_commitment": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "auditor_seed_envelope_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "seed_reveal_policy": {
+      "const": "AUDITOR_AFTER_SIGNED_EVALUATOR_RESULT"
+    },
+    "auditor_seed_envelope_artifact": {
+      "type": "string",
+      "minLength": 1
+    },
+    "control_certification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "certification_stage",
+        "algorithm_sha256",
+        "control_contract_sha256",
+        "eligibility_contract_sha256",
+        "support_contract_sha256",
+        "public_exclusion_manifest_sha256",
+        "candidate_task_count",
+        "eligible_task_count",
+        "coverage_rate",
+        "coverage_manifest_sha256",
+        "support_audit_sha256",
+        "all_selected_tasks_certified",
+        "certification_completed_before_outcome_access"
+      ],
+      "properties": {
+        "certification_stage": {
+          "const": "STAGE1B"
+        },
+        "algorithm_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "control_contract_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "eligibility_contract_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "support_contract_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "public_exclusion_manifest_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "candidate_task_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "eligible_task_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "coverage_rate": {
+          "const": 1.0
+        },
+        "coverage_manifest_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "support_audit_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "all_selected_tasks_certified": {
+          "const": true
+        },
+        "certification_completed_before_outcome_access": {
+          "const": true
+        }
+      }
+    },
+    "dispatch_id": {
+      "type": "string",
+      "pattern": "^DSP-[0-9]{4}$"
+    },
+    "dispatch_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "STAGE1B"
+          }
+        },
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "required": [
+          "control_certification"
+        ]
+      }
+    }
+  ]
+}

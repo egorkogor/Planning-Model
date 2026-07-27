@@ -1,0 +1,27 @@
+schema_version: work-planner/1.13
+contract_id: resource-budget/1.0
+phase_limits:
+  P04:
+    wall_clock_hours: 6
+    disk_gb: 40
+  P05:
+    wall_clock_hours: 12
+    disk_gb: 80
+  P06:
+    wall_clock_hours: 24
+    gpu_hours: 18
+  P07:
+    wall_clock_hours: 12
+    gpu_hours: 8
+  P13:
+    wall_clock_hours: 12
+    disk_gb: 80
+  P17:
+    wall_clock_hours: 24
+    gpu_hours: 16
+limit_action:
+  before_limit: checkpoint_and_report
+  at_limit: BLOCKED_RESOURCE_LIMIT
+cost_tracking:
+  update_RUN_STATUS_every_minutes: 15
+  fields: [elapsed_minutes, cpu_percent, ram_gb, gpu_utilization, gpu_vram_gb, disk_gb, estimated_cost, eta_minutes]

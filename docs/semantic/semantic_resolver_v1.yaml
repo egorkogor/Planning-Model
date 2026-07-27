@@ -1,0 +1,48 @@
+schema_version: work-planner/1.13
+contract_id: semantic-resolver/1.0
+representation:
+  metric: cosine
+  prototype_count: 7
+  prototype_source: train-only deterministic class centroids
+  vectors_l2_normalized: true
+calibration:
+  partition: development
+  threshold_grid:
+    min_similarity:
+    - 0.3
+    - 0.35
+    - 0.4
+    - 0.45
+    - 0.5
+    - 0.55
+    - 0.6
+    min_margin:
+    - 0.0
+    - 0.01
+    - 0.02
+    - 0.03
+    - 0.05
+    - 0.08
+    - 0.1
+  selection_constraints:
+    resolved_intent_error_rate_max: 0.05
+    coverage_min: 0.7
+  objective: maximize_coverage
+  tie_breaks:
+  - lower_resolved_intent_error_rate
+  - higher_min_margin
+  - higher_min_similarity
+  no_pair_meets_constraints: BLOCKED_RESOLVER_CALIBRATION
+  calibration_seed: 7103
+resolution:
+  resolved_if: top1_similarity >= min_similarity AND top1_similarity - top2_similarity
+    >= min_margin
+  top2_must_have_different_intent_id: true
+  exact_tie: SEMANTIC_UNRESOLVED
+  below_threshold: SEMANTIC_UNRESOLVED
+  thresholds_locked_before_stage1_pilot: true
+  change_after_lock: forbidden
+artifacts:
+  threshold_lock: locks/semantic-resolver.lock.json
+  calibration_report: reports/resolver-calibration.json
+  prototype_manifest: semantic_bank/manifest.json

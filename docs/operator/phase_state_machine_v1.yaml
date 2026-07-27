@@ -1,0 +1,220 @@
+schema_version: work-planner-agent/1.4
+state_machine_id: work-planner-state-machine/1.4
+initial_phase: P00
+terminal_states:
+- ACCEPTED
+- STOPPED_BY_OPERATOR
+- STOPPED_NO_RESOURCES
+- BLOCKED
+- BLOCKED_PROTOCOL_CAPACITY
+- INVALID_RUN
+transitions:
+  P00:
+    APPROVE_SCOPE:
+      next: P01
+    REJECT_SCOPE:
+      terminal: STOPPED_BY_OPERATOR
+    STOP:
+      terminal: STOPPED_BY_OPERATOR
+  P01:
+    APPROVE_TRUST_AND_RESOURCES:
+      next: P02
+    REJECT_TRUST_AND_RESOURCES:
+      terminal: STOPPED_NO_RESOURCES
+    STOP:
+      terminal: STOPPED_BY_OPERATOR
+  P02:
+    PASS:
+      next: P03
+    BLOCKED:
+      terminal: BLOCKED
+  P03:
+    PASS:
+      next: P04
+    BLOCKED:
+      terminal: BLOCKED
+  P04:
+    PASS:
+      next: P05
+    BLOCKED:
+      terminal: BLOCKED
+  P05:
+    PASS:
+      next: P06
+    BLOCKED_PROTOCOL_CAPACITY:
+      terminal: BLOCKED_PROTOCOL_CAPACITY
+    BLOCKED:
+      terminal: BLOCKED
+  P06:
+    APPROVE_G06_AUDITS:
+      next: P07
+    REJECT_G06_AUDITS:
+      repeat: P06
+      max_resubmissions: 1
+    STOP:
+      terminal: STOPPED_BY_OPERATOR
+    BLOCKED:
+      terminal: BLOCKED
+  P07:
+    APPROVE_FREEZE:
+      next: P08
+    REJECT_FREEZE:
+      repeat: P07
+      max_resubmissions: 1
+    STOP:
+      terminal: STOPPED_BY_OPERATOR
+    BLOCKED:
+      terminal: BLOCKED
+  P08:
+    PASS:
+      next: P09
+    INVALID_CONFIRMATORY:
+      terminal: INVALID_RUN
+    BLOCKED:
+      terminal: BLOCKED
+  P09:
+    GO_PLANNER_STAGE1B_ELIGIBLE:
+      next: P10
+      set_flags:
+        planner_architecture_go: true
+        stage1b_eligible: true
+    GO_PLANNER_DIAGNOSTIC_ONLY:
+      next: P10
+      set_flags:
+        planner_architecture_go: true
+        stage1b_eligible: false
+    STOP_PLANNER:
+      next: P10
+      set_flags:
+        planner_architecture_go: false
+        stage1b_eligible: false
+      note: Stage 1A diagnostic remains allowed; Stage 1B forbidden
+    INVALID_RUN:
+      terminal: INVALID_RUN
+  P10:
+    PASS:
+      next: P11
+    BLOCKED:
+      terminal: BLOCKED
+  P11:
+    PASS:
+      next: P12
+    BLOCKED_PROMPT_STACK:
+      mark_skipped:
+      - P12
+      - P13
+      - P14
+      - P15
+      - P16
+      - P17
+      - P18
+      next: P19
+    BLOCKED:
+      terminal: BLOCKED
+  P12:
+    APPROVE_FREEZE:
+      next: P13
+    REJECT_FREEZE:
+      repeat: P12
+      max_resubmissions: 1
+    STOP:
+      terminal: STOPPED_BY_OPERATOR
+    BLOCKED:
+      terminal: BLOCKED
+  P13:
+    PASS:
+      next: P14
+    INVALID_CONFIRMATORY:
+      terminal: INVALID_RUN
+    BLOCKED:
+      terminal: BLOCKED
+  P14:
+    GO_INTERFACE_STAGE1B_ELIGIBLE:
+      next: P15
+      requires_flags:
+        stage1b_eligible: true
+      set_flags:
+        interface_go: true
+    GO_INTERFACE_DIAGNOSTIC_ONLY:
+      mark_skipped:
+      - P15
+      - P16
+      - P17
+      - P18
+      next: P19
+      set_flags:
+        interface_go: true
+    STOP_INTERFACE:
+      mark_skipped:
+      - P15
+      - P16
+      - P17
+      - P18
+      next: P19
+      set_flags:
+        interface_go: false
+    INVALID_RUN:
+      terminal: INVALID_RUN
+  P15:
+    PASS:
+      next: P16
+    BLOCKED_SUPPORT:
+      mark_skipped:
+      - P16
+      - P17
+      - P18
+      next: P19
+    BLOCKED:
+      terminal: BLOCKED
+  P16:
+    APPROVE_FREEZE:
+      next: P17
+    REJECT_FREEZE:
+      repeat: P16
+      max_resubmissions: 1
+    STOP:
+      terminal: STOPPED_BY_OPERATOR
+    BLOCKED:
+      terminal: BLOCKED
+  P17:
+    PASS:
+      next: P18
+    INVALID_CONFIRMATORY:
+      terminal: INVALID_RUN
+    BLOCKED:
+      terminal: BLOCKED
+  P18:
+    GO_END_TO_END:
+      next: P19
+      set_flags:
+        end_to_end_go: true
+    STOP_END_TO_END:
+      next: P19
+      set_flags:
+        end_to_end_go: false
+    INVALID_RUN:
+      terminal: INVALID_RUN
+  P19:
+    PASS:
+      next: P20
+    FAIL_AUDIT:
+      terminal: INVALID_RUN
+    BLOCKED:
+      terminal: BLOCKED
+  P20:
+    APPROVE_FINAL:
+      terminal: ACCEPTED
+    REJECT_FINAL:
+      repeat: P19
+      max_resubmissions: 1
+    STOP:
+      terminal: STOPPED_BY_OPERATOR
+global_rules:
+  do_not_advance_by_numeric_phase_order: true
+  use_only_declared_outcome_transition: true
+  failed_automated_gate_cannot_be_manually_overridden: true
+  resubmission_counter_persisted_in_decision_record: true
+  mandatory_manual_gates_always_require_signed_decision_record: true
+  decision_phase_outcome_must_equal_transition_key: true
+  phase_flags_persisted_in_run_status: true
+  transition_requirements_fail_closed: true

@@ -1,0 +1,299 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/sample_size_report.schema.json",
+  "title": "Conservative estimator-matched sample size report v1.3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "stage",
+    "method",
+    "sample_size_input_sha256",
+    "inputs",
+    "component_requirements",
+    "selected_n",
+    "reserve_n",
+    "status",
+    "analysis_code_sha256",
+    "random_seed",
+    "report_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-stats/1.3"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "enum": [
+        "PLANNER",
+        "STAGE1A",
+        "STAGE1B"
+      ]
+    },
+    "method": {
+      "const": "estimator_matched_paired_binary_simulation_v4"
+    },
+    "sample_size_input_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pilot_sd_by_requirement",
+        "target_effect",
+        "target_ci_half_width",
+        "equivalence_margin",
+        "target_power",
+        "round_up_multiple",
+        "minimum_n",
+        "simulation_count",
+        "minimum_effect_gate",
+        "maximum_n",
+        "ci_resamples_per_simulation",
+        "power_confidence_level",
+        "power_confirmation_points"
+      ],
+      "properties": {
+        "pilot_sd_by_requirement": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "primary_ci": {
+              "type": "number",
+              "minimum": 0
+            },
+            "primary_power": {
+              "type": "number",
+              "minimum": 0
+            },
+            "current_vs_shuffled_power": {
+              "type": "number",
+              "minimum": 0
+            },
+            "equivalence_TOST_power": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "target_effect": {
+          "const": 0.075
+        },
+        "target_ci_half_width": {
+          "const": 0.025
+        },
+        "equivalence_margin": {
+          "const": 0.02
+        },
+        "target_power": {
+          "const": 0.9
+        },
+        "round_up_multiple": {
+          "const": 50
+        },
+        "minimum_n": {
+          "const": 300
+        },
+        "simulation_count": {
+          "const": 1000
+        },
+        "minimum_effect_gate": {
+          "const": 0.05
+        },
+        "maximum_n": {
+          "const": 20000
+        },
+        "ci_resamples_per_simulation": {
+          "const": 1000
+        },
+        "power_confidence_level": {
+          "const": 0.95
+        },
+        "power_confirmation_points": {
+          "const": 2
+        }
+      }
+    },
+    "component_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primary_ci": {
+          "type": "integer",
+          "minimum": 1,
+          "multipleOf": 50
+        },
+        "primary_power": {
+          "type": "integer",
+          "minimum": 1,
+          "multipleOf": 50
+        },
+        "current_vs_shuffled_power": {
+          "type": "integer",
+          "minimum": 1,
+          "multipleOf": 50
+        },
+        "equivalence_TOST_power": {
+          "type": "integer",
+          "minimum": 1,
+          "multipleOf": 50
+        },
+        "minimum_n": {
+          "type": "integer",
+          "minimum": 1,
+          "multipleOf": 50
+        }
+      }
+    },
+    "selected_n": {
+      "type": "integer",
+      "minimum": 1,
+      "multipleOf": 50
+    },
+    "reserve_n": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "BLOCKED_INSUFFICIENT_RESERVE"
+      ]
+    },
+    "analysis_code_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "random_seed": {
+      "const": 7302
+    },
+    "report_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "PLANNER"
+          }
+        },
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "properties": {
+          "inputs": {
+            "properties": {
+              "pilot_sd_by_requirement": {
+                "required": [
+                  "primary_ci",
+                  "primary_power",
+                  "current_vs_shuffled_power"
+                ],
+                "not": {
+                  "required": [
+                    "equivalence_TOST_power"
+                  ]
+                }
+              }
+            }
+          },
+          "component_requirements": {
+            "required": [
+              "primary_ci",
+              "primary_power",
+              "current_vs_shuffled_power",
+              "minimum_n"
+            ],
+            "not": {
+              "required": [
+                "equivalence_TOST_power"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "STAGE1A"
+          }
+        },
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "properties": {
+          "inputs": {
+            "properties": {
+              "pilot_sd_by_requirement": {
+                "required": [
+                  "primary_ci",
+                  "primary_power",
+                  "current_vs_shuffled_power",
+                  "equivalence_TOST_power"
+                ]
+              }
+            }
+          },
+          "component_requirements": {
+            "required": [
+              "primary_ci",
+              "primary_power",
+              "current_vs_shuffled_power",
+              "equivalence_TOST_power",
+              "minimum_n"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "STAGE1B"
+          }
+        },
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "properties": {
+          "inputs": {
+            "properties": {
+              "pilot_sd_by_requirement": {
+                "required": [
+                  "primary_ci",
+                  "primary_power",
+                  "current_vs_shuffled_power",
+                  "equivalence_TOST_power"
+                ]
+              }
+            }
+          },
+          "component_requirements": {
+            "required": [
+              "primary_ci",
+              "primary_power",
+              "current_vs_shuffled_power",
+              "equivalence_TOST_power",
+              "minimum_n"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

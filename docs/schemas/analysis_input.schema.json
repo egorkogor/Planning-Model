@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/analysis_input.schema.json",
+  "title": "Canonical paired analysis input v1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "stage",
+    "raw_result_manifest_sha256",
+    "analysis_builder_sha256",
+    "raw_result_manifest_path",
+    "comparisons",
+    "created_at",
+    "analysis_input_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-analysis-input/1.1"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "PLANNER",
+        "STAGE1A",
+        "STAGE1B"
+      ]
+    },
+    "raw_result_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "comparisons": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/comparison"
+      }
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "analysis_input_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "raw_result_manifest_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "analysis_builder_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "pair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pair_id",
+        "left",
+        "right",
+        "difference"
+      ],
+      "properties": {
+        "pair_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "left": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "right": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "difference": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        }
+      }
+    },
+    "scalar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit_id",
+        "value"
+      ],
+      "properties": {
+        "unit_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "comparison": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "analysis_type",
+            "complete_pair_count",
+            "seed_groups"
+          ],
+          "properties": {
+            "analysis_type": {
+              "const": "PLANNER_HIERARCHICAL"
+            },
+            "complete_pair_count": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "seed_groups": {
+              "type": "object",
+              "minProperties": 2,
+              "additionalProperties": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "$ref": "#/$defs/pair"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "analysis_type",
+            "complete_pair_count",
+            "task_clusters"
+          ],
+          "properties": {
+            "analysis_type": {
+              "const": "STAGE1A_CLUSTERED"
+            },
+            "complete_pair_count": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "task_clusters": {
+              "type": "object",
+              "minProperties": 2,
+              "additionalProperties": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/pair"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "analysis_type",
+            "complete_pair_count",
+            "pairs"
+          ],
+          "properties": {
+            "analysis_type": {
+              "const": "TASK_PAIRED"
+            },
+            "complete_pair_count": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "pairs": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/pair"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "analysis_type",
+            "complete_pair_count",
+            "units"
+          ],
+          "properties": {
+            "analysis_type": {
+              "const": "SCALAR_RATE"
+            },
+            "complete_pair_count": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "units": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "$ref": "#/$defs/scalar"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

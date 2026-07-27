@@ -1,0 +1,124 @@
+schema_version: work-planner/1.13
+candidate_id: C02
+language: en
+system_message_exact: You select exactly one next valid BlocksWorld action. Return exactly one JSON object and no other text.
+action_signatures_exact:
+- PICK_UP args=[block] — valid only when hand empty, block clear and on table.
+- PUT_DOWN args=[block] — valid only when the hand holds block.
+- UNSTACK args=[moving_block, support_block] — valid only when hand empty, moving block clear and on support.
+- STACK args=[moving_block, support_block] — valid only when the hand holds moving block and support block is clear.
+- END args=[] — valid only when every goal relation already holds.
+few_shot_examples_exact:
+- input: 'CURRENT_STATE: block_0 is clear; block_0 is on the table; the hand is empty. GOAL: block_0 must be on the table.'
+  output: '{"schema_version":"work-planner/1.13","action":"END","args":[]}'
+- input: 'CURRENT_STATE: block_0 is clear; block_0 is on the table; block_1 is clear; block_1 is on the table; the hand is
+    empty. GOAL: block_0 must be on block_1.'
+  output: '{"schema_version":"work-planner/1.13","action":"PICK_UP","args":["block_0"]}'
+output_format_exact: '{"schema_version":"work-planner/1.13","action":"<PICK_UP|PUT_DOWN|UNSTACK|STACK|END>","args":["<aliases
+  in signature order>"]}'
+utf8_normalization: NFC
+line_ending: LF
+trailing_whitespace: forbidden
+message_sequence_template_exact:
+- role: system
+  content_exact: You select exactly one next valid BlocksWorld action. Return exactly one JSON object and no other text.
+- role: user
+  content_exact: 'TASK
+
+    Select exactly one next valid BlocksWorld action.
+
+    AVAILABLE_BLOCKS
+
+    block_0
+
+    CURRENT_STATE
+
+    block_0 is clear
+
+    block_0 is on the table
+
+    the hand is empty
+
+    GOAL
+
+    block_0 must be on the table
+
+    GUIDANCE_BLOCK
+
+    GUIDANCE: the goal is already satisfied, so finish without moving a block
+
+    ACTION_SIGNATURES
+
+    - PICK_UP args=[block] — valid only when hand empty, block clear and on table.
+
+    - PUT_DOWN args=[block] — valid only when the hand holds block.
+
+    - UNSTACK args=[moving_block, support_block] — valid only when hand empty, moving block clear and on support.
+
+    - STACK args=[moving_block, support_block] — valid only when the hand holds moving block and support block is clear.
+
+    - END args=[] — valid only when every goal relation already holds.
+
+    OUTPUT_FORMAT
+
+    {"schema_version":"work-planner/1.13","action":"<PICK_UP|PUT_DOWN|UNSTACK|STACK|END>","args":["<aliases in signature order>"]}'
+- role: assistant
+  content_exact: '{"schema_version":"work-planner/1.13","action":"END","args":[]}'
+- role: user
+  content_exact: 'TASK
+
+    Select exactly one next valid BlocksWorld action.
+
+    AVAILABLE_BLOCKS
+
+    block_0
+
+    block_1
+
+    CURRENT_STATE
+
+    block_0 is clear
+
+    block_0 is on the table
+
+    block_1 is clear
+
+    block_1 is on the table
+
+    the hand is empty
+
+    GOAL
+
+    block_0 must be on block_1
+
+    GUIDANCE_BLOCK
+
+    GUIDANCE: make the required moving block ready for placement on its support
+
+    ACTION_SIGNATURES
+
+    - PICK_UP args=[block] — valid only when hand empty, block clear and on table.
+
+    - PUT_DOWN args=[block] — valid only when the hand holds block.
+
+    - UNSTACK args=[moving_block, support_block] — valid only when hand empty, moving block clear and on support.
+
+    - STACK args=[moving_block, support_block] — valid only when the hand holds moving block and support block is clear.
+
+    - END args=[] — valid only when every goal relation already holds.
+
+    OUTPUT_FORMAT
+
+    {"schema_version":"work-planner/1.13","action":"<PICK_UP|PUT_DOWN|UNSTACK|STACK|END>","args":["<aliases in signature order>"]}'
+- role: assistant
+  content_exact: '{"schema_version":"work-planner/1.13","action":"PICK_UP","args":["block_0"]}'
+- role: user
+  content_source: RUNTIME_USER_PROMPT_UTF8
+chat_template_application:
+  input: message_sequence_template_exact with final content_source replaced by canonical runtime user prompt bytes
+  add_generation_prompt: true
+  message_order_mutation: forbidden
+  separator_mutation: forbidden; pinned tokenizer chat template is sole separator source
+  prompt_hash_payload: canonical role/content array plus rendered unpadded input_ids, attention_mask and position_ids
+  few_shot_messages_in_token_budget: true
+few_shot_examples_exact_status: documentation_only; normative messages are message_sequence_template_exact

@@ -1,0 +1,60 @@
+schema_version: work-planner/1.13
+contract_id: planner-scientific-design/1.0
+purpose: Outcome-relevant architecture comparison fixed by Scientific lock; executable wiring remains in planner_architecture_v1.yaml until Implementation lock.
+arms:
+  A1:
+    representation: LOSSLESS_TOKEN_GRAMMAR
+    role: strongest token-level reference baseline
+  A2:
+    representation: TYPED_ACTION_POINTERS
+    role: typed-only baseline
+  A2b:
+    representation: DISCRETE_INTENT
+    role: seven-class intent baseline
+  A2c:
+    representation: STRUCTURED_DISCRETE_SIGNATURE
+    role: information-matched structured semantic baseline
+  A3:
+    representation: CONTINUOUS_LATENT
+    role: primary latent hypothesis
+  A4:
+    representation: A3_ZERO_FEEDBACK
+    role: inference intervention using the exact A3 checkpoint
+  A5:
+    representation: A3_SHUFFLED_FEEDBACK
+    role: inference intervention using the exact A3 checkpoint
+causal_constraints:
+  A2c_and_A3_source_information_identical: true
+  A4_A5_weights_sha256_equal_A3: true
+  A4_A5_retraining: forbidden
+  raw_unmasked_candidate_logged_before_recovery: true
+  domain_mask_not_applied_before_raw_log: true
+  A5_manifest_contract: docs/controls/planner_latent_ablation_contract_v1.yaml
+comparison_order:
+- A2_vs_A1_HORIZON
+- A2b_vs_A2_HORIZON
+- A2c_vs_A2b_HORIZON
+- A3_vs_A2c_HORIZON
+- A3_noninferior_A1_HORIZON
+- A3_vs_A4_HORIZON
+- A3_vs_A5_HORIZON
+- A3_noninferior_A2c_SIZE_OOD
+- A3_vs_A4_SIZE_OOD
+- A3_vs_A5_SIZE_OOD
+- A3_vs_A2c_FLOPS_HORIZON
+compute_matching:
+  regimes:
+  - equal_data_equal_updates
+  - inference_FLOPs_matched
+  parameter_count_tolerance_fraction: 0.0
+  final_optimizer_updates_exact: 12000
+  parameter_inventory: exact common superset across A1/A2/A2b/A2c/A3
+  dormant_modules_cannot_affect_outputs: true
+endpoints:
+  primary: raw goal_success
+  secondary:
+  - valid_action_rate
+  - optimality_ratio
+  - horizon_exceeded_rate
+  - compute_and_latency
+scientific_change_after_P02: forbidden

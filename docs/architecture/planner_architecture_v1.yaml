@@ -1,0 +1,85 @@
+schema_version: work-planner/1.13
+contract_id: planner-architecture/1.0
+task_encoder:
+  layers: 4
+  d_model: 256
+  attention_heads: 8
+  ffn_dim: 1024
+  activation: GELU
+  normalization: pre_layer_norm
+  dropout_from_search_grid: true
+  positional_encoding: learned_absolute
+  max_input_positions: 192
+  object_ref_representation: dedicated_REF_token_hidden_state
+planner_decoder:
+  layers: 4
+  d_model: 256
+  attention_heads: 8
+  ffn_dim: 1024
+  activation: GELU
+  normalization: pre_layer_norm
+  causal_mask: true
+  cross_attention_to_task_encoder: true
+  max_step_positions: 17
+heads:
+  action: linear_256_to_5
+  arg1_pointer: bilinear_decoder_to_ref_hidden
+  arg2_pointer: bilinear_decoder_to_ref_hidden
+  intent_A2b: linear_256_to_7
+  signature_A2c: one_linear_head_per_signature_field
+  latent_A3: linear_256_to_384_then_l2_normalize
+concept_packer:
+  output_dim: 256
+  combine: sum_then_layer_norm
+  components:
+    step_position: learned_256
+    previous_action: embedding_5x256
+    previous_arg1: projected_ref_hidden_256
+    previous_arg2: projected_ref_hidden_256
+    previous_semantic: variant_specific_256
+  semantic_feedback:
+    A1: zero_vector
+    A2: zero_vector
+    A2b: intent_embedding_7x256
+    A2c:
+      each_field_embedding_dim: 64
+      concatenate_then_projection: 448_to_256
+      field_count: 7
+    A3:
+      projection: linear_384_to_512_GELU_linear_512_to_256
+      projection_layer_norm: true
+    A4: compute_exact_A3_projection_then_replace_projected_256_with_zero_before_sum_and_layer_norm
+    A5: deterministic_shuffled_384_then_A3_projection
+  position_zero:
+    previous_action: BOS_embedding
+    previous_args: zero_vectors
+    previous_semantic: zero_vector
+training_feedback:
+  A2b: ground_truth_intent
+  A2c: ground_truth_signature
+  A3: ground_truth_semantic_target
+inference_feedback:
+  A2b: argmax_predicted_intent
+  A2c: argmax_each_predicted_signature_field
+  A3: normalized_predicted_z
+  A4: zero_z
+  A5: manifest_selected_foreign_z
+same_information_constraint:
+  A2c_signature_source: intent_labeler_semantic_signature
+  A3_text_source: canonical_text_of_same_signature
+  extra_facts_in_A3_text: forbidden
+parameter_matching:
+  strategy: common_superset_parameter_inventory
+  modules_present_in_every_trainable_arm:
+  - token_grammar_head
+  - typed_action_and_pointer_heads
+  - intent_head_and_embedding
+  - signature_heads_and_embeddings
+  - latent_head_and_feedback_projection
+  arm_activation: locked arm mask selects losses, outputs and feedback; unused modules receive no task loss and
+    must have grad None
+  total_parameter_count_tolerance_fraction: 0.0
+  active_parameter_count_reported_separately: true
+  dormant_module_output_may_enter_backbone_or_logits: false
+  checkpoint_inventory_hash_must_match_across_A1_A2_A2b_A2c_A3: true
+  flops_difference_handling: measured and addressed by locked FLOPs-matched sensitivity run

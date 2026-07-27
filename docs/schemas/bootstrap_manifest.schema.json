@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/bootstrap_manifest.schema.json",
+  "title": "Bootstrap release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "release_id",
+    "implementation_spec",
+    "stage1_runbook",
+    "generated_at",
+    "files",
+    "excluded_paths",
+    "manifest_hash",
+    "scope"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-release/1.1"
+    },
+    "release_id": {
+      "const": "work-planner-v1.13-v2.13"
+    },
+    "implementation_spec": {
+      "const": "1.13"
+    },
+    "stage1_runbook": {
+      "const": "2.13"
+    },
+    "generated_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "files": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "common.schema.json#/$defs/sha256"
+      }
+    },
+    "excluded_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "scope": {
+      "const": "SCIENTIFIC_TRUST_ROOT_ONLY"
+    }
+  }
+}

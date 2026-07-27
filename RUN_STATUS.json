@@ -1,0 +1,28 @@
+{
+  "schema_version": "work-planner-agent/1.2",
+  "run_id": "run-not-started",
+  "phase_id": "P00",
+  "status": "NOT_STARTED",
+  "progress_percent": 0,
+  "latest_action": "none",
+  "latest_check": "none",
+  "blindness_status": "NOT_APPLICABLE",
+  "flags": {
+    "planner_architecture_go": null,
+    "stage1b_eligible": null,
+    "interface_go": null,
+    "end_to_end_go": null
+  },
+  "resources": {},
+  "cost": {
+    "estimated": 0,
+    "currency": "USD"
+  },
+  "eta_minutes": null,
+  "risks": [],
+  "operator_action": "Передать Builder Agent prompts/00_MASTER_ORCHESTRATOR.md",
+  "updated_at": "2026-07-26T00:00:00Z",
+  "trust_topology_lock_status": "NOT_CREATED",
+  "scientific_lock_status": "NOT_CREATED",
+  "implementation_lock_status": "NOT_CREATED"
+}

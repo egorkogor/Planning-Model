@@ -1,0 +1,81 @@
+schema_version: work-planner/1.13
+catalog_id: blocks_intents/1.6
+text_language: en
+forbidden_content:
+- action_enum
+- internal_ref
+- surface_alias
+- exact_argument
+entries:
+- intent_id: 0
+  key: CLEAR_MOVING_BLOCK
+  intent_text: clear the block that must move next
+- intent_id: 1
+  key: CLEAR_TARGET_SUPPORT
+  intent_text: clear the support required by the goal
+- intent_id: 2
+  key: MAKE_MOVING_BLOCK_AVAILABLE
+  intent_text: make the relevant block available for placement
+- intent_id: 3
+  key: TEMPORARY_TABLE_PLACEMENT
+  intent_text: place an obstructing block aside temporarily
+- intent_id: 4
+  key: PLACE_GOAL_BLOCK
+  intent_text: place the relevant block on its required support
+- intent_id: 5
+  key: RESTORE_HAND_EMPTY
+  intent_text: restore an empty hand before the next placement
+- intent_id: 6
+  key: GOAL_ALREADY_SATISFIED
+  intent_text: finish because the requested configuration is satisfied
+labeler:
+  version: intent-labeler/1.0
+  source: docs/domain/intent_labeler_v1.py
+  contract: docs/domain/intent_labeler_contract_v1.yaml
+  deterministic: true
+  randomness: forbidden
+  output_must_match_catalog_exactly: true
+  exhaustive_fixture_required_for_block_counts:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+semantic_signature:
+  fields:
+    intent_id: 0..6
+    hand_mode:
+    - HAND_EMPTY
+    - HOLDING
+    goal_relation:
+    - 'ON'
+    - ON_TABLE
+    - SATISFIED
+    moving_clear:
+    - 'YES'
+    - 'NO'
+    - NOT_APPLICABLE
+    support_clear:
+    - 'YES'
+    - 'NO'
+    - NOT_APPLICABLE
+    obstruction_depth_bucket:
+    - ZERO
+    - ONE
+    - TWO_PLUS
+    - NOT_APPLICABLE
+    remaining_distance_bucket:
+    - ZERO
+    - ONE_TWO
+    - THREE_FIVE
+    - SIX_TEN
+    - ELEVEN_SIXTEEN
+  canonical_text_template: intent={intent_key}; hand={hand_mode}; goal_relation={goal_relation}; moving_clear={moving_clear};
+    support_clear={support_clear}; obstruction_depth={obstruction_depth_bucket}; remaining_distance={remaining_distance_bucket}
+  exact_object_identity_forbidden: true
+prototype_bank:
+  resolver_rows_per_intent_id: 1
+  resolver_method: deterministic_centroid_of_train_A3_targets_by_intent_id
+  top2_must_have_distinct_intent_ids: true
+  source_split: train
+  duplicate_intent_rows_forbidden: true

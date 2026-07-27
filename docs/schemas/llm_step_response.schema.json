@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/llm_step_response.schema.json",
+  "title": "LLMStepResponse v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "action",
+    "args"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "action": {
+      "$ref": "common.schema.json#/$defs/action"
+    },
+    "args": {
+      "type": "array",
+      "maxItems": 2
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "enum": [
+              "PICK_UP",
+              "PUT_DOWN"
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "then": {
+        "properties": {
+          "args": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "$ref": "common.schema.json#/$defs/surface_alias"
+              }
+            ],
+            "items": false,
+            "minItems": 1,
+            "maxItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "enum": [
+              "UNSTACK",
+              "STACK"
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "then": {
+        "properties": {
+          "args": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "$ref": "common.schema.json#/$defs/surface_alias"
+              },
+              {
+                "$ref": "common.schema.json#/$defs/surface_alias"
+              }
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "enum": [
+              "END"
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "then": {
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": false,
+            "minItems": 0,
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

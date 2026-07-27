@@ -1,0 +1,429 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/planner_step.schema.json",
+  "title": "PlannerStep v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "step_id",
+    "step_index",
+    "representation",
+    "planner_variant",
+    "typed_action",
+    "status",
+    "semantic_ref",
+    "intent_id",
+    "semantic_signature",
+    "semantic_similarity",
+    "semantic_margin"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "step_id": {
+      "$ref": "common.schema.json#/$defs/step_id"
+    },
+    "step_index": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16
+    },
+    "representation": {
+      "$ref": "common.schema.json#/$defs/representation"
+    },
+    "planner_variant": {
+      "$ref": "common.schema.json#/$defs/planner_variant"
+    },
+    "typed_action": {
+      "$ref": "typed_action.schema.json"
+    },
+    "status": {
+      "$ref": "common.schema.json#/$defs/step_status"
+    },
+    "semantic_ref": {
+      "$ref": "common.schema.json#/$defs/nullable_semantic_ref"
+    },
+    "intent_id": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 6
+    },
+    "semantic_signature": {
+      "oneOf": [
+        {
+          "$ref": "semantic_signature.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "semantic_similarity": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": -1,
+      "maximum": 1
+    },
+    "semantic_margin": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 2
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A1"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "TOKEN_GRAMMAR"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A2"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "TYPED_ONLY"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A2b"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "DISCRETE_INTENT"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A2c"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "STRUCTURED_DISCRETE"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A3"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "CONTINUOUS_LATENT"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A4"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "CONTINUOUS_LATENT"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planner_variant": {
+            "const": "A5"
+          }
+        },
+        "required": [
+          "planner_variant"
+        ]
+      },
+      "then": {
+        "properties": {
+          "representation": {
+            "const": "CONTINUOUS_LATENT"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "typed_action": {
+            "properties": {
+              "action": {
+                "const": "END"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          }
+        },
+        "required": [
+          "typed_action"
+        ]
+      },
+      "then": {
+        "properties": {
+          "semantic_ref": {
+            "type": "null"
+          },
+          "intent_id": {
+            "type": "null"
+          },
+          "semantic_signature": {
+            "type": "null"
+          },
+          "semantic_similarity": {
+            "type": "null"
+          },
+          "semantic_margin": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "typed_action": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "PICK_UP",
+                  "PUT_DOWN",
+                  "UNSTACK",
+                  "STACK"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "representation": {
+            "const": "DISCRETE_INTENT"
+          }
+        },
+        "required": [
+          "typed_action",
+          "representation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "intent_id": {
+            "type": "integer"
+          },
+          "semantic_ref": {
+            "type": "null"
+          },
+          "semantic_signature": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "typed_action": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "PICK_UP",
+                  "PUT_DOWN",
+                  "UNSTACK",
+                  "STACK"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "representation": {
+            "const": "STRUCTURED_DISCRETE"
+          }
+        },
+        "required": [
+          "typed_action",
+          "representation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "intent_id": {
+            "type": "integer"
+          },
+          "semantic_signature": {
+            "$ref": "semantic_signature.schema.json"
+          },
+          "semantic_ref": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "typed_action": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "PICK_UP",
+                  "PUT_DOWN",
+                  "UNSTACK",
+                  "STACK"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "representation": {
+            "const": "CONTINUOUS_LATENT"
+          }
+        },
+        "required": [
+          "typed_action",
+          "representation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "semantic_ref": {
+            "$ref": "common.schema.json#/$defs/semantic_ref"
+          },
+          "intent_id": {
+            "type": "integer"
+          },
+          "semantic_signature": {
+            "$ref": "semantic_signature.schema.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "typed_action": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "PICK_UP",
+                  "PUT_DOWN",
+                  "UNSTACK",
+                  "STACK"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "representation": {
+            "enum": [
+              "TOKEN_GRAMMAR",
+              "TYPED_ONLY"
+            ]
+          }
+        },
+        "required": [
+          "typed_action",
+          "representation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "semantic_ref": {
+            "type": "null"
+          },
+          "intent_id": {
+            "type": "null"
+          },
+          "semantic_signature": {
+            "type": "null"
+          },
+          "semantic_similarity": {
+            "type": "null"
+          },
+          "semantic_margin": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

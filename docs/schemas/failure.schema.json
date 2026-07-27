@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/failure.schema.json",
+  "title": "Failure v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "stage",
+    "code",
+    "message",
+    "recoverable",
+    "evidence"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "stage": {
+      "enum": [
+        "GENERATOR",
+        "CORPUS",
+        "PLANNER",
+        "SEMANTIC_TARGET",
+        "SEMANTIC_RESOLVER",
+        "PROMPT",
+        "VALIDATOR",
+        "EXECUTOR",
+        "GOAL_VERIFIER",
+        "LLM",
+        "RUNNER",
+        "STATISTICS",
+        "ORCHESTRATOR"
+      ]
+    },
+    "code": {
+      "$ref": "common.schema.json#/$defs/issue_code"
+    },
+    "message": {
+      "type": "string"
+    },
+    "recoverable": {
+      "type": "boolean"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "artifact_uri": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

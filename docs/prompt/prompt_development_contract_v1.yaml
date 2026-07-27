@@ -1,0 +1,61 @@
+schema_version: work-planner/1.13
+contract_id: stage1-prompt-development/1.2
+partition: development
+confirmatory_tasks_visible: false
+candidates:
+- candidate_id: C01
+  system_variant: concise
+  action_signatures: table
+  valid_example_count: 0
+  source_file: docs/prompt/candidates/C01.yaml
+  text_mutation_during_run: forbidden
+- candidate_id: C02
+  system_variant: concise
+  action_signatures: table
+  valid_example_count: 2
+  source_file: docs/prompt/candidates/C02.yaml
+  text_mutation_during_run: forbidden
+- candidate_id: C03
+  system_variant: explicit_preconditions
+  action_signatures: table
+  valid_example_count: 0
+  source_file: docs/prompt/candidates/C03.yaml
+  text_mutation_during_run: forbidden
+- candidate_id: C04
+  system_variant: explicit_preconditions
+  action_signatures: table
+  valid_example_count: 2
+  source_file: docs/prompt/candidates/C04.yaml
+  text_mutation_during_run: forbidden
+candidate_order: candidate_id_ascending
+development_sample:
+  base_tasks: 200
+  one_snapshot_per_task: deterministic_middle_oracle_step
+  arms:
+  - NEUTRAL
+  - ORACLE_INTENT
+metrics:
+  format_success: parsed_exact_json
+  valid_action_rate: domain_valid_action
+  oracle_progress_rate: distance_after_less_than_before
+floors:
+  format_success: 0.95
+  valid_action_rate: 0.85
+  oracle_progress_rate_with_oracle_intent: 0.55
+selection:
+  score: 0.20*format_success + 0.30*valid_action_rate + 0.50*oracle_progress_rate_with_oracle_intent
+  tie_breaks:
+  - higher_format_success
+  - lower_mean_input_tokens
+  - lower_candidate_id
+  no_candidate_meets_floors: BLOCKED_PROMPT_STACK
+freeze:
+  selected_prompt_before_stage1_pilot: true
+  later_prompt_change_requires_new_protocol_version: true
+candidate_integrity:
+  exact_UTF8_bytes_locked_by_bootstrap_manifest: true
+  candidate_file_hash_logged: true
+  invented_or_rewritten_prompt: BLOCKED_PROMPT_CONTRACT
+  exact_message_sequence_required: true
+  few_shot_layout: separate user/assistant messages declared in each candidate message_sequence_template_exact
+  prompt_hash_includes: roles, content bytes, rendered chat-template bytes and unpadded tensors

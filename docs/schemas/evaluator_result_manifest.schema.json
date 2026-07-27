@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/evaluator_result_manifest.schema.json",
+  "title": "Sealed evaluator result manifest v1.2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dispatch_id",
+    "freeze_hash",
+    "evaluator_environment_sha256",
+    "git_commit",
+    "raw_artifacts",
+    "task_count",
+    "completed_at",
+    "signature",
+    "manifest_hash",
+    "evaluator_identity_sha256",
+    "signature_algorithm",
+    "public_key_id",
+    "run_id",
+    "stage",
+    "dispatch_hash",
+    "approved_freeze_pointer_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-evaluator/1.2"
+    },
+    "dispatch_id": {
+      "type": "string",
+      "pattern": "^DSP-[0-9]{4}$"
+    },
+    "freeze_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "evaluator_environment_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "git_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "task_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "completed_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/=]{40,}$"
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "evaluator_identity_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "signature_algorithm": {
+      "const": "ed25519"
+    },
+    "public_key_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^run-[a-z0-9-]+$"
+    },
+    "stage": {
+      "enum": [
+        "PLANNER",
+        "STAGE1A",
+        "STAGE1B"
+      ]
+    },
+    "dispatch_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "approved_freeze_pointer_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "raw_artifacts": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^results/(planner|stage1a|stage1b)-confirmatory/[a-zA-Z0-9._/-]+$"
+      },
+      "additionalProperties": {
+        "$ref": "common.schema.json#/$defs/sha256"
+      }
+    }
+  }
+}

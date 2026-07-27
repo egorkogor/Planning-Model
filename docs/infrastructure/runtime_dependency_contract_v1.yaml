@@ -1,0 +1,47 @@
+schema_version: work-planner/1.13
+contract_id: runtime-dependencies/1.1
+validation_environment:
+  python_matrix:
+  - 3.11.x
+  - 3.13.x
+  lock_file: requirements.lock
+  installation:
+  - python -m pip install -r requirements.lock
+  - python -m pip install -e . --no-deps
+  required_packages:
+    numpy: 2.3.5
+    scipy: 1.17.0
+    cryptography: 46.0.4
+    pytest: 9.0.2
+    PyYAML: 6.0.3
+    jsonschema: 4.26.0
+  clean_checkout_after_tests: true
+training_environment:
+  python: 3.11.x
+  torch: 2.10.x
+  transformers: exact version plus immutable VCS revision and artifact SHA256 in locks/environment.lock.json
+  sentence_transformers: exact version and artifact SHA256 in locks/environment.lock.json
+  vllm: required only when selected backend is VLLM; exact version plus immutable VCS revision/artifact SHA256
+  runtime_stack_fields:
+  - python executable hash
+  - torch artifact hash
+  - transformers revision
+  - vllm revision when used
+  - CUDA/driver/cuDNN versions
+  - kernel versions
+  - tokenizer revision
+  - processor revision
+  - language-model-only mode
+  - offline cache manifest
+resolution:
+  network_allowed_only_in_P02: true
+  resolved_versions_written_to: locks/environment.lock.json
+  hashes_required: true
+  lock_hash_rule:
+    algorithm: sha256
+    canonicalization: RFC8785-compatible sorted-key compact JSON UTF-8
+    excluded_field: lock_hash
+    output_format: "sha256:<64 lowercase hex>"
+  later_resolution: forbidden
+  offline_execution_after_P02: true
+environment_mismatch: BLOCKED_ENVIRONMENT_MISMATCH

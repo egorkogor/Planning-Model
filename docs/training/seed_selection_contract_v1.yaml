@@ -1,0 +1,19 @@
+schema_version: work-planner/1.13
+contract_id: planner-seed-selection/1.0
+final_seeds: [101, 202, 303]
+validation_metric:
+  name: validation_composite
+  formula: 0.70*goal_success + 0.20*valid_action_rate + 0.10*exact_plan_match
+checkpoint_per_seed: best_validation_composite
+stage1_checkpoint_selection:
+  method: median_rank
+  rank_direction: descending
+  tie_breaks:
+    - lower_validation_total_loss
+    - lower_seed_integer
+planner_decision_aggregation:
+  task_bootstrap_resamples: 10000
+  seed_aggregation: hierarchical_seed_then_base_task
+  minimum_seeds_with_same_effect_direction: 2
+  publish_each_seed: true
+  pooled_point_estimate: mean_over_seed_level_task_means

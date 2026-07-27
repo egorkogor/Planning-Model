@@ -1,0 +1,45 @@
+schema_version: work-planner/1.13
+target_id: semantic-target/1.6
+output_dimension: 384
+encoder:
+  library: sentence-transformers
+  model_id: sentence-transformers/all-MiniLM-L6-v2
+  revision_policy: resolve exact immutable commit during bootstrap and write to model_lock.json; moving main is forbidden after P02
+  api: SentenceTransformer.encode
+  pooling: model-native mean pooling
+  normalize_embeddings: true
+  batch_size: 256
+  dtype: float32
+  max_sequence_length: 256
+  device: recorded_in_run_manifest
+input:
+  source: intent_catalog.semantic_signature.canonical_text_template
+  encoding: UTF-8
+  unicode_normalization: NFC
+  line_endings: LF
+  strip_outer_whitespace: true
+  exact_object_identity_forbidden: true
+targets:
+  A2b: intent_id only
+  A2c: all semantic_signature categorical fields
+  A3: normalized 384-d embedding of canonical semantic signature text
+fairness:
+  A2c_and_A3_receive_same_source_semantic_signature: true
+  primary_continuous_comparison: A3_vs_A2c
+  A2b_is_minimal_intent_baseline: true
+bootstrap_artifacts:
+- model_lock.json
+- semantic_target_config_hash.txt
+- prototype_matrix.safetensors
+- prototype_manifest.json
+- golden_semantic_targets.json
+golden_requirements:
+  minimum_examples: 14
+  include_one_per_intent_id: true
+  vector_shape:
+  - 384
+  l2_norm_tolerance: 1.0e-05
+  rerun_max_absolute_difference: 1.0e-06
+  hash_exact: true
+  include_every_enum_value_per_signature_field: true
+  include_same_intent_different_signature_pair: true

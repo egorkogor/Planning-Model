@@ -1,0 +1,6 @@
+schema_version: work-planner/1.13
+contract_id: two-level-lock-index/1.0
+deprecated_single_lock: true
+scientific_lock: docs/operator/scientific_lock_v1.yaml
+implementation_lock: docs/operator/implementation_lock_v1.yaml
+rule: Scientific lock is immutable from P02; implementation lock is immutable from P06. Implementation-only patches are allowed only between them and before any pilot outcome.

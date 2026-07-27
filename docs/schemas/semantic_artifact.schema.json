@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/semantic_artifact.schema.json",
+  "title": "SemanticArtifact v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "semantic_ref",
+    "task_id",
+    "step_id",
+    "tensor_artifact",
+    "tensor_key",
+    "shape",
+    "dtype",
+    "planner_checkpoint_sha256",
+    "planner_config_sha256",
+    "state_hash",
+    "decoder_state_hash",
+    "tensor_sha256",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "artifact_id": {
+      "type": "string",
+      "pattern": "^sem-[0-9a-f]{16}$"
+    },
+    "semantic_ref": {
+      "$ref": "common.schema.json#/$defs/semantic_ref"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "step_id": {
+      "$ref": "common.schema.json#/$defs/step_id"
+    },
+    "tensor_artifact": {
+      "type": "string",
+      "pattern": "^[^\\0]+\\.safetensors$"
+    },
+    "tensor_key": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:/-]+$"
+    },
+    "shape": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": 384
+        }
+      ],
+      "items": false,
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "dtype": {
+      "const": "float32"
+    },
+    "planner_checkpoint_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "planner_config_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "state_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "decoder_state_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "tensor_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    }
+  }
+}

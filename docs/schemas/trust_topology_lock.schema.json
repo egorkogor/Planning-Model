@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/trust_topology_lock.schema.json",
+  "title": "Externally signed execution trust topology lock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "operator_key_id",
+    "operator_public_key_sha256",
+    "operator_attestation",
+    "protected_artifacts",
+    "created_at",
+    "manifest_hash",
+    "signature_algorithm",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-trust-lock/1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^run-[a-z0-9-]+$"
+    },
+    "operator_key_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operator_public_key_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "protected_artifacts": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "signature_algorithm": {
+      "const": "ed25519"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]{86}==$"
+    },
+    "operator_attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "out_of_band_identity_verification",
+        "all_environment_identities_distinct",
+        "all_credential_principals_distinct",
+        "builder_has_no_operator_private_key"
+      ],
+      "properties": {
+        "out_of_band_identity_verification": {
+          "const": true
+        },
+        "all_environment_identities_distinct": {
+          "const": true
+        },
+        "all_credential_principals_distinct": {
+          "const": true
+        },
+        "builder_has_no_operator_private_key": {
+          "const": true
+        }
+      }
+    }
+  }
+}

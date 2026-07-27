@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/run_status.schema.json",
+  "title": "Machine-readable run status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "phase_id",
+    "status",
+    "progress_percent",
+    "latest_action",
+    "latest_check",
+    "trust_topology_lock_status",
+    "scientific_lock_status",
+    "implementation_lock_status",
+    "blindness_status",
+    "flags",
+    "resources",
+    "cost",
+    "eta_minutes",
+    "risks",
+    "operator_action",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-agent/1.2"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "phase_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "progress_percent": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "latest_action": {
+      "type": "string"
+    },
+    "latest_check": {
+      "type": "string"
+    },
+    "blindness_status": {
+      "type": "string"
+    },
+    "resources": {
+      "type": "object"
+    },
+    "cost": {
+      "type": "object"
+    },
+    "eta_minutes": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "operator_action": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updated_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planner_architecture_go",
+        "stage1b_eligible",
+        "interface_go",
+        "end_to_end_go"
+      ],
+      "properties": {
+        "planner_architecture_go": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "stage1b_eligible": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "interface_go": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "end_to_end_go": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "trust_topology_lock_status": {
+      "enum": [
+        "NOT_CREATED",
+        "VERIFIED",
+        "MISMATCH",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "scientific_lock_status": {
+      "enum": [
+        "NOT_CREATED",
+        "VERIFIED",
+        "MISMATCH",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "implementation_lock_status": {
+      "enum": [
+        "NOT_CREATED",
+        "VERIFIED",
+        "MISMATCH",
+        "NOT_APPLICABLE"
+      ]
+    }
+  }
+}

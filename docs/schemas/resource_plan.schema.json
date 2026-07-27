@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/resource_plan.schema.json",
+  "title": "Resource plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "builder",
+    "data_sealer",
+    "evaluator",
+    "auditor",
+    "machine_checks",
+    "estimated_cost",
+    "currency",
+    "requires_operator_budget_approval",
+    "plan_hash",
+    "statistical_reviewer"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-infra/1.0"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "builder": {
+      "allOf": [
+        {
+          "$ref": "role_identity.schema.json"
+        },
+        {
+          "properties": {
+            "role": {
+              "const": "BUILDER"
+            }
+          }
+        }
+      ]
+    },
+    "evaluator": {
+      "allOf": [
+        {
+          "$ref": "role_identity.schema.json"
+        },
+        {
+          "properties": {
+            "role": {
+              "const": "EVALUATION_RUNNER"
+            }
+          }
+        }
+      ]
+    },
+    "auditor": {
+      "allOf": [
+        {
+          "$ref": "role_identity.schema.json"
+        },
+        {
+          "properties": {
+            "role": {
+              "const": "AUDITOR"
+            }
+          }
+        }
+      ]
+    },
+    "estimated_cost": {
+      "type": "number",
+      "minimum": 0
+    },
+    "currency": {
+      "const": "USD"
+    },
+    "requires_operator_budget_approval": {
+      "type": "boolean"
+    },
+    "plan_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "data_sealer": {
+      "allOf": [
+        {
+          "$ref": "role_identity.schema.json"
+        },
+        {
+          "properties": {
+            "role": {
+              "const": "DATA_SEALER"
+            }
+          }
+        }
+      ]
+    },
+    "machine_checks": {
+      "type": "object",
+      "required": [
+        "cpu",
+        "ram",
+        "disk",
+        "gpu",
+        "credentials",
+        "workspace",
+        "role_separation"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cpu": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "ram": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "disk": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "gpu": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "credentials": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "workspace": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "role_separation": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_APPLICABLE"
+          ]
+        }
+      }
+    },
+    "statistical_reviewer": {
+      "allOf": [
+        {
+          "$ref": "role_identity.schema.json"
+        },
+        {
+          "properties": {
+            "role": {
+              "const": "STATISTICAL_REVIEWER"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

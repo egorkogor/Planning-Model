@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/corpus_manifest.schema.json",
+  "title": "TrainingCorpusManifest v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "corpus_id",
+    "contract_sha256",
+    "generator_manifest_sha256",
+    "domain_sha256",
+    "oracle_sha256",
+    "examples_sha256",
+    "counts_by_split",
+    "counts_by_source_kind",
+    "counts_by_support_signature",
+    "manifest_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "corpus_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "generator_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "domain_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "oracle_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "examples_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "counts_by_split": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "counts_by_source_kind": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "ORACLE_SUFFIX",
+          "OFF_POLICY_EXACT",
+          "OFF_POLICY_DEVIATION",
+          "OFF_POLICY_WALK"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "counts_by_support_signature": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

@@ -1,0 +1,105 @@
+schema_version: work-planner/1.13
+contract_id: independent-audit/1.3
+auditor:
+  separate_process_or_machine: required
+  source_repository_write_access: false
+  uses_clean_checkout: true
+  identity_schema: docs/schemas/role_identity.schema.json
+  judgment_independence:
+    accepted:
+    - reviewer_type == HUMAN_STATISTICIAN
+    - model_family != Builder.model_family
+    same_model_family_as_builder: forbidden
+statistical_implementation_audit:
+  gate_id: G06_STATISTICAL_IMPLEMENTATION_AUDIT
+  timing: after final toy preflight and before any pilot or confirmatory dispatch
+  reviewer: HUMAN_STATISTICIAN or different model_family from Builder
+  required_checks:
+  - HIERARCHICAL_BOOTSTRAP
+  - CLUSTERED_STAGE1A_BOOTSTRAP
+  - PAIRED_STAGE1B_BOOTSTRAP
+  - PAIRED_TOST
+  - SAMPLE_SIZE_POWER
+  - TIE_BREAK_AND_MISSING_PAIRS
+  - DECISION_GATE_RECOMPUTATION
+  fail_action: REJECT_G06_AUDITS
+  scope: statistics only; does not substitute for implementation audit
+checks:
+- verify_scientific_lock
+- verify_implementation_lock
+- verify_environment_and_model_locks
+- verify_freeze_approval_lineage
+- verify_dataset_commitments
+- validate_all_registered_artifacts
+- recompute_aggregate_metrics_from_raw_logs
+- rerun_statistical_analysis
+- compare_reported_and_recomputed_values_exactly
+- run_full_test_suite
+- reproduce_required_executed_splits_from_manifests
+acceptance:
+  missing_raw_log: fail
+  metric_mismatch_tolerance: 0
+  hash_violation_tolerance: 0
+  clean_reproduction_required: true
+output: reports/final-audit.json
+profiles:
+  PLANNER_STOP:
+    required_reproduction:
+    - planner_confirmatory_if_executed
+    - stage1a_if_executed
+    forbidden_requirements:
+    - stage1b
+  PLANNER_DIAGNOSTIC_ONLY:
+    required_reproduction:
+    - planner_confirmatory
+    - stage1a_if_executed
+    forbidden_requirements:
+    - stage1b
+  INTERFACE_STOP:
+    required_reproduction:
+    - planner_confirmatory
+    - stage1a_confirmatory
+    forbidden_requirements:
+    - stage1b
+  END_TO_END:
+    required_reproduction:
+    - planner_confirmatory
+    - stage1a_confirmatory
+    - stage1b_confirmatory
+    forbidden_requirements: []
+profile_selection: derive from state-machine flags and decision artifacts; manual selection forbidden
+role_key_attestation:
+  operator_challenge_required: true
+  challenge_domain: work-planner-role-attestation-v1
+  each_non_builder_role_generates_keypair_in_its_own_environment: true
+  challenge_signature_fields:
+  - challenge_nonce_b64
+  - challenge_signature_b64
+  - environment_identity_sha256
+  - credential_principal_sha256
+  - attested_at
+  private_key_export: forbidden
+  registry_verification_before_P01_pass: mandatory
+  same_public_key_reuse_across_roles: forbidden
+implementation_audit:
+  gate_id: G06_STATISTICAL_IMPLEMENTATION_AUDIT
+  timing: after final clean toy preflight and before Implementation lock creation
+  reviewer: AUDITOR role using HUMAN reviewer or model_family different from Builder
+  required_checks:
+  - DOMAIN_ORACLE_CORRECTNESS
+  - GENERATOR_REPRODUCIBILITY
+  - RUNTIME_CHECKER_COVERAGE
+  - DATASET_SPLIT_AND_LEAKAGE
+  - EVALUATOR_HARNESS
+  - MODEL_LOADING_AND_RUNTIME_PINS
+  - RESULT_PERSISTENCE_AND_HASHING
+  - CLEAN_PREFLIGHT_REPRODUCTION
+  required_artifact_classes:
+  - src/domain
+  - src/validation
+  - evaluation harness
+  - model/runtime locks
+  - dataset manifests
+  - persistence and hashing code
+  builder_generated_machine_check_results_are_sufficient: false
+  fail_action: REJECT_G06_AUDITS

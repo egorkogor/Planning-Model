@@ -1,0 +1,30 @@
+schema_version: work-planner/1.13
+contract_id: intent-labeler/1.0
+implementation: docs/domain/intent_labeler_v1.py
+inputs:
+  state: canonical positive facts
+  goal: canonical positive ON/ON_TABLE facts
+  all_shortest_first_actions: ordered TypedAction list
+  selected_action: first action under normative oracle tie-break
+  remaining_oracle_length: integer 0..16
+outputs:
+  intent_id: integer 0..6
+  semantic_signature: docs/schemas/semantic_signature.schema.json
+  canonical_text: exact template from intent_catalog_v1.yaml
+determinism:
+  no_model_calls: true
+  no_randomness: true
+  goal_fact_selection: lexicographically_smallest_unsatisfied_goal_relevant_to_selected_action_then_global_smallest
+  rule_priority: fixed_in_implementation
+exhaustive_validation:
+  block_counts: [1, 2, 3, 4, 5]
+  generated_fixture_path: data/fixtures/intent-labeler-exhaustive-n1-n5.jsonl
+  fixture_manifest_path: data/manifests/intent-labeler-exhaustive.json
+  required_properties:
+    - same_input_same_output
+    - output_schema_valid
+    - END_maps_to_GOAL_ALREADY_SATISFIED
+    - selected_action_and_signature_consistent
+    - no_exact_object_identity_in_canonical_text
+  fixture_generated_before_contract_lock: false
+  implementation_locked_before_confirmatory: true

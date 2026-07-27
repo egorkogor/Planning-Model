@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/latent_ablation_manifest.schema.json",
+  "title": "Frozen A5 latent derangement manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "split",
+    "planner_seed",
+    "a3_checkpoint_sha256",
+    "contract_sha256",
+    "mappings",
+    "excluded_units",
+    "created_at",
+    "manifest_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-latent-ablation/1.0"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "split": {
+      "type": "string"
+    },
+    "planner_seed": {
+      "type": "integer"
+    },
+    "a3_checkpoint_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "mappings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_unit_hash",
+          "source_base_task_id",
+          "step_index",
+          "foreign_unit_hash",
+          "foreign_base_task_id",
+          "source_semantic_sha256",
+          "foreign_semantic_sha256",
+          "stratum_hash"
+        ],
+        "properties": {
+          "source_unit_hash": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "source_base_task_id": {
+            "type": "string"
+          },
+          "step_index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 15
+          },
+          "foreign_unit_hash": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "foreign_base_task_id": {
+            "type": "string"
+          },
+          "source_semantic_sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "foreign_semantic_sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "stratum_hash": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "excluded_units": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/sha256"
+      }
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

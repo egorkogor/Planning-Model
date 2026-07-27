@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/oracle_snapshot.schema.json",
+  "title": "Stage1A OracleSnapshot v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "task_id",
+    "canonical_task_hash",
+    "step_index",
+    "state",
+    "goal",
+    "state_hash",
+    "oracle_distance_before",
+    "shortest_first_actions",
+    "oracle_intent_id",
+    "semantic_signature",
+    "snapshot_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "pattern": "^snap-[0-9a-f]{16}$"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "canonical_task_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "step_index": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 15
+    },
+    "state": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "task_spec.schema.json#/$defs/predicate"
+      }
+    },
+    "goal": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "task_spec.schema.json#/$defs/goal_predicate"
+      }
+    },
+    "state_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "oracle_distance_before": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16
+    },
+    "shortest_first_actions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "typed_action.schema.json"
+      }
+    },
+    "oracle_intent_id": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 6
+    },
+    "semantic_signature": {
+      "$ref": "semantic_signature.schema.json"
+    },
+    "snapshot_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

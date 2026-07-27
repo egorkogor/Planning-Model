@@ -1,0 +1,52 @@
+schema_version: work-planner/1.13
+contract_id: planner-latent-ablation/1.0
+purpose: isolate causal use of A3 semantic feedback without changing weights, task inputs, actions, pointers or
+  compute path
+applies_to:
+- A4
+- A5
+checkpoint_identity:
+  A4_weights_sha256_equals_A3: true
+  A5_weights_sha256_equals_A3: true
+  retraining: forbidden
+A4_zero:
+  intervention_point: packed previous_semantic 256-vector after the A3 projection and normalization path
+  value: exact float32 all-zero vector
+  projection_bias_leakage: forbidden
+A5_shuffled:
+  source_pool: same frozen evaluation split and planner seed
+  mapping_unit:
+  - base_task_id
+  - planner_seed
+  - step_index
+  foreign_requirements:
+    different_base_task_id: true
+    same_step_index: true
+    same_remaining_distance_bucket: true
+    same_hand_mode: true
+    semantic_signature_must_differ: true
+    intent_id_must_differ: true
+  mapping_algorithm:
+    partition: units grouped by (planner_seed, split, step_index, remaining_distance_bucket, hand_mode)
+    source_order: base_task_id then semantic_artifact_sha256
+    edge_rule: foreign_requirements all true
+    edge_order: sha256(source_unit_hash || candidate_unit_hash || ablation_contract_hash) ascending
+    matching: deterministic lexicographic maximum bipartite matching with augmenting paths visited in edge_order
+    required_result: perfect derangement within every stratum
+    reuse_foreign_unit: forbidden
+    self_assignment: forbidden
+    implementation_golden_fixture: tests/controls/a5_matching_golden.json
+  candidate_missing_policy: BLOCKED_CONTROL_CONSTRUCTION before freeze; excluding individual units or strata is
+    forbidden
+  included_unit_coverage: 1.0
+  intervention: foreign normalized float32 z through exact frozen A3 projection
+manifest:
+  path_pattern: controls/planner-ablation/A5-*.json
+  schema: docs/schemas/latent_ablation_manifest.schema.json
+  frozen_before: planner confirmatory dispatch
+  includes_outcomes: forbidden
+validation:
+  weights_hash_equality: mandatory
+  pair_completeness_A3_A4_A5: mandatory
+  manifest_recomputation: mandatory
+  mapping_hash_mismatch: INVALID_RUN

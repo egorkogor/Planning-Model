@@ -1,0 +1,37 @@
+schema_version: work-planner/1.13
+contract_id: p-replay/1.0
+purpose: Measure the raw executable ceiling of the selected A3 checkpoint without LLM mediation.
+source_checkpoint:
+  variant: A3
+  selection: locked median-validation final seed checkpoint used by Stage 1
+  checkpoint_hash_must_match_model_lock: true
+rollout:
+  mode: receding_horizon_raw
+  loop:
+    - check goal before Planner call
+    - encode current factual state and unchanged task goal
+    - run A3 raw decode without domain mask, retry, repair, or oracle information
+    - if END then succeed only when goal already holds; otherwise fail INVALID_END
+    - validate raw TypedAction and terminate on invalidity
+    - execute action
+    - check goal immediately after execution
+  maximum_executed_actions: 16
+  planner_recomputed_after_every_executed_action: true
+  llm_calls: 0
+  recovery: forbidden
+splits:
+  planner_confirmatory: [HORIZON, SIZE_OOD]
+  stage1b_support: same base_task_id set as the Stage 1B confirmatory reserve
+metrics:
+  primary: goal_success
+  secondary: [valid_action_rate, executed_length, failure_taxonomy]
+eligibility_gate:
+  comparison: P_REPLAY_GOAL_SUCCESS
+  point_estimate_minimum: 0.70
+  confidence_interval: diagnostic
+lineage:
+  raw_episode_logs_required: true
+  checkpoint_hash_required: true
+  task_manifest_hash_required: true
+  implementation_lock_hash_required: true
+change_after_scientific_lock: forbidden

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/machine_check_result.schema.json",
+  "title": "MachineCheckResult v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "phase_id",
+    "check_id",
+    "status",
+    "verifier_id",
+    "input_hashes",
+    "evidence_hashes",
+    "details"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-check/1.0"
+    },
+    "phase_id": {
+      "type": "string",
+      "pattern": "^P(?:0[0-9]|1[0-9]|20)$"
+    },
+    "check_id": {
+      "type": "string",
+      "pattern": "^P(?:0[0-9]|1[0-9]|20)_(?:pre|exec|post)_[0-9]{2}$"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "verifier_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "input_hashes": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "common.schema.json#/$defs/sha256"
+      }
+    },
+    "evidence_hashes": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/sha256"
+      },
+      "uniqueItems": true
+    },
+    "details": {
+      "type": "object"
+    }
+  }
+}

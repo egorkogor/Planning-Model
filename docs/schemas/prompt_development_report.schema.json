@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/prompt_development_report.schema.json",
+  "title": "Prompt development report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "partition",
+    "candidate_metrics",
+    "selected_candidate_id",
+    "selection_rule_sha256",
+    "selected_prompt_sha256",
+    "status",
+    "report_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-prompt-dev/1.0"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "partition": {
+      "const": "development"
+    },
+    "candidate_metrics": {
+      "type": "array"
+    },
+    "selected_candidate_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "selection_rule_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "selected_prompt_sha256": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "BLOCKED_PROMPT_STACK"
+      ]
+    },
+    "report_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

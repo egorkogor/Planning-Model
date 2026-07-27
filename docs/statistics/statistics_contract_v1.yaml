@@ -1,0 +1,321 @@
+schema_version: work-planner/1.13
+contract_id: statistics/1.3
+alpha_familywise: 0.05
+random_seeds:
+  confirmatory_bootstrap: 7301
+  sample_size: 7302
+analysis_unit:
+  planner: seed outer hierarchy, then paired base_task_id within seed
+  stage1a: paired base_task_id after averaging binary snapshots within task and arm
+  stage1b: paired base_task_id episode outcome
+missing_pairs:
+  confirmatory: INVALID_RUN
+  pilot: complete_pair_only_and_report_fraction
+  maximum_pilot_missing_fraction: 0.02
+confidence_intervals:
+  superiority:
+    method: percentile_bootstrap
+    confidence_level: 0.95
+    resamples: 10000
+  equivalence:
+    method: paired_TOST_t
+    alpha_each_one_sided: 0.05
+    equivalent_to: 90_percent_two_sided_CI_inside_margin
+  planner_hierarchy: resample seeds with replacement, then paired base_task_id with replacement within sampled seed
+  stage1a_clustering: average snapshots within base_task_id and arm before paired task bootstrap
+  stage1b_pairing: paired task bootstrap
+  absolute_binary_rate:
+    method: Wilson_score
+    confidence_level: 0.95
+    input: unit-level binary rows only
+    all_success_or_all_failure: nondegenerate interval required
+sample_size:
+  method: estimator_matched_paired_binary_simulation_v4
+  simulations_per_candidate: 1000
+  candidate_step: 50
+  target_power: 0.9
+  power_confidence_level: 0.95
+  power_confirmation_points: 2
+  power_acceptance_rule: one_sided_exact_binomial_lower_bound_gte_target_at_consecutive_candidate_points
+  minimum_n: 300
+  target_ci_half_width: 0.025
+  equivalence_margin: 0.02
+  reserve_overflow: BLOCKED_PROTOCOL_CAPACITY
+  minimum_effect_gate: 0.05
+  design_effect_for_power: 0.075
+  component_seed_rule: independent deterministic stream = component_seed + 10000019 * candidate_n
+  ci_resamples_per_simulation: 1000
+  required_input_structure_by_stage:
+    PLANNER: seed_groups preserving the three final seeds and paired task ids
+    STAGE1A: task_clusters preserving all snapshots per base_task_id
+    STAGE1B: paired base_task_id rows
+  estimator_match_required: true
+  zero_variance_policy: use locked symmetric 10-percent discordance sensitivity scenario and report both empirical and sensitivity N; select maximum
+  binary_joint_model:
+    allowed_pair_cells:
+    - '00'
+    - '01'
+    - '10'
+    - '11'
+    difference_support:
+    - -1
+    - 0
+    - 1
+    effect_definition: P(10)-P(01) = E[left-right]
+    discordance_model: max(observed_discordance, 0.10, abs(target_effect)+0.02)
+    agreement_split: preserve pilot P(11 | concordant); use 0.5 when no concordant pairs
+    continuous_effect_addition_to_difference: forbidden
+  planner_simulation: resample source seed, preserve seed residual, draw n paired-binary tasks per each of exactly three output seeds
+  stage1a_simulation: resample source task clusters, preserve snapshot count and task residual, draw paired-binary snapshots
+  stage1b_simulation: draw n paired-binary tasks from pilot joint table adjusted to locked target effect
+  component_set_by_stage:
+    PLANNER:
+    - primary_ci
+    - primary_power
+    - current_vs_shuffled_power
+    STAGE1A:
+    - primary_ci
+    - primary_power
+    - current_vs_shuffled_power
+    - equivalence_TOST_power
+    STAGE1B:
+    - primary_ci
+    - primary_power
+    - current_vs_shuffled_power
+    - equivalence_TOST_power
+  selected_n: max(stage-specific components, minimum_n)
+  non_applicable_component_policy: omit from SampleSizeInput and SampleSizeReport; never synthesize a placeholder N
+stage_gates:
+  PLANNER:
+    architecture_pass: GO_PLANNER_ARCHITECTURE
+    architecture_fail: STOP_PLANNER
+    eligible_decision: GO_PLANNER_STAGE1B_ELIGIBLE
+    diagnostic_decision: GO_PLANNER_DIAGNOSTIC_ONLY
+    architecture_gates:
+    - gate_id: GO_TYPED
+      comparison: A2-A1_HORIZON
+      rule: ci_low_gte
+      threshold: -0.02
+    - gate_id: GO_TYPED_POSITION_REDUCTION
+      comparison: A1-A2_CAUSAL_POSITIONS_NORMALIZED
+      rule: ci_low_gt
+      threshold: 0.0
+    - gate_id: GO_DISCRETE_INTENT
+      comparison: A2b-A2_HORIZON
+      rule: estimate_gte_and_ci_low_gt
+      threshold: 0.02
+    - gate_id: GO_STRUCTURED_DISCRETE
+      comparison: A2c-A2b_HORIZON
+      rule: estimate_gte_and_ci_low_gt
+      threshold: 0.02
+    - gate_id: GO_LATENT_PRIMARY
+      comparison: A3-A2c_HORIZON
+      rule: estimate_gte_and_ci_low_gt
+      threshold: 0.02
+    - gate_id: A3_NONINFERIOR_A1
+      comparison: A3-A1_HORIZON
+      rule: ci_low_gte
+      threshold: -0.02
+    - gate_id: A3_GT_A4
+      comparison: A3-A4_HORIZON
+      rule: estimate_gte_and_ci_low_gt
+      threshold: 0.02
+    - gate_id: A3_GT_A5
+      comparison: A3-A5_HORIZON
+      rule: estimate_gte_and_ci_low_gt
+      threshold: 0.02
+    - gate_id: A3_SIZE_OOD_NONINFERIOR_A2C
+      comparison: A3-A2c_SIZE_OOD
+      rule: ci_low_gte
+      threshold: -0.02
+    - gate_id: A3_SIZE_OOD_GT_A4
+      comparison: A3-A4_SIZE_OOD
+      rule: ci_low_gt
+      threshold: 0.0
+    - gate_id: A3_SIZE_OOD_GT_A5
+      comparison: A3-A5_SIZE_OOD
+      rule: ci_low_gt
+      threshold: 0.0
+    - gate_id: A3_FLOPS_DIRECTION
+      comparison: A3-A2c_FLOPS_HORIZON
+      rule: estimate_gte
+      threshold: 0.0
+    - gate_id: SEED_DIRECTION_A2B_A2
+      comparison: A2b-A2_HORIZON
+      rule: minimum_positive_seed_count
+      threshold: 2
+    - gate_id: SEED_DIRECTION_A2C_A2B
+      comparison: A2c-A2b_HORIZON
+      rule: minimum_positive_seed_count
+      threshold: 2
+    - gate_id: SEED_DIRECTION_A3_A2C
+      comparison: A3-A2c_HORIZON
+      rule: minimum_positive_seed_count
+      threshold: 2
+    - gate_id: SEED_DIRECTION_A3_A4
+      comparison: A3-A4_HORIZON
+      rule: minimum_positive_seed_count
+      threshold: 2
+    - gate_id: SEED_DIRECTION_A3_A5
+      comparison: A3-A5_HORIZON
+      rule: minimum_positive_seed_count
+      threshold: 2
+    stage1b_eligibility_gates:
+    - gate_id: A3_HORIZON_POINT_FLOOR
+      comparison: A3_HORIZON_GOAL_SUCCESS
+      rule: estimate_gte
+      threshold: 0.65
+    - gate_id: A3_HORIZON_CI_FLOOR
+      comparison: A3_HORIZON_GOAL_SUCCESS
+      rule: ci_low_gte
+      threshold: 0.6
+    - gate_id: A3_SIZE_OOD_POINT_FLOOR
+      comparison: A3_SIZE_OOD_GOAL_SUCCESS
+      rule: estimate_gte
+      threshold: 0.6
+    - gate_id: A3_SIZE_OOD_CI_FLOOR
+      comparison: A3_SIZE_OOD_GOAL_SUCCESS
+      rule: ci_low_gte
+      threshold: 0.55
+    - gate_id: A3_VALID_ACTION_FLOOR
+      comparison: A3_VALID_ACTION_RATE
+      rule: estimate_gte
+      threshold: 0.9
+    - gate_id: P_REPLAY_FLOOR
+      comparison: P_REPLAY_GOAL_SUCCESS
+      rule: estimate_gte
+      threshold: 0.7
+  STAGE1A:
+    decision_pass_eligible: GO_INTERFACE_STAGE1B_ELIGIBLE
+    decision_pass_diagnostic: GO_INTERFACE_DIAGNOSTIC_ONLY
+    decision_fail: STOP_INTERFACE
+    gates:
+    - gate_id: ORACLE_GUIDANCE_PRIMARY
+      comparison: I1-I0
+      rule: estimate_gte_and_ci_low_gt
+      threshold: 0.05
+    - gate_id: CURRENT_GT_SHUFFLED
+      comparison: I1-I2
+      rule: ci_low_gt
+      threshold: 0.0
+    - gate_id: SHUFFLED_EQ_NEUTRAL
+      comparison: I2-I0
+      rule: paired_tost
+      threshold: 0.02
+    - gate_id: ORACLE_PROGRESS_FLOOR
+      comparison: I1_PROGRESS_RATE
+      rule: estimate_gte
+      threshold: 0.6
+    - gate_id: PARSE_FAILURE_FLOOR
+      comparison: I_PARSE_FAILURE_RATE
+      rule: estimate_lte
+      threshold: 0.05
+    - gate_id: INFRASTRUCTURE_FAILURE_FLOOR
+      comparison: I_INFRASTRUCTURE_FAILURE_RATE
+      rule: estimate_lte
+      threshold: 0.01
+    - gate_id: INCOMPLETE_PAIR_FLOOR
+      comparison: I_INCOMPLETE_PAIR_RATE
+      rule: estimate_lte
+      threshold: 0.01
+    - gate_id: CONTRACT_VIOLATION_ZERO
+      comparison: I_CONTRACT_VIOLATION_RATE
+      rule: estimate_lte
+      threshold: 0.0
+    - gate_id: HASH_VIOLATION_ZERO
+      comparison: I_HASH_VIOLATION_RATE
+      rule: estimate_lte
+      threshold: 0.0
+    - gate_id: DETERMINISM_VIOLATION_ZERO
+      comparison: I_DETERMINISM_VIOLATION_RATE
+      rule: estimate_lte
+      threshold: 0.0
+  STAGE1B:
+    decision_pass: GO_END_TO_END
+    decision_fail: STOP_END_TO_END
+    gates:
+    - gate_id: CURRENT_PRIMARY
+      comparison: E1-E0
+      rule: estimate_gte_and_ci_low_gt
+      threshold: 0.05
+    - gate_id: CURRENT_GT_SHUFFLED
+      comparison: E1-E2
+      rule: ci_low_gt
+      threshold: 0.0
+    - gate_id: SHUFFLED_EQ_NEUTRAL
+      comparison: E2-E0
+      rule: paired_tost
+      threshold: 0.02
+    - gate_id: UNRESOLVED_RATE
+      comparison: E1_UNRESOLVED_RATE
+      rule: estimate_lte
+      threshold: 0.1
+    - gate_id: ORACLE_EPISODE_FLOOR
+      comparison: E3_GOAL_SUCCESS
+      rule: estimate_gte
+      threshold: 0.6
+    - gate_id: UNSEEN_SUPPORT_FLOOR
+      comparison: E1_UNSEEN_SUPPORT_SIGNATURE_RATE
+      rule: estimate_lte
+      threshold: 0.05
+    - gate_id: PARSE_FAILURE_FLOOR
+      comparison: E_PARSE_FAILURE_RATE
+      rule: estimate_lte
+      threshold: 0.05
+    - gate_id: INFRASTRUCTURE_FAILURE_FLOOR
+      comparison: E_INFRASTRUCTURE_FAILURE_RATE
+      rule: estimate_lte
+      threshold: 0.01
+    - gate_id: INCOMPLETE_PAIR_FLOOR
+      comparison: E_INCOMPLETE_PAIR_RATE
+      rule: estimate_lte
+      threshold: 0.01
+    - gate_id: CONTRACT_VIOLATION_ZERO
+      comparison: E_CONTRACT_VIOLATION_RATE
+      rule: estimate_lte
+      threshold: 0.0
+    - gate_id: HASH_VIOLATION_ZERO
+      comparison: E_HASH_VIOLATION_RATE
+      rule: estimate_lte
+      threshold: 0.0
+    - gate_id: DETERMINISM_VIOLATION_ZERO
+      comparison: E_DETERMINISM_VIOLATION_RATE
+      rule: estimate_lte
+      threshold: 0.0
+exact_mcnemar:
+  diagnostic_only: true
+  zero_discordant_p_value: 1.0
+implementation:
+- analysis/sample_size.py
+- analysis/decision_gates.py
+- validation/statistics_validator.py
+golden_cases: docs/statistics/golden_cases_v1.1.json
+change_after_scientific_lock: forbidden
+multiple_testing:
+  method: intersection_union_stage_claims_with_fixed_stage_order
+  familywise_alpha: 0.05
+  stage_order:
+  - PLANNER_ARCHITECTURE
+  - PLANNER_STAGE1B_ELIGIBILITY
+  - STAGE1A_INTERFACE
+  - STAGE1B_END_TO_END
+  rule: Every declared gate is recomputed. A positive stage-level claim is issued only when all mandatory gates for that claim pass. No standalone confirmatory claim is issued for a later comparison after an earlier required gate fails.
+  diagnostic_metrics: may be computed after failure but remain explicitly non-confirmatory
+analysis_input:
+  schema: docs/schemas/analysis_input.schema.json
+  canonical_pair_row:
+  - pair_id
+  - left
+  - right
+  - difference
+  difference_rule: difference == left - right
+  planner_seed_task_sets_identical: true
+  duplicate_pair_or_unit_ids: INVALID_RUN
+  missing_confirmatory_pair: INVALID_RUN
+  scalar_rate_rows:
+  - unit_id
+  - value
+  raw_result_derivation:
+    required: true
+    pair_rows_must_be_rebuilt_by_auditor_from_raw_result_manifest: true
+    precomputed_estimates_without_pair_rows: forbidden

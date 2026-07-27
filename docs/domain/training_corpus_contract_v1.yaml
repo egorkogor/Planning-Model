@@ -1,0 +1,96 @@
+schema_version: work-planner/1.13
+corpus_id: blocks-training-corpus/1.6
+source: accepted_base_tasks_from_generator_manifest
+split_grouping:
+  key: base_task_id
+  assign_before_expansion: true
+  all_examples_from_one_base_task_share_split: true
+oracle_suffix_expansion:
+- solve base task with normative BFS oracle
+- replay every non-END action
+- emit example before each oracle action
+- emit terminal goal-satisfied example with END target
+off_policy_expansion:
+  purpose: reduce receding-horizon covariate shift without claiming full state-goal coverage
+  exact_local_expansion_for_block_count_lte: 5
+  exact_local_rule:
+    source_states: every oracle suffix state
+    breadth_first_depth: 2
+    expand_all_domain_valid_actions: true
+    retain_state_with_original_goal_only_if_reachable_within_16: true
+  block_count_6:
+    sources:
+    - all one-step non-oracle deviations from oracle suffix states
+    - deterministic bounded valid-action walks from suffix and deviation states
+    walk_depth: 3
+    walks_per_source_state: 16
+  block_count_7_8: forbidden_in_training
+  seed_payload:
+  - base_task_id
+  - state_hash
+  - goal_hash
+  - corpus_contract_hash
+  stratify_by:
+  - block_count
+  - hand_mode
+  - tower_count
+  - max_tower_height
+  - remaining_oracle_length_bucket
+  minimum_examples_per_present_stratum: 64
+  maximum_examples_per_base_task: 4096
+  overflow_selection: canonical_state_hash_ascending
+  acceptance:
+  - state is domain-valid
+  - goal is reachable within 16 actions
+  - example preserves original base_task_id and split
+  deduplicate_key:
+  - canonical_state_hash
+  - canonical_goal_hash
+  - base_task_id
+  size_ood_policy: block_count 7-8 appears only in sealed evaluation partitions; no suffix/off-policy rows enter train or development
+example_fields:
+- schema_version
+- example_id
+- base_task_id
+- split
+- source_kind
+- suffix_step_index
+- current_state
+- state_hash
+- goal
+- goal_hash
+- remaining_oracle_actions
+- remaining_oracle_length
+- target_planner_step
+- support_signature
+source_kind_enum:
+- ORACLE_SUFFIX
+- OFF_POLICY_LOCAL_EXACT
+- OFF_POLICY_DEVIATION
+- OFF_POLICY_WALK
+support_signature_fields:
+- block_count
+- hand_mode
+- tower_count
+- max_tower_height
+- goal_fact_count
+- remaining_oracle_length_bucket
+runtime_support_policy:
+  exact_state_goal_seen: diagnostic_only
+  structural_signature_seen: required_for_confirmatory Stage1B
+  unseen_signature_issue: PLANNER_OOD_STATE
+  pilot_max_unseen_signature_rate: 0.05
+  confirmatory_action: do not adapt; report and fail validity gate if rate exceeds frozen threshold
+leakage_gates:
+  base_task_id_intersection_across_protected_splits: 0
+  canonical_base_task_hash_intersection_across_protected_splits: 0
+  off_policy_examples_may_use_only_goals_from_their_own_base_task: true
+  evaluation_outcomes_never_used_for_expansion: true
+ordering:
+  base_tasks: manifest_order
+  examples: source_kind_then_state_hash_then_goal_hash
+byte_reproducibility:
+  requires_generator_manifest_hash: true
+  requires_domain_hash: true
+  requires_oracle_version_hash: true
+  requires_contract_hash: true

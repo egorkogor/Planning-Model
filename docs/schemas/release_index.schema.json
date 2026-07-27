@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/release_index.schema.json",
+  "title": "Final release evidence index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "git_commit",
+    "phase_reports",
+    "decisions",
+    "gate_ledger_sha256",
+    "artifacts",
+    "release_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-release/1.1"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "git_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "phase_reports": {
+      "type": "object",
+      "minProperties": 21,
+      "maxProperties": 21,
+      "required": [
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P06",
+        "P07",
+        "P08",
+        "P09",
+        "P10",
+        "P11",
+        "P12",
+        "P13",
+        "P14",
+        "P15",
+        "P16",
+        "P17",
+        "P18",
+        "P19",
+        "P20"
+      ],
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "decisions": {
+      "type": "object",
+      "required": [
+        "G00_SCOPE",
+        "G01_TRUST_AND_RESOURCES",
+        "G06_STATISTICAL_IMPLEMENTATION_AUDIT",
+        "G07_PLANNER_CONFIRMATORY_FREEZE",
+        "G12_STAGE1A_CONFIRMATORY_FREEZE",
+        "G16_STAGE1B_CONFIRMATORY_FREEZE",
+        "G20_FINAL_ACCEPTANCE"
+      ],
+      "properties": {
+        "G00_SCOPE": {
+          "type": "string"
+        },
+        "G01_TRUST_AND_RESOURCES": {
+          "type": "string"
+        },
+        "G06_STATISTICAL_IMPLEMENTATION_AUDIT": {
+          "type": "string"
+        },
+        "G07_PLANNER_CONFIRMATORY_FREEZE": {
+          "type": "string"
+        },
+        "G12_STAGE1A_CONFIRMATORY_FREEZE": {
+          "type": "string"
+        },
+        "G16_STAGE1B_CONFIRMATORY_FREEZE": {
+          "type": "string"
+        },
+        "G20_FINAL_ACCEPTANCE": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "minProperties": 7,
+      "maxProperties": 7
+    },
+    "gate_ledger_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "release_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

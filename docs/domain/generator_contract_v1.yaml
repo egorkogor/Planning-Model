@@ -1,0 +1,62 @@
+schema_version: work-planner/1.13
+generator_id: blocks-generator/1.7
+numpy_requirement: numpy==2.3.5
+rng:
+  class: numpy.random.Generator
+  bit_generator: PCG64DXSM
+  seed_type: unsigned_64_bit_integer
+state_pool:
+  included_states: stable_hand_empty_tower_configurations
+  construction:
+  - enumerate every ordered set partition of canonical refs into nonempty stacks
+  - interpret each stack bottom-to-top
+  - normalize tower order by sorting serialized stack tuples
+  - materialize ON_TABLE for each bottom, ON for higher blocks, CLEAR for each top,
+    and HAND_EMPTY
+  - reject states violating blocks_world_v1 invariants
+  - canonical-json serialize sorted facts and deduplicate by bytes
+  - sort unique pool entries by serialized UTF-8 bytes
+  holding_states_in_task_initial_pool: false
+goal_generation:
+  target_state_source: same_sorted_state_pool
+  target_state_must_differ_from_initial: true
+  allowed_goal_predicates:
+  - 'ON'
+  - ON_TABLE
+  candidate_facts: sorted allowed facts from target state
+  goal_fact_count:
+    distribution: discrete_uniform
+    minimum: 1
+    maximum: min(3, candidate_fact_count)
+  fact_selection:
+    method: sample_without_replacement
+    output_order: lexicographic
+sampling_procedure:
+- choose block_count from requested split contract
+- construct or load sorted state pool for block_count
+- draw initial_state_index uniformly
+- draw a different target_state_index uniformly
+- draw goal_fact_count and goal fact indices without replacement
+- solve using normative BFS oracle
+- reject zero-distance tasks unless split explicitly allows them
+- reject tasks outside requested oracle-length bucket
+- reject duplicate canonical_task_hash in protected splits
+- assign task_id only after acceptance
+retry_order: repeat sampling procedure with same RNG stream
+manifest:
+  authoritative: true
+  required_fields:
+  - generator_id
+  - numpy_version
+  - contract_sha256
+  - domain_sha256
+  - seed
+  - accepted_task_count
+  - rejected_counts_by_reason
+  - task_file_sha256s
+byte_reproducibility:
+  requires_same_numpy_version: true
+  requires_same_contract_hash: true
+  requires_same_domain_hash: true
+  requires_same_seed: true
+training_corpus_derivation: docs/domain/training_corpus_contract_v1.yaml

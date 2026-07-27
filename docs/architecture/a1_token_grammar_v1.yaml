@@ -1,0 +1,100 @@
+schema_version: work-planner/1.13
+grammar_id: a1-token-grammar/1.6
+max_non_END_actions: 16
+max_planner_steps_including_END: 17
+max_output_positions: 85
+position_formula: BOS(1) + sixteen worst-case two-arg actions(16*5) + END step(3)
+  + PLAN_END(1) = 85
+vocabulary:
+  PAD: 0
+  BOS: 1
+  STEP: 2
+  STEP_END: 3
+  PLAN_END: 4
+  ACTION_PICK_UP: 5
+  ACTION_PUT_DOWN: 6
+  ACTION_UNSTACK: 7
+  ACTION_STACK: 8
+  ACTION_END: 9
+  REF_0: 16
+  REF_1: 17
+  REF_2: 18
+  REF_3: 19
+  REF_4: 20
+  REF_5: 21
+  REF_6: 22
+  REF_7: 23
+serialization:
+  PICK_UP:
+  - STEP
+  - ACTION_PICK_UP
+  - REF_block
+  - STEP_END
+  PUT_DOWN:
+  - STEP
+  - ACTION_PUT_DOWN
+  - REF_block
+  - STEP_END
+  UNSTACK:
+  - STEP
+  - ACTION_UNSTACK
+  - REF_moving
+  - REF_support
+  - STEP_END
+  STACK:
+  - STEP
+  - ACTION_STACK
+  - REF_moving
+  - REF_support
+  - STEP_END
+  END:
+  - STEP
+  - ACTION_END
+  - STEP_END
+  sequence_suffix:
+  - PLAN_END
+parser:
+  deterministic: true
+  output: ordered_list_of_TypedAction
+  require_exactly_one_terminal_END: true
+  END_must_be_last_action: true
+  reject_unknown_token: true
+  reject_wrong_arity: true
+  reject_missing_delimiter: true
+  reject_tokens_after_PLAN_END: true
+  reject_missing_PLAN_END: true
+raw_policy:
+  domain_mask: false
+  grammar_constrained_decoding: false
+  parser_failure_is_episode_failure: true
+architecture:
+  task_encoder_shared: true
+  decoder_layers: 4
+  decoder_heads: 8
+  d_model: 256
+  ffn: 1024
+  causal: true
+training:
+  teacher_forcing: 1.0
+  scheduled_sampling: false
+compute_accounting:
+  profiler_required: true
+  parameter_tolerance_fraction: 0.0
+  primary_data_exposure: same ordered training examples, epochs and optimizer updates;
+    padding loss excluded
+  same_position_family_flops_tolerance_fraction: 0.02
+  same_position_family:
+  - A2
+  - A2b
+  - A2c
+  - A3
+  A1_flops_not_forced_equal_due_to_token_sequence_length: true
+  A1_equal_compute_secondary_schedule_required: true
+  report:
+  - train_flops
+  - inference_flops_per_task
+  - causal_positions
+  - wall_clock
+  - peak_memory
+  parameter_matching_rule: exact common-superset inventory hash; tolerance applies
+    only to measured FLOPs sensitivity, never parameter count

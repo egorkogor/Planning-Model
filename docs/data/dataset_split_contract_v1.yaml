@@ -1,0 +1,203 @@
+schema_version: work-planner/1.13
+contract_id: dataset-splits/1.2
+assignment:
+  unit: base_task_id
+  before_any_suffix_or_off_policy_expansion: true
+  hash_function: sha256
+  overlap_between_named_partitions: forbidden
+  public_partition_order: canonical_base_task_hash_ascending
+  confirmatory_hidden_selection:
+    owner: DATA_SEALER
+    secret_seed_bits: 256
+    seed_generation: CSPRNG inside isolated Data Sealer environment
+    ranking: HMAC-SHA256(secret_seed, canonical_base_task_hash) ascending
+    builder_access: seed commitment, counts and encrypted dataset hash only
+    public_exclusions: all train/development/pilot canonical hashes from locked exclusion manifest
+    seed_reveal: AUDITOR only after signed evaluator result manifest exists
+    outcome_based_reordering: forbidden
+partitions:
+  train:
+    allowed_block_counts:
+    - 3
+    - 4
+    - 5
+    - 6
+    target_base_tasks: 24000
+    quota_by_block_count:
+      3: 500
+      4: 2500
+      5: 7000
+      6: 14000
+    oracle_length_buckets_global:
+      short_1_5: 0.35
+      medium_6_10: 0.4
+      long_11_16: 0.25
+  development:
+    allowed_block_counts:
+    - 3
+    - 4
+    - 5
+    - 6
+    target_base_tasks: 4000
+    quota_by_block_count:
+      3: 100
+      4: 400
+      5: 1200
+      6: 2300
+  planner_pilot_horizon:
+    allowed_block_counts:
+    - 5
+    - 6
+    target_base_tasks: 800
+    quota_by_block_count:
+      5: 200
+      6: 600
+    required_oracle_length:
+    - 11
+    - 16
+  planner_pilot_size_ood:
+    allowed_block_counts:
+    - 7
+    - 8
+    target_base_tasks: 800
+    quota_by_block_count:
+      7: 400
+      8: 400
+  planner_confirmatory_horizon_reserve:
+    allowed_block_counts:
+    - 5
+    - 6
+    target_base_tasks: 3000
+    quota_by_block_count:
+      5: 750
+      6: 2250
+    required_oracle_length:
+    - 11
+    - 16
+  planner_confirmatory_size_ood_reserve:
+    allowed_block_counts:
+    - 7
+    - 8
+    target_base_tasks: 3000
+    quota_by_block_count:
+      7: 1500
+      8: 1500
+  stage1a_pilot:
+    allowed_block_counts:
+    - 3
+    - 4
+    - 5
+    - 6
+    target_base_tasks: 400
+    quota_by_block_count:
+      3: 40
+      4: 80
+      5: 120
+      6: 160
+  stage1a_confirmatory_reserve:
+    allowed_block_counts:
+    - 3
+    - 4
+    - 5
+    - 6
+    target_base_tasks: 4000
+    quota_by_block_count:
+      3: 200
+      4: 600
+      5: 1200
+      6: 2000
+  stage1b_pilot:
+    allowed_block_counts:
+    - 3
+    - 4
+    - 5
+    - 6
+    target_base_tasks: 200
+    quota_by_block_count:
+      3: 20
+      4: 40
+      5: 60
+      6: 80
+  stage1b_confirmatory_reserve:
+    allowed_block_counts:
+    - 3
+    - 4
+    - 5
+    - 6
+    target_base_tasks: 4000
+    quota_by_block_count:
+      3: 200
+      4: 600
+      5: 1200
+      6: 2000
+selection_rules:
+  final_confirmatory_n: first_N_eligible_in_hidden_hmac_order_with_proportional_quota_rounding
+  proportional_rounding: largest_remainder_method_then_block_count_ascending_tie_break
+  insufficient_reserve_or_unreachable_quota: BLOCKED_PROTOCOL_CAPACITY
+  outcome_based_reordering: forbidden
+  pilot_reuse_in_confirmatory: forbidden
+  ref_permutation_view:
+    derived_from_same_base_task: true
+    excluded_from_cross_split_zero_intersection_gate: true
+  builder_may_materialize_confirmatory_ids: false
+  data_sealer_only_materialization: true
+feasibility_audit:
+  run_before_dataset_materialization: true
+  protected_contracts_already_locked: true
+  enumerate_available_counts_per_partition_and_stratum: true
+  quota_must_not_exceed_available_count: true
+  output: reports/dataset-capacity-audit.json
+manifest_required_fields:
+- contract_sha256
+- generator_sha256
+- domain_sha256
+- partition
+- quota_audit
+derived_partitions:
+  planner_confirmatory_horizon:
+    source_reserve: planner_confirmatory_horizon_reserve
+    selection: first_N_eligible_in_hidden_hmac_order_with_proportional_quota_rounding
+    n: from_approved_sample_size_report
+  planner_confirmatory_size_ood:
+    source_reserve: planner_confirmatory_size_ood_reserve
+    selection: first_N_eligible_in_hidden_hmac_order_with_proportional_quota_rounding
+    n: from_approved_sample_size_report
+  stage1a_confirmatory:
+    source_reserve: stage1a_confirmatory_reserve
+    selection: first_N_eligible_in_hidden_hmac_order_with_proportional_quota_rounding
+    n: from_approved_sample_size_report
+  stage1b_confirmatory:
+    source_reserve: stage1b_confirmatory_reserve
+    selection: first_N_hidden_sealer_certified_eligible_in_hidden_hmac_order_with_proportional_quota_rounding
+    n: from_approved_sample_size_report
+runtime_split_names:
+  development: development
+  planner_pilot:
+  - planner_pilot_horizon
+  - planner_pilot_size_ood
+  planner_confirmatory:
+  - planner_confirmatory_horizon
+  - planner_confirmatory_size_ood
+  stage1a:
+  - stage1a_pilot
+  - stage1a_confirmatory
+  stage1b:
+  - stage1b_pilot
+  - stage1b_confirmatory
+  reserve_partitions_may_not_appear_in_attempt_or_episode_logs: true
+public_manifest_required_fields:
+- ordered_base_task_ids
+- ordered_canonical_hashes
+confirmatory_sealer_manifest_required_fields:
+- generator_seed_commitment
+- canonical_order_commitment
+- encrypted_blob_sha256
+- task_count
+- strata_counts
+- auditor_seed_envelope_sha256
+- control_certification
+- coverage_manifest_sha256
+- support_audit_sha256
+capacity_safety:
+  confirmatory_reserve_policy: reserve_n must be >= locked selected_n after all eligibility filters; otherwise BLOCKED_PROTOCOL_CAPACITY
+  stage1b_minimum_pre_filter_reserve: 4000

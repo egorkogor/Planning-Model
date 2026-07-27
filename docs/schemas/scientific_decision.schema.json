@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/scientific_decision.schema.json",
+  "title": "Locked scientific decision v1.3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "stage",
+    "gates",
+    "decision",
+    "raw_result_manifest_sha256",
+    "analysis_input_sha256",
+    "analysis_code_sha256",
+    "statistics_contract_sha256",
+    "decision_hash",
+    "upstream_decision_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-decision/1.3"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "PLANNER",
+        "STAGE1A",
+        "STAGE1B"
+      ]
+    },
+    "planner_stage1b_eligible": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/gate"
+      }
+    },
+    "decision": {
+      "enum": [
+        "GO_PLANNER_STAGE1B_ELIGIBLE",
+        "GO_PLANNER_DIAGNOSTIC_ONLY",
+        "STOP_PLANNER",
+        "GO_INTERFACE_STAGE1B_ELIGIBLE",
+        "GO_INTERFACE_DIAGNOSTIC_ONLY",
+        "STOP_INTERFACE",
+        "GO_END_TO_END",
+        "STOP_END_TO_END",
+        "INVALID_RUN"
+      ]
+    },
+    "raw_result_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "analysis_input_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "analysis_code_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "statistics_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "decision_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "upstream_decision_sha256": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gate_id",
+        "gate_group",
+        "comparison",
+        "rule",
+        "estimate",
+        "ci_low",
+        "ci_high",
+        "threshold",
+        "pass"
+      ],
+      "properties": {
+        "gate_id": {
+          "type": "string"
+        },
+        "gate_group": {
+          "enum": [
+            "ARCHITECTURE",
+            "STAGE1B_ELIGIBILITY",
+            "INTERFACE",
+            "END_TO_END"
+          ]
+        },
+        "comparison": {
+          "type": "string"
+        },
+        "rule": {
+          "enum": [
+            "ci_low_gte",
+            "ci_low_gt",
+            "estimate_gte_and_ci_low_gt",
+            "estimate_gte",
+            "estimate_lte",
+            "paired_tost",
+            "minimum_positive_seed_count"
+          ]
+        },
+        "estimate": {
+          "type": "number"
+        },
+        "ci_low": {
+          "type": "number"
+        },
+        "ci_high": {
+          "type": "number"
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "pass": {
+          "type": "boolean"
+        },
+        "p_lower": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "p_upper": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "PLANNER"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "upstream_decision_sha256": {
+            "type": "null"
+          },
+          "planner_stage1b_eligible": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "STAGE1A"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "upstream_decision_sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "planner_stage1b_eligible": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "planner_stage1b_eligible"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "STAGE1B"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "upstream_decision_sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "planner_stage1b_eligible": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

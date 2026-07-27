@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/training_example.schema.json",
+  "title": "PlannerTrainingExample v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "example_id",
+    "base_task_id",
+    "split",
+    "source_kind",
+    "suffix_step_index",
+    "current_state",
+    "state_hash",
+    "goal",
+    "goal_hash",
+    "remaining_oracle_actions",
+    "remaining_oracle_length",
+    "target_planner_step",
+    "support_signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "example_id": {
+      "type": "string",
+      "pattern": "^ex-[0-9a-f]{16}$"
+    },
+    "base_task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "split": {
+      "$ref": "common.schema.json#/$defs/split"
+    },
+    "source_kind": {
+      "$ref": "common.schema.json#/$defs/source_kind"
+    },
+    "suffix_step_index": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 16
+    },
+    "current_state": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "task_spec.schema.json#/$defs/predicate"
+      }
+    },
+    "state_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "goal": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "task_spec.schema.json#/$defs/goal_predicate"
+      }
+    },
+    "goal_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "remaining_oracle_actions": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "$ref": "typed_action.schema.json"
+      }
+    },
+    "remaining_oracle_length": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16
+    },
+    "target_planner_step": {
+      "$ref": "planner_step.schema.json"
+    },
+    "support_signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_count",
+        "hand_mode",
+        "tower_count",
+        "max_tower_height",
+        "goal_fact_count",
+        "remaining_oracle_length_bucket"
+      ],
+      "properties": {
+        "block_count": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 8
+        },
+        "hand_mode": {
+          "enum": [
+            "HAND_EMPTY",
+            "HOLDING"
+          ]
+        },
+        "tower_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "max_tower_height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "goal_fact_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "remaining_oracle_length_bucket": {
+          "enum": [
+            "ZERO",
+            "ONE_TWO",
+            "THREE_FIVE",
+            "SIX_TEN",
+            "ELEVEN_SIXTEEN"
+          ]
+        }
+      }
+    }
+  }
+}

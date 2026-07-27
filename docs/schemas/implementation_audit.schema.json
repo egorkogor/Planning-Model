@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/implementation_audit.schema.json",
+  "title": "Independent implementation audit before Implementation lock v1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "reviewer",
+    "builder_identity_sha256",
+    "reviewer_independence",
+    "reviewed_commit",
+    "reviewed_artifacts",
+    "checks",
+    "decision",
+    "limitations",
+    "created_at",
+    "report_hash",
+    "signature_algorithm",
+    "public_key_id",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-implementation-audit/1.1"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reviewer": {
+      "allOf": [
+        {
+          "$ref": "role_identity.schema.json"
+        },
+        {
+          "properties": {
+            "role": {
+              "const": "AUDITOR"
+            }
+          }
+        }
+      ]
+    },
+    "builder_identity_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "reviewer_independence": {
+      "enum": [
+        "DIFFERENT_MODEL_FAMILY",
+        "HUMAN_REVIEWER"
+      ]
+    },
+    "reviewed_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "reviewed_artifacts": {
+      "type": "array",
+      "minItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "check_id",
+          "status",
+          "evidence_sha256"
+        ],
+        "properties": {
+          "check_id": {
+            "enum": [
+              "DOMAIN_ORACLE_CORRECTNESS",
+              "GENERATOR_REPRODUCIBILITY",
+              "RUNTIME_CHECKER_COVERAGE",
+              "DATASET_SPLIT_AND_LEAKAGE",
+              "EVALUATOR_HARNESS",
+              "MODEL_LOADING_AND_RUNTIME_PINS",
+              "RESULT_PERSISTENCE_AND_HASHING",
+              "CLEAN_PREFLIGHT_REPRODUCTION",
+              "ANALYSIS_INPUT_BUILDERS",
+              "SEMANTIC_RESOLVER_AND_PROTOTYPE_BUILDER",
+              "CONTROL_CERTIFICATION_ENGINE",
+              "SEALER_AND_DISPATCH_BOUNDARY"
+            ]
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL"
+            ]
+          },
+          "evidence_sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "decision": {
+      "enum": [
+        "APPROVE",
+        "REJECT"
+      ]
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "report_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "signature_algorithm": {
+      "const": "ed25519"
+    },
+    "public_key_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]{86}==$"
+    }
+  }
+}

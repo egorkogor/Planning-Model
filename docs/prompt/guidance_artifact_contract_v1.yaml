@@ -1,0 +1,47 @@
+schema_version: work-planner/1.13
+contract_id: guidance-token-artifacts/1.0
+tokenizer_source: locks/llm_model_lock.json
+artifact_output: locks/guidance-token-artifacts.json
+entries:
+- NEUTRAL
+- CLEAR_OBSTRUCTION
+- PICK_REQUIRED_BLOCK
+- UNSTACK_REQUIRED_BLOCK
+- PUT_HELD_BLOCK_ON_TABLE
+- STACK_ON_REQUIRED_SUPPORT
+- RESTORE_CLEAR_SUPPORT
+- END_GOAL_SATISFIED
+content_source:
+  NEUTRAL: stage1_prompt_v1.yaml#guidance_blocks.neutral_content
+  other: docs/domain/intent_catalog_v1.yaml#intent_text
+wrapper: 'GUIDANCE: {content}{suffix}'
+target_attended_tokens_exact: 32
+suffix_search:
+  alphabet_exact_UTF8:
+  - ' .'
+  - ' ;'
+  - ' :'
+  - ' —'
+  enumeration: breadth_first_by_suffix_piece_count_then_lexicographic_piece_index
+  maximum_pieces: 64
+  accept_first_exact_length: true
+  semantic_terms_in_suffix: forbidden
+  if_no_exact_length: BLOCKED_GUIDANCE_TOKENIZATION
+required_entry_fields:
+- entry_id
+- content_utf8
+- suffix_utf8
+- rendered_utf8
+- token_ids
+- attention_mask
+- token_count
+- tokenizer_revision
+- entry_sha256
+validation:
+- token_count_equals_32
+- attention_mask_all_ones
+- roundtrip_decode_matches_normalized_rendered_text
+- no_block_alias_or_action_name_in_suffix
+- all_entries_unique_by_entry_id
+freeze_before_prompt_development: true
+change_after_freeze: forbidden

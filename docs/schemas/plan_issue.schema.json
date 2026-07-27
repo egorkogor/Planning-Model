@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/plan_issue.schema.json",
+  "title": "PlanIssue v1.13",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "issue_id",
+    "plan_version",
+    "step_id",
+    "code",
+    "evidence",
+    "state_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "issue_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plan_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "step_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/step_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "code": {
+      "$ref": "common.schema.json#/$defs/issue_code"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "state_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

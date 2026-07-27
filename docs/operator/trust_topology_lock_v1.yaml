@@ -1,0 +1,26 @@
+schema_version: work-planner/1.13
+contract_id: trust-topology-lock/1.0
+created_phase: P01 before G01_TRUST_AND_RESOURCES approval
+purpose: Bind role identities, public signing keys and infrastructure allocation to an operator-controlled key outside the
+  Builder repository.
+manifest_path: locks/trust-topology.lock.json
+external_key_requirement:
+  public_key_path_env: PLANNER_OPERATOR_TRUST_PUBLIC_KEY
+  private_key_path_argument: --operator-private-key
+  repository_private_key_forbidden: true
+  repository_public_key_as_root_forbidden: true
+protected_artifacts:
+- artifacts/scope.md
+- reports/resource-plan.json
+- locks/infrastructure-plan.json
+- locks/public-keys.json
+creation_role: OPERATOR
+verification_required:
+- before G01_TRUST_AND_RESOURCES approval
+- before Scientific lock creation
+- before and after every phase from P01
+- before every manual gate
+change_policy:
+  in_run_change: forbidden
+  operator_override: forbidden
+  required_action: increment protocol version and start a new run

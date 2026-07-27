@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/common.schema.json",
+  "title": "Work Planner Common Definitions v1.13",
+  "$defs": {
+    "schema_version": {
+      "const": "work-planner/1.13"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "nullable_sha256": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "internal_ref": {
+      "type": "string",
+      "pattern": "^@B[0-7]$"
+    },
+    "surface_alias": {
+      "type": "string",
+      "pattern": "^block_[0-7]$"
+    },
+    "semantic_ref": {
+      "type": "string",
+      "pattern": "^latent\\+sha256://[0-9a-f]{64}#S(?:0[0-9]|1[0-6])$"
+    },
+    "nullable_semantic_ref": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/semantic_ref"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "step_id": {
+      "type": "string",
+      "pattern": "^S(?:0[0-9]|1[0-6])$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "action": {
+      "enum": [
+        "PICK_UP",
+        "PUT_DOWN",
+        "UNSTACK",
+        "STACK",
+        "END"
+      ]
+    },
+    "representation": {
+      "enum": [
+        "TOKEN_GRAMMAR",
+        "TYPED_ONLY",
+        "DISCRETE_INTENT",
+        "STRUCTURED_DISCRETE",
+        "CONTINUOUS_LATENT"
+      ]
+    },
+    "planner_variant": {
+      "enum": [
+        "A1",
+        "A2",
+        "A2b",
+        "A2c",
+        "A3",
+        "A4",
+        "A5"
+      ]
+    },
+    "step_status": {
+      "enum": [
+        "PREDICTED",
+        "VALIDATED",
+        "REJECTED",
+        "EXECUTED"
+      ]
+    },
+    "stage": {
+      "enum": [
+        "PLANNER_ONLY",
+        "STAGE1A_INTERFACE",
+        "STAGE1B_END_TO_END"
+      ]
+    },
+    "rollout_mode": {
+      "enum": [
+        "RAW",
+        "OPERATIONAL"
+      ]
+    },
+    "state_source": {
+      "enum": [
+        "PLANNER_TASK_INITIAL",
+        "ORACLE_SNAPSHOT",
+        "ACTUAL_TRAJECTORY"
+      ]
+    },
+    "split": {
+      "enum": [
+        "train",
+        "development",
+        "planner_pilot_horizon",
+        "planner_pilot_size_ood",
+        "planner_confirmatory_horizon_reserve",
+        "planner_confirmatory_size_ood_reserve",
+        "planner_confirmatory_horizon",
+        "planner_confirmatory_size_ood",
+        "stage1a_pilot",
+        "stage1a_confirmatory_reserve",
+        "stage1a_confirmatory",
+        "stage1b_pilot",
+        "stage1b_confirmatory_reserve",
+        "stage1b_confirmatory",
+        "test_ref_perm",
+        "planbench_external"
+      ]
+    },
+    "arm": {
+      "enum": [
+        "PLANNER_A1_RAW",
+        "PLANNER_A2_RAW",
+        "PLANNER_A2B_RAW",
+        "PLANNER_A2C_RAW",
+        "PLANNER_A3_RAW",
+        "PLANNER_A4_RAW",
+        "PLANNER_A5_RAW",
+        "I0_EQUAL_TOKENS_RAW",
+        "I1_ORACLE_CURRENT_RAW",
+        "I2_SHUFFLED_RAW",
+        "I3_PLANNER_CURRENT_RAW",
+        "E0_EQUAL_TOKENS_RAW",
+        "E1_PLANNER_CURRENT_RAW",
+        "E2_SHUFFLED_RAW",
+        "E3_ORACLE_REPLAN_RAW",
+        "P_REPLAY_RAW",
+        "E0_EQUAL_TOKENS_OPERATIONAL",
+        "E1_PLANNER_CURRENT_OPERATIONAL"
+      ]
+    },
+    "issue_code": {
+      "enum": [
+        "AMBIGUOUS_ALIAS",
+        "CONTRACT_VIOLATION",
+        "CONTROL_CERTIFICATION_FAILED",
+        "CONTROL_UNAVAILABLE",
+        "EXECUTOR_FAILED",
+        "GOAL_NOT_REACHED",
+        "HASH_MISMATCH",
+        "HORIZON_EXCEEDED",
+        "INCOMPLETE_PAIR",
+        "INVALID_ACTION",
+        "INVALID_END_TO_END_SETUP",
+        "LLM_TIMEOUT",
+        "PARSE_FAILED",
+        "PLANNER_FAILED",
+        "PLANNER_OOD_STATE",
+        "PRECONDITION_FAILED",
+        "PROMPT_BUDGET_EXCEEDED",
+        "SCHEMA_VALIDATION_FAILED",
+        "SEMANTIC_UNRESOLVED",
+        "UNKNOWN_ALIAS",
+        "UNKNOWN_REF"
+      ]
+    },
+    "parse_status": {
+      "enum": [
+        "PARSED",
+        "PARSE_FAILED",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "validation_status": {
+      "enum": [
+        "VALID",
+        "INVALID",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "semantic_resolution_status": {
+      "enum": [
+        "RESOLVED",
+        "UNRESOLVED",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "candidate_source": {
+      "enum": [
+        "PLANNER_RAW",
+        "PLANNER_MASKED_RETRY",
+        "EQUAL_TOKEN_LLM",
+        "ORACLE_INTENT_LLM",
+        "SHUFFLED_INTENT_LLM",
+        "PLANNER_INTENT_LLM",
+        "PLAN_REPLAY",
+        "PLANNER_RESOLUTION_FAILURE"
+      ]
+    },
+    "source_kind": {
+      "enum": [
+        "ORACLE_SUFFIX",
+        "OFF_POLICY_EXACT",
+        "OFF_POLICY_DEVIATION",
+        "OFF_POLICY_WALK"
+      ]
+    },
+    "support_status": {
+      "enum": [
+        "EXACT_SEEN",
+        "STRUCTURAL_SIGNATURE_SEEN",
+        "UNSEEN_SIGNATURE",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "block_arg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "ref"
+      ],
+      "properties": {
+        "role": {
+          "const": "block"
+        },
+        "ref": {
+          "$ref": "#/$defs/internal_ref"
+        }
+      }
+    },
+    "moving_arg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "ref"
+      ],
+      "properties": {
+        "role": {
+          "const": "moving"
+        },
+        "ref": {
+          "$ref": "#/$defs/internal_ref"
+        }
+      }
+    },
+    "support_arg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "ref"
+      ],
+      "properties": {
+        "role": {
+          "const": "support"
+        },
+        "ref": {
+          "$ref": "#/$defs/internal_ref"
+        }
+      }
+    }
+  }
+}

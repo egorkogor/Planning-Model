@@ -1,0 +1,30 @@
+schema_version: work-planner/1.13
+experiment:
+  name: work_planner_stage1_v2_6
+  run_id: run-YYYYMMDD-shortname
+  scope: archived_work_planner_blocksworld
+contracts:
+  dataset_splits: docs/data/dataset_split_contract_v1.yaml
+  architecture: docs/architecture/planner_architecture_v1.yaml
+  training: docs/training/planner_training_contract_v1.yaml
+  search: docs/training/hyperparameter_search_v1.yaml
+  seed_selection: docs/training/seed_selection_contract_v1.yaml
+  prompt: docs/prompt/stage1_prompt_v1.yaml
+  prompt_development: docs/prompt/prompt_development_contract_v1.yaml
+  sealing: docs/controls/confirmatory_sealing_contract_v1.yaml
+planner:
+  max_non_end_actions: 16
+  max_steps_including_end: 17
+  final_seeds: [101, 202, 303]
+stage1:
+  model_id: Qwen/Qwen3.5-0.8B
+  decoding: greedy
+  max_unpadded_input_tokens: 512
+  batch_padding_side: left
+  right_padding: forbidden
+  guidance_attended_tokens: 32
+  silent_repair: forbidden
+confirmatory:
+  builder_plaintext_access: forbidden
+  separate_evaluator_required: true
+  clean_auditor_required: true
