@@ -1,4 +1,4 @@
-schema_version: work-planner/1.13
+schema_version: work-planner/1.14
 contract_id: planner-hyperparameter-search/1.1
 search_partition: development
 confirmatory_access: forbidden
@@ -33,14 +33,16 @@ selection:
   - A2b
   - A2c
   - A3
+  - A3r
   primary_score: mean_rank_of_per_arm_validation_composite; lower_is_better
   ranking_tie_policy: average_rank_for_exact_ties
   eligibility_floors:
     all_arms_minimum_valid_action_rate: 0.9
     A3_minimum_goal_success: 0.5
+    A3r_minimum_goal_success: 0.1
   tie_breaks:
   - higher_A3_validation_composite
-  - lower_mean_train_flops_across_A1_A2_A2b_A2c_A3
+  - lower_mean_train_flops_across_A1_A2_A2b_A2c_A3_A3r
   - lexicographically_lower_config_id
   no_candidate_meets_floor: BLOCKED_MODEL_DEVELOPMENT
 post_selection:

@@ -89,7 +89,8 @@ def test_stage1a_reserve_and_hidden_stage1b_certification_are_precommitted() -> 
     sealing = load_yaml("docs/controls/confirmatory_sealing_contract_v1.yaml")
     cert = sealing["sealer_protocol"]["stage1b_hidden_control_certification"]
     assert cert["owner"] == "DATA_SEALER"
-    assert cert["required_coverage_rate"] == 1.0
+    assert cert["selection_basis"] == "TASK_AND_DOMAIN_METADATA_ONLY"
+    assert cert["degeneracy_exclusion_count"] == 0
     schema = json.loads((ROOT / "docs/schemas/sealer_manifest.schema.json").read_text())
     assert "control_certification" in schema["properties"]
     assert any("control_certification" in branch.get("then", {}).get("required", []) for branch in schema["allOf"])
@@ -112,7 +113,7 @@ def test_intent_labeler_is_scientifically_locked_and_not_patchable() -> None:
     allowed = set(load_yaml("docs/operator/implementation_lock_v1.yaml")["pre_lock_patch_window"]["allowed_path_globs"])
     assert "docs/domain/**" in scientific
     assert "docs/domain/**" not in allowed
-    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.13.md").read_text(encoding="utf-8")
+    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.14.md").read_text(encoding="utf-8")
     assert "не могут изменяться implementation-only patch" in spec
 
 
@@ -120,23 +121,27 @@ def test_stage1b_sealer_semantics_fail_closed_on_counts_and_unbound_contracts() 
     from validation.sealer_manifest_validator import validate_sealer_manifest_semantics
     h = lambda c: "sha256:" + c * 64
     obj = {
-        "stage": "STAGE1B",
-        "task_count": 100,
-        "contract_hashes": {"control": h("a"), "eligibility": h("b"), "support": h("c")},
+        "stage": "STAGE1B", "task_count": 100,
+        "contract_hashes": {"eligibility": h("a"), "split": h("b"), "generator": h("c")},
         "control_certification": {
-            "candidate_task_count": 120,
-            "eligible_task_count": 110,
-            "coverage_rate": 1.0,
-            "all_selected_tasks_certified": True,
+            "candidate_task_count": 120, "eligible_task_count": 110, "selected_task_count": 100,
+            "selection_basis": "TASK_AND_DOMAIN_METADATA_ONLY",
+            "planner_output_used_for_selection": False, "llm_output_used_for_selection": False,
+            "arm_outcome_used_for_selection": False, "plan_or_control_degeneracy_exclusion_count": 0,
+            "plan_generation_failure_policy": "RETAIN_AS_ZERO_SUCCESS_PAIRED_OUTCOME",
+            "control_degeneracy_policy": "RETAIN_AS_ZERO_SUCCESS_PAIRED_OUTCOME",
+            "all_selected_tasks_task_only_eligible": True,
             "certification_completed_before_outcome_access": True,
-            "control_contract_sha256": h("a"),
-            "eligibility_contract_sha256": h("b"),
-            "support_contract_sha256": h("c"),
+            "eligibility_contract_sha256": h("a"), "split_contract_sha256": h("b"),
+            "generator_contract_sha256": h("c"),
         },
     }
     assert not validate_sealer_manifest_semantics(obj)
     obj["control_certification"]["eligible_task_count"] = 90
     assert any("candidate >= eligible >= selected" in e for e in validate_sealer_manifest_semantics(obj))
     obj["control_certification"]["eligible_task_count"] = 110
-    obj["control_certification"]["support_contract_sha256"] = h("d")
+    obj["control_certification"]["planner_output_used_for_selection"] = True
+    assert any("planner_output_used_for_selection" in e for e in validate_sealer_manifest_semantics(obj))
+    obj["control_certification"]["planner_output_used_for_selection"] = False
+    obj["control_certification"]["generator_contract_sha256"] = h("d")
     assert any("not bound" in e for e in validate_sealer_manifest_semantics(obj))

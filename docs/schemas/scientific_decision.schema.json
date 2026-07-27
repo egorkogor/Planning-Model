@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/scientific_decision.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/scientific_decision.schema.json",
   "title": "Locked scientific decision v1.3",
   "type": "object",
   "additionalProperties": false,
@@ -108,7 +108,8 @@
             "ARCHITECTURE",
             "STAGE1B_ELIGIBILITY",
             "INTERFACE",
-            "END_TO_END"
+            "END_TO_END",
+            "DIAGNOSTIC"
           ]
         },
         "comparison": {
@@ -121,8 +122,8 @@
             "estimate_gte_and_ci_low_gt",
             "estimate_gte",
             "estimate_lte",
-            "paired_tost",
-            "minimum_positive_seed_count"
+            "minimum_positive_seed_count",
+            "estimate_gte_and_ci_low_gte"
           ]
         },
         "estimate": {

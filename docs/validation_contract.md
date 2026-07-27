@@ -1,4 +1,4 @@
-# Validation contract v1.13
+# Validation contract v1.14
 
 Validation состоит из восьми обязательных уровней. Отчёт агента не является доказательством сам по себе: каждый машинный check повторно исполняется locked verifier.
 
@@ -66,4 +66,4 @@ Single-agent/unsealed execution получает `INVALID_CONFIRMATORY_BLINDNESS
 
 ## 8. Statistics и independent audit
 
-До первого confirmatory dispatch G06 требует независимый review статистической реализации человеком-статистиком либо моделью другой family относительно Builder. Canonical `AnalysisInput` хранит pair-level rows; валидатор пересчитывает differences, hierarchical bootstrap, clustered bootstrap, paired TOST, sample size и решения из locked definitions. P19 повторяет tests, statistics и выполненные experiment stages на clean checkout.
+До первого confirmatory dispatch G06 требует независимый review статистической реализации человеком-статистиком либо моделью другой family относительно Builder. Canonical `AnalysisInput` хранит pair-level rows; валидатор пересчитывает differences, hierarchical bootstrap, clustered bootstrap, non-inferiority and direction gates, sample size и решения из locked definitions. P19 повторяет tests, statistics и выполненные experiment stages на clean checkout.

@@ -137,7 +137,7 @@ def _draw_requirement(
         keys = sorted(source_groups)
         overall = _observed_effect(requirement)
         out: dict[str, list[float]] = {}
-        # Final analysis always has exactly three final seeds. Resampling a source
+        # Final analysis always has exactly five final seeds. Resampling a source
         # seed preserves empirical between-seed heterogeneity without inventing
         # continuous task outcomes.
         for output_seed in keys:
@@ -185,13 +185,25 @@ def _estimate_ci(dataset: dict[str, Any], *, resamples: int, seed: int) -> tuple
     raise ValueError(kind)
 
 
-def _equivalence_units(dataset: dict[str, Any]) -> list[float]:
-    kind = dataset["analysis_type"]
-    if kind == "PLANNER_HIERARCHICAL":
-        return [float(np.mean(v)) for v in dataset["seed_groups"].values()]
-    if kind == "STAGE1A_CLUSTERED":
-        return [float(np.mean(v)) for v in dataset["task_clusters"].values()]
-    return [float(x) for x in dataset["pairs"]]
+COMPONENTS = {
+    "primary_ci",
+    "primary_power",
+    "current_vs_shuffled_power",
+    "random_code_power",
+    "structured_noninferiority_power",
+    "self_plan_power",
+    "flops_direction_power",
+}
+
+
+def _component_effect(component: str, design_effect: float) -> float:
+    if component == "primary_ci":
+        raise ValueError("primary_ci uses observed pilot effect")
+    if component == "structured_noninferiority_power":
+        return 0.0
+    if component == "flops_direction_power":
+        return max(0.02, min(float(design_effect), 0.05))
+    return float(design_effect)
 
 
 def _passes_component(
@@ -200,18 +212,20 @@ def _passes_component(
     *,
     minimum_effect_gate: float,
     half_width: float,
-    equivalence_margin: float,
     ci_resamples: int,
     seed: int,
 ) -> bool:
-    if component == "equivalence_TOST_power":
-        units = _equivalence_units(dataset)
-        return len(units) >= 2 and bool(paired_tost(units, equivalence_margin)["pass"])
     estimate, lo, hi = _estimate_ci(dataset, resamples=ci_resamples, seed=seed)
     if component == "primary_ci":
         return (hi - lo) / 2 <= half_width
-    if component in {"primary_power", "current_vs_shuffled_power"}:
-        return estimate >= minimum_effect_gate and lo > 0
+    if component == "primary_power":
+        return estimate >= minimum_effect_gate and lo > 0.0
+    if component in {"current_vs_shuffled_power", "random_code_power", "self_plan_power"}:
+        return lo > 0.0
+    if component == "structured_noninferiority_power":
+        return lo >= -0.02
+    if component == "flops_direction_power":
+        return estimate >= 0.0 and lo >= -0.02
     raise ValueError(component)
 
 
@@ -234,7 +248,6 @@ def _requirement_n(
     design_effect: float,
     minimum_effect_gate: float,
     half_width: float,
-    equivalence_margin: float,
     target_power: float,
     simulations: int,
     ci_resamples: int,
@@ -250,27 +263,21 @@ def _requirement_n(
         raise ValueError(f"{component}: at least 20 pilot analysis units required")
     if power_confirmation_points < 1:
         raise ValueError("power_confirmation_points must be positive")
-    if component == "equivalence_TOST_power":
-        effect = 0.0
-    elif component == "primary_ci":
+    if component == "primary_ci":
         effect = _observed_effect(requirement)
     else:
-        effect = design_effect
+        effect = _component_effect(component, design_effect)
+    if component == "primary_power" and effect <= minimum_effect_gate:
+        raise ValueError("design effect must be strictly above the primary GO boundary")
     passing_streak: list[int] = []
     for n in range(_round_up(minimum_n, round_multiple), maximum_n + 1, round_multiple):
-        # Each candidate N receives an independent deterministic stream. Candidate
-        # results therefore do not depend on how many smaller N values were tested.
         rng = np.random.default_rng(seed + 10_000_019 * n)
         passed = 0
         for sim in range(simulations):
             dataset = _draw_requirement(requirement, n, rng, effect)
             passed += _passes_component(
-                component,
-                dataset,
-                minimum_effect_gate=minimum_effect_gate,
-                half_width=half_width,
-                equivalence_margin=equivalence_margin,
-                ci_resamples=ci_resamples,
+                component, dataset, minimum_effect_gate=minimum_effect_gate,
+                half_width=half_width, ci_resamples=ci_resamples,
                 seed=seed + 100_000 * (sim + 1) + n,
             )
         lower = binomial_power_lower_bound(passed, simulations, power_confidence_level)
@@ -289,7 +296,7 @@ def calculate_components_from_structured_requirements(
     design_effect: float = 0.075,
     minimum_effect_gate: float = 0.05,
     half_width: float = 0.025,
-    equivalence_margin: float = 0.02,
+    equivalence_margin: float | None = None,
     target_power: float = 0.90,
     simulations: int = 1000,
     ci_resamples: int = 1000,
@@ -300,28 +307,20 @@ def calculate_components_from_structured_requirements(
     power_confidence_level: float = 0.95,
     power_confirmation_points: int = 2,
 ) -> dict[str, int]:
-    supported = {"primary_ci", "primary_power", "current_vs_shuffled_power", "equivalence_TOST_power"}
+    del equivalence_margin  # legacy API argument; confirmatory TOST is forbidden in v1.14
     requested = set(requirements)
-    if not requested or not requested.issubset(supported):
-        raise ValueError(f"unsupported requirement set: {requested}; supported={supported}")
+    if not requested or not requested.issubset(COMPONENTS):
+        raise ValueError(f"unsupported requirement set: {requested}; supported={COMPONENTS}")
     if not {"primary_ci", "primary_power"}.issubset(requested):
         raise ValueError("primary_ci and primary_power are mandatory for every stage")
     out: dict[str, int] = {}
     for offset, component in enumerate(sorted(requested)):
         out[component] = _requirement_n(
-            requirements[component],
-            component,
-            design_effect=design_effect,
-            minimum_effect_gate=minimum_effect_gate,
-            half_width=half_width,
-            equivalence_margin=equivalence_margin,
-            target_power=target_power,
-            simulations=simulations,
-            ci_resamples=ci_resamples,
-            seed=seed + offset,
-            minimum_n=minimum_n,
-            round_multiple=round_multiple,
-            maximum_n=maximum_n,
+            requirements[component], component, design_effect=design_effect,
+            minimum_effect_gate=minimum_effect_gate, half_width=half_width,
+            target_power=target_power, simulations=simulations,
+            ci_resamples=ci_resamples, seed=seed + offset, minimum_n=minimum_n,
+            round_multiple=round_multiple, maximum_n=maximum_n,
             power_confidence_level=power_confidence_level,
             power_confirmation_points=power_confirmation_points,
         )

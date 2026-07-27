@@ -20,9 +20,13 @@
 - `docs/schemas/statistical_audit.schema.json`
 - `docs/schemas/implementation_audit.schema.json`
 - `docs/schemas/decision_record.schema.json`
+- `docs/schemas/capacity_preflight.schema.json`
+- `validation/capacity_validator.py`
+- `docs/schemas/compute_profile.schema.json`
+- `docs/training/hyperparameter_search_v1.yaml`
 
 ## Действия
-1. finish Planner A1–A5 implementations and all outcome-relevant runtime modules required through P17
+1. finish six trained Planner variants A1/A2/A2b/A2c/A3/A3r, A4/A5 inference interventions and all outcome-relevant runtime modules required through P17
 2. prove P10 prototype-bank/parser path and P15 graph/control-certification path execute on toy/public fixtures
 3. run full toy preflight from clean checkout
 4. create implementation commit containing every protected executable path
@@ -63,7 +67,7 @@
 - `P06_pre_04` — signed statistical audit is independent from Builder; verifier: `python validation/phase_check_runner.py --phase P06 --check P06_pre_04 --report reports/phase-P06.json`
 - `P06_pre_05` — statistical audit covers every locked statistical check; verifier: `python validation/phase_check_runner.py --phase P06 --check P06_pre_05 --report reports/phase-P06.json`
 - `P06_pre_06` — signed implementation audit is independent from Builder; verifier: `python validation/phase_check_runner.py --phase P06 --check P06_pre_06 --report reports/phase-P06.json`
-- `P06_pre_07` — implementation audit covers oracle, generator, runtime checks, analysis builders, semantic resolver/prototype builder, control certification, data isolation, sealer, evaluator, model loading and persistence; verifier: `python validation/phase_check_runner.py --phase P06 --check P06_pre_07 --report reports/phase-P06.json`
+- `P06_pre_07` — implementation audit covers oracle, generator, runtime checks, analysis builders, semantic resolver, deterministic full-plan shuffle/lineage, A3r random-codebook training, per-episode FLOPs accounting, data isolation, sealer, evaluator, model loading and persistence; verifier: `python validation/phase_check_runner.py --phase P06 --check P06_pre_07 --report reports/phase-P06.json`
 - `P06_pre_08` — pre-gate evidence sealed; verifier: `python validation/phase_check_runner.py --phase P06 --check P06_pre_08 --report reports/phase-P06.json`
 
 ## Проверки исполнения

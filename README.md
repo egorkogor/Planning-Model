@@ -1,6 +1,6 @@
 # Planner → LLM MVP Stage 1
 
-Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.13 и Stage 1 runbook v2.13.
+Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.14 и Stage 1 runbook v2.14.
 
 ## Запуск агентом
 
@@ -30,7 +30,7 @@ Builder LLM исполняет плейбук и пишет реализацию
 
 Это BlocksWorld Work Planner experiment, не основная Cognitive Planner architecture ML Brain.
 
-## Изменения v1.13/v2.13
+## Изменения v1.14/v2.14
 
 - P01 стал обязательным trust gate: роли, среды, credential principals, public-key registry и resource plan связываются `trust-topology.lock.json`, подписанным внешним операторским Ed25519-ключом;
 - валидатор запрещает хранить operator private/public trust-root keys внутри репозитория, поэтому Builder не может выпустить собственную доверенную топологию;

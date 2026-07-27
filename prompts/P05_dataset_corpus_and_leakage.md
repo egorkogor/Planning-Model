@@ -14,6 +14,9 @@
 - `docs/domain/training_corpus_contract_v1.yaml`
 - `docs/schemas/training_example.schema.json`
 - `docs/schemas/corpus_manifest.schema.json`
+- `docs/controls/random_codebook_contract_v1.yaml`
+- `docs/schemas/semantic_signature_bank.schema.json`
+- `docs/schemas/random_codebook_manifest.schema.json`
 
 ## Действия
 1. назначить base_task partitions до expansion
@@ -23,6 +26,8 @@
 
 ## Обязательные результаты фазы
 - `reports/dataset-capacity-audit.json`
+- `semantic_bank/random-codebook/manifest.json`
+- `semantic_bank/signatures/manifest.json`
 - `data/manifests/training-corpus.json`
 - `reports/leakage.json`
 - `reports/support-coverage.json`
@@ -53,6 +58,7 @@
 - `P05_exec_04` — holding and hand-empty coverage present; verifier: `python validation/phase_check_runner.py --phase P05 --check P05_exec_04 --report reports/phase-P05.json`
 - `P05_exec_05` — scientific lock VERIFIED; verifier: `python validation/phase_check_runner.py --phase P05 --check P05_exec_05 --report reports/phase-P05.json`
 - `P05_exec_06` — all implementation-only changes have patch records and repeated toy preflight; verifier: `python validation/phase_check_runner.py --phase P05 --check P05_exec_06 --report reports/phase-P05.json`
+- `P05_exec_07` — train-only semantic signature bank and deterministic A3r random codebook regenerate exactly; verifier: `python validation/phase_check_runner.py --phase P05 --check P05_exec_07 --report reports/phase-P05.json`
 
 ## Проверки после approval
 - нет

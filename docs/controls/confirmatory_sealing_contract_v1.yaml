@@ -1,5 +1,5 @@
-schema_version: work-planner/1.13
-contract_id: confirmatory-sealing/1.3
+schema_version: work-planner/1.14
+contract_id: confirmatory-sealing/1.4
 roles:
   builder:
     may_read:
@@ -23,15 +23,15 @@ roles:
     seed_plaintext_export: forbidden
     stage1b_hidden_certification_required: true
     stage1b_hidden_certification_inputs:
-    - locked intent_control_contract
-    - locked semantic_resolver_contract
-    - locked support_eligibility_contract
-    - locked public_exclusion_manifest
+    - locked generator contract
+    - locked dataset split contract
+    - locked domain contract
+    - locked public exclusion manifest
+    - locked pre-outcome artifact manifests
     stage1b_hidden_certification_outputs:
-    - signed coverage manifest hash
-    - signed support audit hash
-    - eligible candidate count
-    - coverage_rate=1.0
+    - signed task-only selection manifest hash
+    - signed pre-outcome artifact manifest hash
+    - candidate, eligible and selected task counts
   evaluator:
     may_read_confirmatory_task_bodies: true
     may_write_source_repository: false
@@ -102,17 +102,30 @@ sealer_protocol:
   seed_reveal_policy: AUDITOR_AFTER_SIGNED_EVALUATOR_RESULT
   stage1b_hidden_control_certification:
     owner: DATA_SEALER
-    timing: after hidden candidate generation and before encryption release or any outcome access
-    candidate_scope: every hidden Stage1B candidate task in reserve after public exclusions
+    timing: after hidden candidate generation and before HMAC selection, encryption release or any outcome access
+    candidate_scope: every hidden Stage1B candidate after public train/development/pilot exclusions
+    selection_basis: TASK_AND_DOMAIN_METADATA_ONLY
     checks:
-    - enumerate every reachable non-goal state under locked domain for each candidate
-    - certify at least one locked incompatible control intent for every reachable state-goal pair
-    - certify planner support signature eligibility under locked support contract
-    - exclude ineligible candidates before hidden HMAC ranking; post-outcome exclusion forbidden
-    required_coverage_rate: 1.0
+    - validate task/domain eligibility using only locked generator, split, domain and oracle-length metadata
+    - bind the frozen A3r random codebook, semantic signature bank and full-plan shuffle algorithm as pre-outcome artifacts
+    - retain every plan-generation, semantic-resolution, short-plan shuffle and compute-cap failure as a zero-success paired
+      outcome; never exclude a task for these failures
+    - perform hidden HMAC ranking only after task-only eligibility is fixed
+    required_task_only_eligibility_rate: 1.0
     signed_manifest_field: control_certification
     builder_may_receive_task_ids_or_plaintext: false
-    failure_action: BLOCKED_SUPPORT
+    failure_action: BLOCKED_ONLY_FOR_TASK_DOMAIN_OR_SPLIT_CONTRACT_FAILURE
+    forbidden_selection_inputs:
+    - Planner outputs or logits
+    - semantic resolution outcomes
+    - generated WorkPlan length or validity
+    - shuffle degeneracy
+    - LLM outputs
+    - arm outcomes
+    - trajectory length or terminal status
+    degeneracy_exclusion_count: 0
+    coverage_definition: coverage means all selected tasks satisfy task/domain/split metadata predicates; it never means reachable-state,
+      Planner, semantic or LLM support coverage
   signed_dispatch_lineage_required: true
   manifest_dispatch_fields:
   - dispatch_id

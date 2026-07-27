@@ -24,9 +24,9 @@
 1. run independent trajectories pilot
 2. measure unresolved and infrastructure rates
 3. calculate final N with all registered components
-4. dispatch locked Stage 1B contracts, certification algorithm hashes and public-exclusion manifest to Data Sealer
-5. Data Sealer generates hidden candidates, certifies 100% reachable-state control coverage and support eligibility before HMAC selection and encryption
-6. receive only encrypted blob commitment and signed sealer manifest containing control_certification; create candidate freeze
+4. dispatch locked Stage 1B task-only eligibility contracts, pre-outcome artifact hashes and public-exclusion manifest to Data Sealer
+5. Data Sealer fixes eligibility from task/domain/split metadata only, then HMAC-ranks and encrypts the selected tasks before any Planner or LLM output exists
+6. receive only encrypted blob commitment and signed sealer manifest containing task-only selection certification; create candidate freeze
 7. after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
 
 ## Обязательные результаты фазы
@@ -55,7 +55,7 @@
   - `dispatch/evaluator-stage1b.json`
 
 ## Проверки до gate
-- `P16_pre_01` — signed Data Sealer manifest verifies plaintext deletion and hidden Stage1B control/support certification with coverage_rate=1.0; no hidden task body or id visible to Builder; verifier: `python validation/phase_check_runner.py --phase P16 --check P16_pre_01 --report reports/phase-P16.json`
+- `P16_pre_01` — signed Data Sealer manifest verifies plaintext deletion and task-only Stage1B selection certification; no hidden task body or id visible to Builder; verifier: `python validation/phase_check_runner.py --phase P16 --check P16_pre_01 --report reports/phase-P16.json`
 - `P16_pre_02` — no total-token equality claim across trajectories; verifier: `python validation/phase_check_runner.py --phase P16 --check P16_pre_02 --report reports/phase-P16.json`
 - `P16_pre_03` — same 32-token guidance budget; verifier: `python validation/phase_check_runner.py --phase P16 --check P16_pre_03 --report reports/phase-P16.json`
 - `P16_pre_04` — reserve >= selected N; verifier: `python validation/phase_check_runner.py --phase P16 --check P16_pre_04 --report reports/phase-P16.json`

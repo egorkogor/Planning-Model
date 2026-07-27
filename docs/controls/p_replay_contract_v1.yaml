@@ -1,37 +1,36 @@
-schema_version: work-planner/1.13
-contract_id: p-replay/1.0
-purpose: Measure the raw executable ceiling of the selected A3 checkpoint without LLM mediation.
-source_checkpoint:
-  variant: A3
-  selection: locked median-validation final seed checkpoint used by Stage 1
-  checkpoint_hash_must_match_model_lock: true
-rollout:
-  mode: receding_horizon_raw
-  loop:
-    - check goal before Planner call
-    - encode current factual state and unchanged task goal
-    - run A3 raw decode without domain mask, retry, repair, or oracle information
-    - if END then succeed only when goal already holds; otherwise fail INVALID_END
-    - validate raw TypedAction and terminate on invalidity
-    - execute action
-    - check goal immediately after execution
+schema_version: work-planner/1.14
+contract_id: full-plan-replay/1.1
+purpose: Measure exact deterministic execution of one precomputed frozen WorkPlan without LLM mediation or replanning.
+shared_invariants:
+  plan_generation_before_execution: required
+  planner_calls_during_execution: 0
+  plan_patch_or_regeneration: forbidden
+  consume_positions: strictly_sequential_from_zero
   maximum_executed_actions: 16
-  planner_recomputed_after_every_executed_action: true
+  validate_before_execute: true
+  check_goal_before_loop_and_after_each_action: true
   llm_calls: 0
   recovery: forbidden
-splits:
-  planner_confirmatory: [HORIZON, SIZE_OOD]
-  stage1b_support: same base_task_id set as the Stage 1B confirmatory reserve
-metrics:
-  primary: goal_success
-  secondary: [valid_action_rate, executed_length, failure_taxonomy]
-eligibility_gate:
-  comparison: P_REPLAY_GOAL_SUCCESS
-  point_estimate_minimum: 0.70
-  confidence_interval: diagnostic
+  failed_plan_manifest_policy: paired_failure_with_zero_executor_calls
+contexts:
+  PLANNER_CONFIRMATORY_A3:
+    phase: P08
+    source_arm: PLANNER_A3_RAW
+    source_plan: precomputed A3 WorkPlan from the same Planner confirmatory task, seed and checkpoint
+    metric_name: PLANNER_A3_FULL_PLAN_REPLAY_GOAL_SUCCESS
+    role: Stage1B eligibility diagnostic available before P09
+  STAGE1B_E1:
+    phase: P17
+    source_arm: E1_A3_FULL_PLAN_RAW
+    source_plan: exact E1 WorkPlan generated once before Stage1B execution
+    metric_name: STAGE1B_E1_FULL_PLAN_REPLAY_GOAL_SUCCESS
+    role: end-to-end diagnostic only; never substitutes for a core GO gate
 lineage:
-  raw_episode_logs_required: true
-  checkpoint_hash_required: true
-  task_manifest_hash_required: true
+  episode_plan_manifest_required: true
+  source_manifest_sha256_required: true
+  work_plan_content_sha256_required: true
+  work_plan_artifact_sha256_required: true
+  attempt_plan_position_required: true
+  exact_typed_action_match_required: true
   implementation_lock_hash_required: true
 change_after_scientific_lock: forbidden

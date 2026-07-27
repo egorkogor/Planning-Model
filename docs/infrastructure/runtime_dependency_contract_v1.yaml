@@ -1,4 +1,4 @@
-schema_version: work-planner/1.13
+schema_version: work-planner/1.14
 contract_id: runtime-dependencies/1.1
 validation_environment:
   python_matrix:
@@ -21,7 +21,8 @@ training_environment:
   torch: 2.10.x
   transformers: exact version plus immutable VCS revision and artifact SHA256 in locks/environment.lock.json
   sentence_transformers: exact version and artifact SHA256 in locks/environment.lock.json
-  vllm: required only when selected backend is VLLM; exact version plus immutable VCS revision/artifact SHA256
+  vllm: required only when selected backend is VLLM; exact version plus immutable
+    VCS revision/artifact SHA256
   runtime_stack_fields:
   - python executable hash
   - torch artifact hash
@@ -33,6 +34,20 @@ training_environment:
   - processor revision
   - language-model-only mode
   - offline cache manifest
+  generation_profiles:
+    stage1a_executor:
+      max_new_tokens: 64
+      do_sample: false
+      num_beams: 1
+    stage1b_executor:
+      max_new_tokens: 128
+      do_sample: false
+      num_beams: 1
+    self_plan_generator:
+      max_new_tokens: 128
+      do_sample: false
+      num_beams: 1
+  trust_remote_code: false
 resolution:
   network_allowed_only_in_P02: true
   resolved_versions_written_to: locks/environment.lock.json
@@ -41,7 +56,7 @@ resolution:
     algorithm: sha256
     canonicalization: RFC8785-compatible sorted-key compact JSON UTF-8
     excluded_field: lock_hash
-    output_format: "sha256:<64 lowercase hex>"
+    output_format: sha256:<64 lowercase hex>
   later_resolution: forbidden
   offline_execution_after_P02: true
 environment_mismatch: BLOCKED_ENVIRONMENT_MISMATCH

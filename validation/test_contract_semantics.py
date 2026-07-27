@@ -15,7 +15,7 @@ def test_fixed_dataset_and_training_defaults_exist():
     assert splits["partitions"]["stage1b_confirmatory_reserve"]["target_base_tasks"] == 4000
     training = load("docs/training/planner_training_contract_v1.yaml")
     assert training["optimizer"]["name"] == "AdamW"
-    assert training["final_seeds"] == [101, 202, 303]
+    assert training["final_seeds"] == [101, 202, 303, 404, 505]
     grid = load("docs/training/hyperparameter_search_v1.yaml")
     assert grid["max_configs"] == 4
     assert grid["selection"]["no_candidate_meets_floor"] == "BLOCKED_MODEL_DEVELOPMENT"

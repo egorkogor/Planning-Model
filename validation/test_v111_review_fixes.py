@@ -47,7 +47,7 @@ def test_g06_implementation_audit_is_trusted_core_check() -> None:
     assert contract["core_checks"]["P06_pre_07"] == "implementation_audit"
     phase = next(p for p in y("docs/operator/phase_registry_v1.yaml")["phases"] if p["phase_id"] == "P06")
     assert "reports/independent-implementation-audit.json" in phase["pre_gate_required_outputs"]
-    assert len(IMPLEMENTATION_CHECKS) == 12
+    assert len(IMPLEMENTATION_CHECKS) == 15
 
 
 def test_phase_runner_no_longer_has_divergent_script_copy() -> None:
@@ -83,9 +83,11 @@ def test_implementation_candidate_binds_both_audits_and_commit() -> None:
     schema = json.loads((ROOT / "docs/schemas/implementation_lock_candidate.schema.json").read_text())
     assert "statistical_audit_sha256" in schema["required"]
     assert "implementation_audit_sha256" in schema["required"]
+    assert "compute_profile_sha256" in schema["required"]
     contract = y("docs/operator/phase_check_contract_v1.yaml")
     assert contract["core_checks"]["P06_pre_02"] == "implementation_candidate"
     source = (ROOT / "validation/implementation_candidate_validator.py").read_text()
     assert "audit.get('reviewed_commit')!=commit" in source
     assert "implementation_audit_sha256" in source
     assert "statistical_audit_sha256" in source
+    assert "compute profile hash mismatch" in source

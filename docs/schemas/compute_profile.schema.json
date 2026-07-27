@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/compute_profile.schema.json",
-  "title": "Compute profile",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/compute_profile.schema.json",
+  "title": "Measured compute profile and pre-outcome Stage 1B FLOPs cap",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,34 +11,285 @@
     "variants",
     "equal_data_schedule",
     "flops_matched_schedule",
+    "stage1b_inference",
+    "measurement_evidence",
+    "measurement_code_path",
     "measurement_code_sha256",
     "report_hash"
   ],
   "properties": {
     "schema_version": {
-      "const": "work-planner-compute/1.0"
+      "const": "work-planner-compute/1.1"
     },
     "run_id": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "hardware": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "device_name",
+        "device_count"
+      ],
+      "properties": {
+        "device_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "device_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": true
     },
     "variants": {
       "type": "array",
-      "minItems": 1
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "variant",
+          "train_flops_per_optimizer_step",
+          "train_seconds_per_optimizer_step",
+          "peak_vram_bytes",
+          "checkpoint_bytes"
+        ],
+        "properties": {
+          "variant": {
+            "enum": [
+              "A1",
+              "A2",
+              "A2b",
+              "A2c",
+              "A3",
+              "A3r"
+            ]
+          },
+          "train_flops_per_optimizer_step": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "train_seconds_per_optimizer_step": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "peak_vram_bytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "checkpoint_bytes": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
     },
     "equal_data_schedule": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "optimizer_updates_exact",
+        "batch_size_examples"
+      ],
+      "properties": {
+        "optimizer_updates_exact": {
+          "const": 12000
+        },
+        "batch_size_examples": {
+          "const": 128
+        }
+      }
     },
     "flops_matched_schedule": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparison_id",
+        "cap_source_variant",
+        "cap_flops_per_workload",
+        "tolerance_fraction",
+        "optimizer_updates_by_variant"
+      ],
+      "properties": {
+        "comparison_id": {
+          "const": "A3_vs_A2c"
+        },
+        "cap_source_variant": {
+          "enum": [
+            "A2c",
+            "A3"
+          ]
+        },
+        "cap_flops_per_workload": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "tolerance_fraction": {
+          "const": 0.02
+        },
+        "optimizer_updates_by_variant": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "A2c",
+            "A3"
+          ],
+          "properties": {
+            "A2c": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12000
+            },
+            "A3": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12000
+            }
+          }
+        }
+      }
+    },
+    "stage1b_inference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "confirmatory_task_capacity",
+        "arms",
+        "flops_cap_per_task",
+        "budget_exhaustion_policy"
+      ],
+      "properties": {
+        "confirmatory_task_capacity": {
+          "const": 4000
+        },
+        "flops_cap_per_task": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "budget_exhaustion_policy": {
+          "const": "PAIRED_FAILURE_NO_TASK_EXCLUSION"
+        },
+        "arms": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "arm",
+              "estimated_flops_per_task",
+              "estimated_seconds_per_task",
+              "maximum_plan_calls",
+              "maximum_executor_calls",
+              "fixed_flops_per_task",
+              "planner_flops_per_call",
+              "plan_token_flops",
+              "executor_input_token_flops",
+              "executor_output_token_flops"
+            ],
+            "properties": {
+              "arm": {
+                "enum": [
+                  "E0_EQUAL_TOKENS_RAW",
+                  "E1_A3_FULL_PLAN_RAW",
+                  "E2_SHUFFLED_A3_FULL_PLAN_RAW",
+                  "E3_A3R_RANDOM_CODE_FULL_PLAN_RAW",
+                  "E4_A2C_STRUCTURED_FULL_PLAN_RAW",
+                  "E5_SELF_PLAN_RAW",
+                  "P_FULL_PLAN_REPLAY_RAW"
+                ]
+              },
+              "estimated_flops_per_task": {
+                "type": "number",
+                "minimum": 0
+              },
+              "estimated_seconds_per_task": {
+                "type": "number",
+                "minimum": 0
+              },
+              "maximum_plan_calls": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "maximum_executor_calls": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 16
+              },
+              "fixed_flops_per_task": {
+                "type": "number",
+                "minimum": 0
+              },
+              "planner_flops_per_call": {
+                "type": "number",
+                "minimum": 0
+              },
+              "plan_token_flops": {
+                "type": "number",
+                "minimum": 0
+              },
+              "executor_input_token_flops": {
+                "type": "number",
+                "minimum": 0
+              },
+              "executor_output_token_flops": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
     },
     "measurement_code_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
     },
     "report_hash": {
       "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "measurement_code_path": {
+      "type": "string",
+      "pattern": "^(?:src|analysis|validation)/[A-Za-z0-9._/-]+\\.py$"
+    },
+    "measurement_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "repetitions",
+        "raw_artifact_path",
+        "raw_artifact_sha256",
+        "environment_lock_sha256"
+      ],
+      "properties": {
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "repetitions": {
+          "type": "integer",
+          "minimum": 3
+        },
+        "raw_artifact_path": {
+          "type": "string",
+          "pattern": "^reports/compute-evidence/[A-Za-z0-9._/-]+$"
+        },
+        "raw_artifact_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "environment_lock_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        }
+      }
     }
   }
 }

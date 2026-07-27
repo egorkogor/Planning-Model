@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/common.schema.json",
-  "title": "Work Planner Common Definitions v1.13",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/common.schema.json",
+  "title": "Work Planner Common Definitions v1.14",
   "$defs": {
     "schema_version": {
-      "const": "work-planner/1.13"
+      "const": "work-planner/1.14"
     },
     "sha256": {
       "type": "string",
@@ -75,8 +75,10 @@
         "A2b",
         "A2c",
         "A3",
+        "A3r",
         "A4",
-        "A5"
+        "A5",
+        "SELF_PLAN"
       ]
     },
     "step_status": {
@@ -134,6 +136,7 @@
         "PLANNER_A2B_RAW",
         "PLANNER_A2C_RAW",
         "PLANNER_A3_RAW",
+        "PLANNER_A3R_RAW",
         "PLANNER_A4_RAW",
         "PLANNER_A5_RAW",
         "I0_EQUAL_TOKENS_RAW",
@@ -141,12 +144,14 @@
         "I2_SHUFFLED_RAW",
         "I3_PLANNER_CURRENT_RAW",
         "E0_EQUAL_TOKENS_RAW",
-        "E1_PLANNER_CURRENT_RAW",
-        "E2_SHUFFLED_RAW",
-        "E3_ORACLE_REPLAN_RAW",
-        "P_REPLAY_RAW",
+        "E1_A3_FULL_PLAN_RAW",
+        "E2_SHUFFLED_A3_FULL_PLAN_RAW",
+        "E3_A3R_RANDOM_CODE_FULL_PLAN_RAW",
+        "E4_A2C_STRUCTURED_FULL_PLAN_RAW",
+        "E5_SELF_PLAN_RAW",
+        "P_FULL_PLAN_REPLAY_RAW",
         "E0_EQUAL_TOKENS_OPERATIONAL",
-        "E1_PLANNER_CURRENT_OPERATIONAL"
+        "E1_A3_FULL_PLAN_OPERATIONAL"
       ]
     },
     "issue_code": {
@@ -156,6 +161,7 @@
         "CONTROL_CERTIFICATION_FAILED",
         "CONTROL_UNAVAILABLE",
         "EXECUTOR_FAILED",
+        "FLOPS_BUDGET_EXHAUSTED",
         "GOAL_NOT_REACHED",
         "HASH_MISMATCH",
         "HORIZON_EXCEEDED",
@@ -204,7 +210,13 @@
         "SHUFFLED_INTENT_LLM",
         "PLANNER_INTENT_LLM",
         "PLAN_REPLAY",
-        "PLANNER_RESOLUTION_FAILURE"
+        "PLANNER_RESOLUTION_FAILURE",
+        "A3_FULL_PLAN_LLM",
+        "SHUFFLED_A3_PLAN_LLM",
+        "A3R_RANDOM_CODE_PLAN_LLM",
+        "A2C_STRUCTURED_PLAN_LLM",
+        "SELF_PLAN_LLM",
+        "PLAN_GENERATION_FAILURE"
       ]
     },
     "source_kind": {
@@ -270,6 +282,35 @@
           "$ref": "#/$defs/internal_ref"
         }
       }
+    },
+    "trajectory_policy": {
+      "enum": [
+        "oracle_snapshot",
+        "frozen_full_plan"
+      ]
+    },
+    "replay_context": {
+      "enum": [
+        "PLANNER_CONFIRMATORY_A3",
+        "STAGE1B_E1"
+      ]
+    },
+    "plan_generation_status": {
+      "enum": [
+        "NONE",
+        "READY",
+        "FAILED"
+      ]
+    },
+    "plan_generator_type": {
+      "enum": [
+        "NONE",
+        "MICRO_PLANNER_A3",
+        "REUSED_E1_A3",
+        "MICRO_PLANNER_A3R",
+        "MICRO_PLANNER_A2C",
+        "SELF_PLAN_LLM"
+      ]
     }
   }
 }

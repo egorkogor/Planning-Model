@@ -1,91 +1,333 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/runtime_stack_lock.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/runtime_stack_lock.schema.json",
   "title": "Immutable runtime stack and offline model execution lock",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema_version", "run_id", "python", "packages", "accelerator",
-    "inference_backend", "model_runtime", "llm_model_aggregate_sha256",
-    "semantic_model_aggregate_sha256", "created_at", "lock_hash"
+    "schema_version",
+    "run_id",
+    "python",
+    "packages",
+    "accelerator",
+    "inference_backend",
+    "model_runtime",
+    "llm_model_aggregate_sha256",
+    "semantic_model_aggregate_sha256",
+    "created_at",
+    "lock_hash"
   ],
   "properties": {
-    "schema_version": {"const": "work-planner-runtime-lock/1.0"},
-    "run_id": {"type": "string", "minLength": 1},
+    "schema_version": {
+      "const": "work-planner-runtime-lock/1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
     "python": {
-      "type": "object", "additionalProperties": false,
-      "required": ["version", "executable_sha256"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "executable_sha256"
+      ],
       "properties": {
-        "version": {"type": "string", "pattern": "^3\\.11\\.[0-9]+$"},
-        "executable_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+        "version": {
+          "type": "string",
+          "pattern": "^3\\.11\\.[0-9]+$"
+        },
+        "executable_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        }
       }
     },
     "packages": {
-      "type": "array", "minItems": 4,
+      "type": "array",
+      "minItems": 4,
       "items": {
-        "type": "object", "additionalProperties": false,
-        "required": ["name", "version", "source_type", "artifact_sha256"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "version",
+          "source_type",
+          "artifact_sha256"
+        ],
         "properties": {
-          "name": {"type": "string", "minLength": 1},
-          "version": {"type": "string", "minLength": 1},
-          "source_type": {"enum": ["WHEEL", "VCS"]},
-          "artifact_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
-          "vcs_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_type": {
+            "enum": [
+              "WHEEL",
+              "VCS"
+            ]
+          },
+          "artifact_sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "vcs_revision": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          }
         },
         "allOf": [
           {
-            "if": {"properties": {"source_type": {"const": "VCS"}}, "required": ["source_type"]},
-            "then": {"required": ["vcs_revision"]}
+            "if": {
+              "properties": {
+                "source_type": {
+                  "const": "VCS"
+                }
+              },
+              "required": [
+                "source_type"
+              ]
+            },
+            "then": {
+              "required": [
+                "vcs_revision"
+              ]
+            }
           }
         ]
       },
       "allOf": [
-        {"contains": {"properties": {"name": {"const": "torch"}}, "required": ["name"]}},
-        {"contains": {"properties": {"name": {"const": "transformers"}}, "required": ["name"]}},
-        {"contains": {"properties": {"name": {"const": "sentence-transformers"}}, "required": ["name"]}}
+        {
+          "contains": {
+            "properties": {
+              "name": {
+                "const": "torch"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "name": {
+                "const": "transformers"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "name": {
+                "const": "sentence-transformers"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        }
       ]
     },
     "accelerator": {
-      "type": "object", "additionalProperties": false,
-      "required": ["cuda_runtime", "driver", "cudnn", "kernel_versions", "device_name"],
-      "properties": {
-        "cuda_runtime": {"type": "string", "minLength": 1},
-        "driver": {"type": "string", "minLength": 1},
-        "cudnn": {"type": "string", "minLength": 1},
-        "kernel_versions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-        "device_name": {"type": "string", "minLength": 1}
-      }
-    },
-    "inference_backend": {"enum": ["TRANSFORMERS", "VLLM"]},
-    "model_runtime": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "required": [
-        "language_model_only", "local_files_only", "offline_cache_root",
-        "offline_cache_manifest_sha256", "tokenizer_revision", "processor_revision",
-        "trust_remote_code"
+        "cuda_runtime",
+        "driver",
+        "cudnn",
+        "kernel_versions",
+        "device_name"
       ],
       "properties": {
-        "language_model_only": {"const": true},
-        "local_files_only": {"const": true},
-        "offline_cache_root": {"type": "string", "minLength": 1},
-        "offline_cache_manifest_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
-        "tokenizer_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-        "processor_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
-        "trust_remote_code": {"type": "boolean"}
+        "cuda_runtime": {
+          "type": "string",
+          "minLength": 1
+        },
+        "driver": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cudnn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kernel_versions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "device_name": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
-    "llm_model_aggregate_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
-    "semantic_model_aggregate_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
-    "created_at": {"$ref": "common.schema.json#/$defs/timestamp"},
-    "lock_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+    "inference_backend": {
+      "enum": [
+        "TRANSFORMERS",
+        "VLLM"
+      ]
+    },
+    "model_runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language_model_only",
+        "local_files_only",
+        "offline_cache_root",
+        "offline_cache_manifest_sha256",
+        "tokenizer_revision",
+        "processor_revision",
+        "trust_remote_code",
+        "generation_profiles"
+      ],
+      "properties": {
+        "language_model_only": {
+          "const": true
+        },
+        "local_files_only": {
+          "const": true
+        },
+        "offline_cache_root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "offline_cache_manifest_sha256": {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        "tokenizer_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "processor_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "trust_remote_code": {
+          "const": false
+        },
+        "generation_profiles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "stage1a_executor",
+            "stage1b_executor",
+            "self_plan_generator"
+          ],
+          "properties": {
+            "stage1a_executor": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "max_new_tokens",
+                "do_sample",
+                "num_beams"
+              ],
+              "properties": {
+                "max_new_tokens": {
+                  "const": 64
+                },
+                "do_sample": {
+                  "const": false
+                },
+                "num_beams": {
+                  "const": 1
+                }
+              }
+            },
+            "stage1b_executor": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "max_new_tokens",
+                "do_sample",
+                "num_beams"
+              ],
+              "properties": {
+                "max_new_tokens": {
+                  "const": 128
+                },
+                "do_sample": {
+                  "const": false
+                },
+                "num_beams": {
+                  "const": 1
+                }
+              }
+            },
+            "self_plan_generator": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "max_new_tokens",
+                "do_sample",
+                "num_beams"
+              ],
+              "properties": {
+                "max_new_tokens": {
+                  "const": 128
+                },
+                "do_sample": {
+                  "const": false
+                },
+                "num_beams": {
+                  "const": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "llm_model_aggregate_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "semantic_model_aggregate_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "lock_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
   },
   "allOf": [
     {
-      "if": {"properties": {"inference_backend": {"const": "VLLM"}}, "required": ["inference_backend"]},
+      "if": {
+        "properties": {
+          "inference_backend": {
+            "const": "VLLM"
+          }
+        },
+        "required": [
+          "inference_backend"
+        ]
+      },
       "then": {
         "properties": {
           "packages": {
-            "contains": {"properties": {"name": {"const": "vllm"}}, "required": ["name"]}
+            "contains": {
+              "properties": {
+                "name": {
+                  "const": "vllm"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
           }
         }
       }

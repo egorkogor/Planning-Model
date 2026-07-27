@@ -1,4 +1,4 @@
-schema_version: work-planner/1.13
+schema_version: work-planner/1.14
 candidate_id: C02
 language: en
 system_message_exact: You select exactly one next valid BlocksWorld action. Return exactly one JSON object and no other text.
@@ -10,11 +10,11 @@ action_signatures_exact:
 - END args=[] — valid only when every goal relation already holds.
 few_shot_examples_exact:
 - input: 'CURRENT_STATE: block_0 is clear; block_0 is on the table; the hand is empty. GOAL: block_0 must be on the table.'
-  output: '{"schema_version":"work-planner/1.13","action":"END","args":[]}'
+  output: '{"schema_version":"work-planner/1.14","action":"END","args":[]}'
 - input: 'CURRENT_STATE: block_0 is clear; block_0 is on the table; block_1 is clear; block_1 is on the table; the hand is
     empty. GOAL: block_0 must be on block_1.'
-  output: '{"schema_version":"work-planner/1.13","action":"PICK_UP","args":["block_0"]}'
-output_format_exact: '{"schema_version":"work-planner/1.13","action":"<PICK_UP|PUT_DOWN|UNSTACK|STACK|END>","args":["<aliases
+  output: '{"schema_version":"work-planner/1.14","action":"PICK_UP","args":["block_0"]}'
+output_format_exact: '{"schema_version":"work-planner/1.14","action":"<PICK_UP|PUT_DOWN|UNSTACK|STACK|END>","args":["<aliases
   in signature order>"]}'
 utf8_normalization: NFC
 line_ending: LF
@@ -61,9 +61,9 @@ message_sequence_template_exact:
 
     OUTPUT_FORMAT
 
-    {"schema_version":"work-planner/1.13","action":"<PICK_UP|PUT_DOWN|UNSTACK|STACK|END>","args":["<aliases in signature order>"]}'
+    {"schema_version":"work-planner/1.14","action":"<PICK_UP|PUT_DOWN|UNSTACK|STACK|END>","args":["<aliases in signature order>"]}'
 - role: assistant
-  content_exact: '{"schema_version":"work-planner/1.13","action":"END","args":[]}'
+  content_exact: '{"schema_version":"work-planner/1.14","action":"END","args":[]}'
 - role: user
   content_exact: 'TASK
 
@@ -109,9 +109,9 @@ message_sequence_template_exact:
 
     OUTPUT_FORMAT
 
-    {"schema_version":"work-planner/1.13","action":"<PICK_UP|PUT_DOWN|UNSTACK|STACK|END>","args":["<aliases in signature order>"]}'
+    {"schema_version":"work-planner/1.14","action":"<PICK_UP|PUT_DOWN|UNSTACK|STACK|END>","args":["<aliases in signature order>"]}'
 - role: assistant
-  content_exact: '{"schema_version":"work-planner/1.13","action":"PICK_UP","args":["block_0"]}'
+  content_exact: '{"schema_version":"work-planner/1.14","action":"PICK_UP","args":["block_0"]}'
 - role: user
   content_source: RUNTIME_USER_PROMPT_UTF8
 chat_template_application:

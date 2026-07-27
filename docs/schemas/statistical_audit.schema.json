@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/statistical_audit.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/statistical_audit.schema.json",
   "title": "Independent statistical implementation audit",
   "type": "object",
   "additionalProperties": false,
@@ -23,7 +23,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "work-planner-stat-audit/1.0"
+      "const": "work-planner-stat-audit/1.1"
     },
     "run_id": {
       "type": "string"
@@ -93,7 +93,7 @@
               "HIERARCHICAL_BOOTSTRAP",
               "CLUSTERED_STAGE1A_BOOTSTRAP",
               "PAIRED_STAGE1B_BOOTSTRAP",
-              "PAIRED_TOST",
+              "NONINFERIORITY_AND_DIRECTION_GATES",
               "SAMPLE_SIZE_POWER",
               "TIE_BREAK_AND_MISSING_PAIRS",
               "DECISION_GATE_RECOMPUTATION"
@@ -202,7 +202,7 @@
             "type": "object",
             "properties": {
               "check_id": {
-                "const": "PAIRED_TOST"
+                "const": "NONINFERIORITY_AND_DIRECTION_GATES"
               }
             },
             "required": [

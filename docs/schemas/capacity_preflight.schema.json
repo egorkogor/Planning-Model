@@ -1,0 +1,429 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/capacity_preflight.schema.json",
+  "title": "Recomputed implementation and protocol capacity preflight",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "status",
+    "training_contract_sha256",
+    "hyperparameter_contract_sha256",
+    "dataset_contract_sha256",
+    "compute_profile_sha256",
+    "resource_plan_sha256",
+    "corpus_manifest_sha256",
+    "test_status",
+    "development_workloads",
+    "final_training_workloads",
+    "flops_sensitivity_workloads",
+    "stage1b_inference_workloads",
+    "summary",
+    "report_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-capacity/1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "BLOCKED_PROTOCOL_CAPACITY",
+        "FAIL_PREFLIGHT"
+      ]
+    },
+    "training_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "hyperparameter_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "dataset_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "compute_profile_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "resource_plan_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "corpus_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "test_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clean_checkout",
+        "all_arms_forward_backward",
+        "two_batch_overfit",
+        "serialization",
+        "fake_episode",
+        "statistics_golden"
+      ],
+      "properties": {
+        "clean_checkout": {
+          "const": "PASS"
+        },
+        "all_arms_forward_backward": {
+          "const": "PASS"
+        },
+        "two_batch_overfit": {
+          "const": "PASS"
+        },
+        "serialization": {
+          "const": "PASS"
+        },
+        "fake_episode": {
+          "const": "PASS"
+        },
+        "statistics_golden": {
+          "const": "PASS"
+        }
+      }
+    },
+    "development_workloads": {
+      "type": "array",
+      "minItems": 24,
+      "maxItems": 24,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "workload_id",
+          "variant",
+          "seed",
+          "optimizer_updates",
+          "batch_size_examples",
+          "unique_training_rows",
+          "processed_examples",
+          "estimated_gpu_seconds",
+          "peak_vram_bytes",
+          "checkpoint_bytes"
+        ],
+        "properties": {
+          "workload_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "variant": {
+            "enum": [
+              "A1",
+              "A2",
+              "A2b",
+              "A2c",
+              "A3",
+              "A3r"
+            ]
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "config_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "optimizer_updates": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "batch_size_examples": {
+            "const": 128
+          },
+          "unique_training_rows": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "processed_examples": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "estimated_gpu_seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "peak_vram_bytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "checkpoint_bytes": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "final_training_workloads": {
+      "type": "array",
+      "minItems": 30,
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "workload_id",
+          "variant",
+          "seed",
+          "optimizer_updates",
+          "batch_size_examples",
+          "unique_training_rows",
+          "processed_examples",
+          "estimated_gpu_seconds",
+          "peak_vram_bytes",
+          "checkpoint_bytes"
+        ],
+        "properties": {
+          "workload_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "variant": {
+            "enum": [
+              "A1",
+              "A2",
+              "A2b",
+              "A2c",
+              "A3",
+              "A3r"
+            ]
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "config_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "optimizer_updates": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "batch_size_examples": {
+            "const": 128
+          },
+          "unique_training_rows": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "processed_examples": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "estimated_gpu_seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "peak_vram_bytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "checkpoint_bytes": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "stage1b_inference_workloads": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "arm",
+          "task_capacity",
+          "estimated_flops",
+          "estimated_gpu_seconds",
+          "maximum_plan_calls_per_task",
+          "maximum_executor_calls_per_task"
+        ],
+        "properties": {
+          "arm": {
+            "enum": [
+              "E0_EQUAL_TOKENS_RAW",
+              "E1_A3_FULL_PLAN_RAW",
+              "E2_SHUFFLED_A3_FULL_PLAN_RAW",
+              "E3_A3R_RANDOM_CODE_FULL_PLAN_RAW",
+              "E4_A2C_STRUCTURED_FULL_PLAN_RAW",
+              "E5_SELF_PLAN_RAW",
+              "P_FULL_PLAN_REPLAY_RAW"
+            ]
+          },
+          "task_capacity": {
+            "const": 4000
+          },
+          "estimated_flops": {
+            "type": "number",
+            "minimum": 0
+          },
+          "estimated_gpu_seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "maximum_plan_calls_per_task": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "maximum_executor_calls_per_task": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 16
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "development_workload_count",
+        "final_training_workload_count",
+        "total_training_workload_count",
+        "flops_sensitivity_workload_count",
+        "total_sensitivity_processed_examples",
+        "stage1b_arm_count",
+        "final_optimizer_updates_per_workload",
+        "final_batch_size_examples",
+        "final_processed_examples_per_workload",
+        "total_final_processed_examples",
+        "estimated_gpu_seconds",
+        "maximum_gpu_seconds",
+        "estimated_storage_bytes",
+        "maximum_storage_bytes"
+      ],
+      "properties": {
+        "development_workload_count": {
+          "const": 24
+        },
+        "final_training_workload_count": {
+          "const": 30
+        },
+        "total_training_workload_count": {
+          "const": 64
+        },
+        "stage1b_arm_count": {
+          "const": 7
+        },
+        "final_optimizer_updates_per_workload": {
+          "const": 12000
+        },
+        "final_batch_size_examples": {
+          "const": 128
+        },
+        "final_processed_examples_per_workload": {
+          "const": 1536000
+        },
+        "total_final_processed_examples": {
+          "const": 46080000
+        },
+        "estimated_gpu_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maximum_gpu_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "estimated_storage_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maximum_storage_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "flops_sensitivity_workload_count": {
+          "const": 10
+        },
+        "total_sensitivity_processed_examples": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "report_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "flops_sensitivity_workloads": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "workload_id",
+          "variant",
+          "seed",
+          "optimizer_updates",
+          "batch_size_examples",
+          "unique_training_rows",
+          "processed_examples",
+          "estimated_gpu_seconds",
+          "peak_vram_bytes",
+          "checkpoint_bytes"
+        ],
+        "properties": {
+          "workload_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "variant": {
+            "enum": [
+              "A2c",
+              "A3"
+            ]
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "config_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "optimizer_updates": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "batch_size_examples": {
+            "const": 128
+          },
+          "unique_training_rows": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "processed_examples": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "estimated_gpu_seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "peak_vram_bytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "checkpoint_bytes": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  }
+}

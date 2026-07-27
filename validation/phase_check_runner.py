@@ -24,6 +24,9 @@ from validation.signature_validator import verify_signed_manifest
 from validation.hashing import hash_json
 from validation.verify_lock import verify as verify_lock
 from validation.trust_topology_validator import verify as verify_trust_topology
+from validation.full_plan_lineage_validator import validate_lineage_index
+from validation.capacity_validator import validate_capacity_preflight, validate_compute_profile
+from validation.random_codebook_validator import validate_random_codebook, validate_signature_bank
 
 
 def sha(path: Path) -> str:
@@ -62,7 +65,7 @@ def core_check(kind: str, phase: str, check_id: str, report: dict) -> list[str]:
         if not path.is_file(): errors.append("scope artifact missing")
         else:
             text = path.read_text(encoding="utf-8")
-            if "work-planner/1.13" not in text or "runbook 2.13" not in text: errors.append("scope version markers missing")
+            if "work-planner/1.14" not in text or "runbook 2.14" not in text: errors.append("scope version markers missing")
     elif kind == "confirmatory_absent":
         forbidden = []
         for base in (ROOT / "results", ROOT / "sealed"):
@@ -158,6 +161,17 @@ def core_check(kind: str, phase: str, check_id: str, report: dict) -> list[str]:
                 names = {row["name"]: row for row in obj.get("packages", [])}
                 for required_name in ("torch", "transformers", "sentence-transformers"):
                     if required_name not in names: errors.append(f"runtime stack missing {required_name}")
+                runtime = obj.get("model_runtime", {})
+                if runtime.get("trust_remote_code") is not False:
+                    errors.append("trust_remote_code must be false")
+                expected_profiles = {"stage1a_executor": 64, "stage1b_executor": 128, "self_plan_generator": 128}
+                profiles = runtime.get("generation_profiles", {})
+                for profile_name, expected_tokens in expected_profiles.items():
+                    profile = profiles.get(profile_name, {})
+                    if profile.get("max_new_tokens") != expected_tokens:
+                        errors.append(f"{profile_name} max_new_tokens must equal {expected_tokens}")
+                    if profile.get("do_sample") is not False or profile.get("num_beams") != 1:
+                        errors.append(f"{profile_name} decoding must be deterministic")
                 if obj.get("inference_backend") == "VLLM" and "vllm" not in names:
                     errors.append("VLLM backend selected without pinned vllm package")
                 for rel, field in (("locks/llm_model_lock.json", "llm_model_aggregate_sha256"), ("locks/semantic_target_model_lock.json", "semantic_model_aggregate_sha256")):
@@ -194,6 +208,55 @@ def core_check(kind: str, phase: str, check_id: str, report: dict) -> list[str]:
             if obj.get("reviewed_commit") != report.get("implementation_commit"):
                 errors.append(f"{kind} reviewed_commit differs from phase implementation_commit")
         except Exception as exc: errors.append(str(exc))
+    elif kind == "random_codebook":
+        try:
+            bank_path = ROOT / "semantic_bank/signatures/manifest.json"
+            codebook_path = ROOT / "semantic_bank/random-codebook/manifest.json"
+            if not bank_path.is_file() or not codebook_path.is_file():
+                errors.append("semantic signature bank or random codebook manifest missing")
+            else:
+                bank = load_json(bank_path); codebook = load_json(codebook_path)
+                errors.extend(validate_schema(bank, "semantic_signature_bank.schema.json"))
+                errors.extend(validate_signature_bank(bank))
+                errors.extend(validate_schema(codebook, "random_codebook_manifest.schema.json"))
+                errors.extend(validate_random_codebook(ROOT, codebook))
+                if bank.get("run_id") != report.get("run_id") or codebook.get("run_id") != report.get("run_id"):
+                    errors.append("random codebook lineage run_id differs from phase report")
+        except Exception as exc:
+            errors.append(str(exc))
+    elif kind == "capacity_preflight":
+        try:
+            path = ROOT / "reports/preflight-final.json"
+            if not path.is_file():
+                errors.append("capacity preflight report missing")
+            else:
+                obj = load_json(path)
+                errors.extend(validate_schema(obj, "capacity_preflight.schema.json"))
+                errors.extend(validate_capacity_preflight(ROOT, obj))
+                if obj.get("run_id") != report.get("run_id"):
+                    errors.append("capacity preflight run_id differs from phase report")
+                compute = load_json(ROOT / "reports/compute-profile.json")
+                errors.extend(validate_schema(compute, "compute_profile.schema.json"))
+                errors.extend(validate_compute_profile(compute, ROOT))
+        except Exception as exc:
+            errors.append(str(exc))
+    elif kind in {"planner_confirmatory_full_plan_lineage", "stage1b_full_plan_lineage"}:
+        try:
+            if kind == "planner_confirmatory_full_plan_lineage":
+                rel, expected_stage = "results/planner-confirmatory/lineage-index.json", "PLANNER"
+            else:
+                rel, expected_stage = "results/stage1b-confirmatory/lineage-index.json", "STAGE1B"
+            path = ROOT / rel
+            if not path.is_file():
+                errors.append(f"full-plan lineage index missing: {rel}")
+            else:
+                obj = load_json(path)
+                errors.extend(validate_schema(obj, "full_plan_lineage_index.schema.json"))
+                errors.extend(validate_lineage_index(ROOT, obj, expected_stage=expected_stage))
+                if obj.get("run_id") != report.get("run_id"):
+                    errors.append("lineage index run_id differs from phase report")
+        except Exception as exc:
+            errors.append(str(exc))
     elif kind == "bootstrap_covers_trust_verifiers":
         try:
             manifest=load_json(ROOT/"release/BOOTSTRAP_MANIFEST.json")
@@ -208,6 +271,9 @@ def core_check(kind: str, phase: str, check_id: str, report: dict) -> list[str]:
                 "validation/operator_decision_validator.py",
                 "validation/confirmatory_lineage_validator.py",
                 "validation/code_fingerprint.py",
+                "validation/full_plan_lineage_validator.py",
+                "validation/capacity_validator.py",
+                "validation/random_codebook_validator.py",
             }
             missing=required-paths
             if missing: errors.append(f"bootstrap omits trust verifiers: {sorted(missing)}")

@@ -58,13 +58,13 @@ def test_machine_gates_include_seed_direction_positions_and_stage_validity():
         "HASH_VIOLATION_ZERO",
         "DETERMINISM_VIOLATION_ZERO",
     }
-    assert required_validity <= {g["gate_id"] for g in gates["STAGE1A"]["gates"]}
-    assert required_validity <= {g["gate_id"] for g in gates["STAGE1B"]["gates"]}
+    assert required_validity <= {g["gate_id"] for g in gates["STAGE1A"]["core_gates"]}
+    assert required_validity <= {g["gate_id"] for g in gates["STAGE1B"]["core_gates"]}
 
 
 def test_sample_size_contract_uses_final_estimator_structures():
     contract = load_yaml("docs/statistics/statistics_contract_v1.yaml")["sample_size"]
-    assert contract["method"] == "estimator_matched_paired_binary_simulation_v4"
+    assert contract["method"] == "estimator_matched_paired_binary_simulation_v5"
     assert contract["estimator_match_required"] is True
     assert contract["power_confidence_level"] == 0.95
     assert contract["power_confirmation_points"] == 2
@@ -96,9 +96,11 @@ def test_role_registry_requires_challenge_response_attestation():
     } <= required
 
 
-def test_p_replay_is_receding_horizon_raw_and_scientifically_locked():
+def test_p_replay_uses_two_precomputed_full_plan_contexts_without_replanning():
     contract = load_yaml("docs/controls/p_replay_contract_v1.yaml")
-    assert contract["rollout"]["mode"] == "receding_horizon_raw"
-    assert contract["rollout"]["planner_recomputed_after_every_executed_action"] is True
-    assert contract["rollout"]["llm_calls"] == 0
-    assert contract["rollout"]["recovery"] == "forbidden"
+    assert set(contract["contexts"]) == {"PLANNER_CONFIRMATORY_A3", "STAGE1B_E1"}
+    assert contract["shared_invariants"]["plan_generation_before_execution"] == "required"
+    assert contract["shared_invariants"]["planner_calls_during_execution"] == 0
+    assert contract["shared_invariants"]["plan_patch_or_regeneration"] == "forbidden"
+    assert contract["contexts"]["PLANNER_CONFIRMATORY_A3"]["phase"] == "P08"
+    assert contract["contexts"]["STAGE1B_E1"]["phase"] == "P17"

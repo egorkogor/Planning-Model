@@ -1,7 +1,7 @@
 # Автономный плейбук Work Planner / BlocksWorld
 
 **Версия плейбука:** 1.3
-**Протокол:** Implementation Spec v1.13, Stage 1 Runbook v2.13.
+**Протокол:** Implementation Spec v1.14, Stage 1 Runbook v2.14.
 
 ## Что получает оператор
 
@@ -47,7 +47,7 @@ Single-agent или unsealed confirmatory автоматически получ�
 | P03 | contract-level dry-run, runtime schemas, persistence, machine-check dispatcher и validators; без обучения моделей | — |
 | P04 | BlocksWorld, Oracle, generator, executable Intent Labeler | — |
 | P05 | fixed dataset splits, suffix/off-policy corpus | — |
-| P06 | A1–A5 implementations, clean preflight, independent statistics audit и Implementation lock | G06 |
+| P06 | six trained variants plus A4/A5 interventions, clean preflight, independent statistics audit и Implementation lock | G06 |
 | P07 | planner development/pilot/N/freeze | G07 |
 | P08 | sealed Planner confirmatory | — |
 | P09 | Planner scientific decision | — |
@@ -109,7 +109,7 @@ P01 всегда требует DecisionRecord. Внешний signer подпи
 
 ## Статистика и resolver
 
-Методы, random seeds, CI, power, TOST и thresholds берутся только из `docs/statistics/statistics_contract_v1.yaml` и `docs/semantic/semantic_resolver_v1.yaml`. Подмена метода считается contract mutation.
+Методы, random seeds, CI, power, non-inferiority/direction rules and thresholds берутся только из `docs/statistics/statistics_contract_v1.yaml` и `docs/semantic/semantic_resolver_v1.yaml`. Подмена метода считается contract mutation.
 
 ## Цикл саморевью
 

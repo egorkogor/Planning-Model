@@ -12,7 +12,6 @@ from analysis.decision_gates import (
     evaluate_gate,
     hierarchical_planner_bootstrap,
     paired_task_bootstrap,
-    paired_tost,
     positive_seed_count,
     stage_decision,
     wilson_binary_rate_ci,
@@ -42,6 +41,9 @@ def _definitions(stage: str) -> list[dict]:
             out.append({**g,"gate_group":"STAGE1B_ELIGIBILITY"})
         return out
     group = "INTERFACE" if stage == "STAGE1A" else "END_TO_END"
+    if "core_gates" in row:
+        return ([{**g, "gate_group": group} for g in row["core_gates"]]
+                + [{**g, "gate_group": "DIAGNOSTIC"} for g in row.get("diagnostic_gates", [])])
     return [{**g,"gate_group":group} for g in row["gates"]]
 
 
@@ -119,8 +121,8 @@ def _validate_sample_size_requirement(name: str, row: dict, stage: str) -> list[
         return [f"{name}: analysis_type {kind} != locked stage estimator {expected_kind}"]
     if kind == "PLANNER_HIERARCHICAL":
         groups = row.get("seed_groups", {})
-        if len(groups) != 3:
-            errors.append(f"{name}: exactly three final seed groups required")
+        if len(groups) != 5:
+            errors.append(f"{name}: exactly five final seed groups required")
         lengths = {len(rows) for rows in groups.values()}
         if len(lengths) != 1:
             errors.append(f"{name}: seed groups must have identical paired task counts")
@@ -149,7 +151,7 @@ def _validate_sample_size_requirement(name: str, row: dict, stage: str) -> list[
 
 def validate_sample_size_report(obj: dict, sample_size_input: dict | None = None) -> list[str]:
     errors: list[str] = []
-    if obj.get("method") != "estimator_matched_paired_binary_simulation_v4":
+    if obj.get("method") != "estimator_matched_paired_binary_simulation_v5":
         errors.append("sample-size method differs from statistics contract")
     if obj.get("analysis_code_sha256") != analysis_code_digest():
         errors.append("analysis_code_sha256 does not match the locked analysis implementation")
@@ -162,8 +164,10 @@ def validate_sample_size_report(obj: dict, sample_size_input: dict | None = None
     requirements = sample_size_input.get("requirements", {})
     expected_by_stage = {
         "PLANNER": {"primary_ci", "primary_power", "current_vs_shuffled_power"},
-        "STAGE1A": {"primary_ci", "primary_power", "current_vs_shuffled_power", "equivalence_TOST_power"},
-        "STAGE1B": {"primary_ci", "primary_power", "current_vs_shuffled_power", "equivalence_TOST_power"},
+        "STAGE1A": {"primary_ci", "primary_power", "current_vs_shuffled_power"},
+        "STAGE1B": {"primary_ci", "primary_power", "current_vs_shuffled_power",
+                    "random_code_power", "structured_noninferiority_power",
+                    "self_plan_power", "flops_direction_power"},
     }
     expected_names = expected_by_stage.get(stage, set())
     if set(requirements) != expected_names:
@@ -190,7 +194,6 @@ def validate_sample_size_report(obj: dict, sample_size_input: dict | None = None
             design_effect=inputs["target_effect"],
             minimum_effect_gate=inputs["minimum_effect_gate"],
             half_width=inputs["target_ci_half_width"],
-            equivalence_margin=inputs["equivalence_margin"],
             target_power=inputs["target_power"],
             simulations=inputs["simulation_count"],
             ci_resamples=inputs["ci_resamples_per_simulation"],
@@ -249,10 +252,8 @@ def validate_scientific_decision(obj: dict, analysis_input: dict | None = None, 
                 errors.append(f"missing analysis comparison {definition['comparison']}"); continue
             raw=_raw_differences(comp)
             if definition["rule"]=="paired_tost":
-                if raw is None:
-                    errors.append(f"gate {gate['gate_id']} paired_tost has no raw differences"); continue
-                tost=paired_tost(raw,float(definition["threshold"]))
-                estimate,lo,hi=float(tost["estimate"]),float(tost["ci_low"]),float(tost["ci_high"])
+                errors.append(f"gate {gate['gate_id']} uses forbidden confirmatory paired_tost rule")
+                continue
             elif definition["rule"]=="minimum_positive_seed_count":
                 if comp.get("analysis_type") != "PLANNER_HIERARCHICAL":
                     errors.append(f"gate {gate['gate_id']} requires PLANNER_HIERARCHICAL input"); continue

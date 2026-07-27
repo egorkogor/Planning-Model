@@ -1,9 +1,9 @@
 # Planner MVP и MicroPlanner — нормативная спецификация
 
-**Версия:** 1.13
-**Дата:** 26 июля 2026
+**Версия:** 1.14
+**Дата:** 27 июля 2026
 **Статус:** исполняемая спецификация архивного эксперимента **Work Planner / BlocksWorld**.
-**Stage 1:** `Planner_LLM_Stage1_Operator_Runbook_v2.13_RU.md`.
+**Stage 1:** `Planner_LLM_Stage1_Operator_Runbook_v2.14_RU.md`.
 **Автономное исполнение:** `docs/operator/AUTONOMOUS_EXECUTION_PLAYBOOK_RU.md`.
 
 Этот эксперимент не является основной архитектурой Cognitive Planner проекта ML Brain. Он проверяет узкий тезис: может ли одна causal position представлять один исполнимый шаг, а отдельное semantic representation — улучшать следующие шаги и работу frozen LLM.
@@ -12,17 +12,22 @@
 
 ---
 
-# 0. Что исправлено к v1.13
+# 0. Что исправлено к v1.14
 
-1. Исправлен порядок аргументов lock verifier; P02 теперь действительно выполняет static validation и pytest, а не только проверяет загрузку схем.
-2. Версия NumPy унифицирована с `requirements.lock`: `numpy==2.3.5`; byte-reproducibility генератора привязана к одному environment lock.
-3. Hyperparameter selection задан одним алгоритмом в обоих training contracts: mean rank по A1/A2/A2b/A2c/A3 с едиными floors и tie-breaks.
-4. Parameter matching стал exact: общий superset inventory и нулевая допустимая разница по parameter count.
-5. Sample-size simulation генерирует только paired-binary cells `(0,0)/(0,1)/(1,0)/(1,1)` и сохраняет estimator structure; добавление continuous effect к binary difference запрещено.
-6. Stage 1A confirmatory reserve увеличен до 4 000 base tasks.
-7. Hidden Stage 1B control/support certification выполняет Data Sealer до доступа к outcomes; signed sealer manifest обязан подтверждать coverage `1.0`.
-8. C01–C04 содержат точный ordered chat message sequence; few-shot examples представлены отдельными user/assistant messages и входят в prompt hash/token accounting.
-9. Intent Labeler и его outputs окончательно классифицированы как Scientific-lock content; implementation-only patch не может менять label semantics.
+1. Stage 1B переведён с reactive next-intent на один полный frozen plan, созданный до исполнения.
+2. Добавлен `EpisodePlanManifest` и машинная цепочка `manifest → WorkPlan → positions → EpisodeLog → AnalysisInput`.
+3. Введены семь Stage 1B arms: neutral, A3 full plan, shuffled A3, random-code A3r, structured A2c, self-plan и raw full-plan replay.
+4. Planner call выполняется один раз до исполнения; replanning, plan patch и suffix regeneration запрещены.
+5. Ошибка plan generation/resolution остаётся paired failure с нулём executor calls; скрытое исключение задачи запрещено.
+6. Shuffled degeneracy только логируется и не меняет eligibility. Data Sealer не использует Planner/LLM outputs для отбора задач.
+7. A2c принимает только комбинации из frozen signature bank; неизвестная комбинация fail-closed как `SEMANTIC_UNRESOLVED`.
+8. Final training использует пять seeds и единственный допустимый checkpoint на optimizer step 12 000.
+9. Sample-size design alternative 7.5 п.п. отделена от GO boundary 5 п.п.; power принимается по нижней exact-binomial bound на двух соседних N.
+10. Confirmatory TOST удалён из Stage 1A/1B decisions и sample-size components; diagnostics не имеют veto.
+11. FLOPs-matched direction стало core gate, а pre-outcome compute cap входит в hash-bound profile; exhaustion остаётся paired failure.
+12. Capacity preflight пересчитывает 24 development + 30 primary final + 10 FLOPs-sensitivity workloads и семь Stage 1B arms по evidence-файлам.
+13. Runtime фиксирует `trust_remote_code=false` и exact decoding profiles 64/128/128 tokens.
+14. Trust Topology, Scientific и Implementation locks, signed manual decisions и confirmatory lineage остаются обязательными.
 
 ---
 
@@ -40,6 +45,7 @@
 | A2b | A2 + `intent_id` | 7 классов | predicted intent embedding |
 | A2c | A2 + categorical signature | все поля semantic signature | predicted field embeddings |
 | A3 | A2 + normalized 384-d `z` | frozen semantic encoder | predicted `z` projection |
+| A3r | A3-shaped latent | frozen deterministic random code per exact semantic signature | predicted random-code projection |
 | A4 | A3, но semantic feedback = 0 | как A3 | zero vector |
 | A5 | A3, но semantic feedback shuffled | как A3 | foreign `z` по frozen manifest |
 
@@ -72,7 +78,7 @@
 6. эта спецификация;
 7. phase prompt.
 
-Runtime version: `work-planner/1.13`.
+Runtime version: `work-planner/1.14`.
 
 Ключевые контракты:
 
@@ -217,7 +223,7 @@ Fixed contract:
 - batch 128, max 20 epochs, min 5, patience 3;
 - grad clip 1.0;
 - validation каждые 500 updates, checkpoint 1000;
-- final seeds: 101, 202, 303.
+- final seeds: 101, 202, 303, 404, 505.
 
 Development grid — ровно 4 configs: LR {1e−4, 3e−4} × dropout {0, 0.1}; остальные параметры fixed. Development seed 17.
 
@@ -227,11 +233,17 @@ Selection composite:
 0.70 goal_success + 0.20 valid_action_rate + 0.10 exact_plan_match
 ```
 
-Development floor: valid action ≥0.90, goal success ≥0.50. Stage 1B eligibility оценивается отдельно и строже: A3 HORIZON goal success ≥0.65 with lower 95% CI ≥0.60; A3 SIZE_OOD goal success ≥0.60 with lower CI ≥0.55; valid action ≥0.90; P_REPLAY ≥0.70. Tie-break фиксирован. После выбора final config grid не открывается повторно.
+Development floor: valid action ≥0.90, goal success ≥0.50. Stage 1B eligibility оценивается отдельно и строже: A3 HORIZON goal success ≥0.65 with lower 95% CI ≥0.60; A3 SIZE_OOD goal success ≥0.60 with lower CI ≥0.55; valid action ≥0.90; Planner-confirmatory A3 full-plan replay ≥0.70. Tie-break фиксирован. После выбора final config grid не открывается повторно.
 
 Loss weights и contrastive temperature заданы `planner_training_contract_v1.yaml`.
 
 ---
+
+# 7.1. Stage 1B full-plan transfer
+
+Stage 1B не вызывает Planner на каждом state. Для каждого plan arm сначала создаётся или привязывается один immutable `WorkPlan`; затем независимая arm trajectory потребляет позиции 0..n без replanning. E2 и P могут переиспользовать exact E1 plan artifact, но не E1 state/actions/outcomes. E5 генерирует self-plan отдельным frozen LLM call; его plan tokens учитываются отдельно от executor tokens. Любая plan-generation failure остаётся в paired analysis как `goal_success=false`.
+
+Семь обязательных arms и их machine lineage заданы `common.schema.json`, `episode_plan_manifest.schema.json`, `full_plan_lineage_index.schema.json` и `validation/full_plan_lineage_validator.py`.
 
 # 8. Raw rollout и statistics
 
@@ -248,7 +260,7 @@ Planner decision:
 - per-seed metrics;
 - hierarchical bootstrap: seed, затем base task;
 - 10 000 resamples;
-- минимум 2/3 seeds с одинаковым направлением;
+- минимум 3/5 seeds с одинаковым направлением;
 - equal-data primary и FLOPs-matched sensitivity должны согласоваться.
 
 ---
@@ -261,7 +273,7 @@ P00–P20 заданы registry и explicit state machine. Важные прав
 - переход берётся только по declared outcome;
 - scientific STOP помечает downstream фазы `SKIPPED_BY_CONTRACT` и идёт в обязательный audit;
 - Scientific lock проверяется до/после каждой фазы с P02; Implementation lock — с P06;
-- любое изменение Scientific-lock path блокирует run и требует v1.13/new run;
+- любое изменение Scientific-lock path блокирует run и требует v1.14/new run;
 - Builder не видит confirmatory plaintext;
 - Evaluation Runner запускает confirmatory на отдельной среде;
 - Audit Agent обязательно воспроизводит run на clean checkout.
@@ -270,6 +282,7 @@ P00–P20 заданы registry и explicit state machine. Важные прав
 
 - G00 scope;
 - G01 cloud budget, только если spend>0;
+- G06 independent statistics/implementation audits и Implementation lock;
 - G07 Planner freeze;
 - G12 Stage 1A freeze;
 - G16 Stage 1B freeze;
@@ -303,9 +316,10 @@ Final acceptance требует independent audit PASS и обязательно
 
 ## 18.1 Финальное обучение
 Development использует early stopping. Финальные checkpoints A1/A2/A2b/A2c/A3 обучаются ровно 12 000 optimizer updates на одинаковом порядке примеров для каждого seed. A4/A5 не обучаются: это interventions над тем же A3 checkpoint, и hash весов обязан совпадать.
+ Единственный допустимый final checkpoint — step 12 000; выбор промежуточного best checkpoint запрещён. P06 capacity preflight пересчитывает полный development grid (24 workloads), шесть primary variants × пять final seeds (30 workloads), десять A3/A2c FLOPs-sensitivity workloads и семь Stage 1B inference arms.
 
 ## 18.2 Statistics source of truth
-Все CI, power, equivalence и решения вычисляются только `analysis/sample_size.py` и `analysis/decision_gates.py` по `docs/statistics/statistics_contract_v1.yaml`. Отчёт обязан ссылаться на hash исходного paired-input artifact.
+Все CI, power, non-inferiority/direction gates и решения вычисляются только `analysis/sample_size.py` и `analysis/decision_gates.py` по `docs/statistics/statistics_contract_v1.yaml`. Отчёт обязан ссылаться на hash исходного paired-input artifact.
 
 ## 18.3 Resolver
 Thresholds similarity/margin выбираются только на development по `docs/semantic/semantic_resolver_v1.yaml`, фиксируются до Stage 1 pilot и не меняются.
@@ -324,21 +338,21 @@ Builder не материализует confirmatory plaintext и не знае�
 
 ## 19.2 Toy preflight до Implementation lock
 
-Preflight разделён на два уровня. P03 выполняет contract-level dry-run на n=3 и 20–50 synthetic development-only задачах: stub interfaces, serialization round-trip, atomic persistence/recovery, fake episode, golden statistics/sample-size и adversarial gate-verifier — без обучения Planner. После реализации A1–A5 P06 выполняет clean-checkout full toy preflight: forward/backward всех arms, two-batch overfit, serialization, полный fake episode и те же golden statistics. Ни один pilot outcome до утверждения G06 и активации Implementation lock недоступен.
+Preflight разделён на два уровня. P03 выполняет contract-level dry-run на n=3 и 20–50 synthetic development-only задачах: stub interfaces, serialization round-trip, atomic persistence/recovery, fake episode, golden statistics/sample-size и adversarial gate-verifier — без обучения Planner. После реализации шести обучаемых вариантов A1/A2/A2b/A2c/A3/A3r и двух A3-интервенций A4/A5 P06 выполняет clean-checkout full toy preflight: forward/backward всех arms, two-batch overfit, serialization, полный fake episode и те же golden statistics. Ни один pilot outcome до утверждения G06 и активации Implementation lock недоступен.
 
 ## 19.3 Разделение архитектурного GO и Stage 1B eligibility
 
-`GO_PLANNER_ARCHITECTURE` означает, что A3 прошла относительные causal gates. Stage 1B разрешён только при абсолютных floors: A3 HORIZON point ≥0.65, lower CI ≥0.60, valid-action rate ≥0.90, P_REPLAY ≥0.70. Иначе результат фиксируется как `GO_PLANNER_DIAGNOSTIC_ONLY`; Stage 1A остаётся допустимым, Stage 1B запрещён.
+`GO_PLANNER_ARCHITECTURE` означает, что A3 прошла относительные causal gates. Stage 1B разрешён только при абсолютных floors: A3 HORIZON point ≥0.65, lower CI ≥0.60, valid-action rate ≥0.90, Planner-confirmatory A3 full-plan replay ≥0.70. Иначе результат фиксируется как `GO_PLANNER_DIAGNOSTIC_ONLY`; Stage 1A остаётся допустимым, Stage 1B запрещён.
 
 ## 19.4 Независимый статистический аудит
 
-До P07 обязательна ручная точка G06. Reviewer должен быть человеком-статистиком или моделью другой family, чем Builder, и проверить hierarchical bootstrap, clustered Stage 1A bootstrap, paired TOST, sample-size/power, tie-break/missing-pairs и recomputation decision gates.
+До P07 обязательна ручная точка G06. Reviewer должен быть человеком-статистиком или моделью другой family, чем Builder, и проверить hierarchical bootstrap, clustered Stage 1A bootstrap, non-inferiority/direction gates, sample-size/power, tie-break/missing-pairs и recomputation decision gates.
 
 
 ### Нормативный вход статистики
 
 `AnalysisInput` не хранит только готовые оценки. Каждая paired comparison содержит строки `pair_id, left, right, difference`, причём валидатор пересчитывает `difference = left − right`, запрещает дубли и требует одинаковый набор `base_task_id` во всех Planner seeds. Stage 1A хранит snapshot-pairs внутри task cluster; scalar rates содержат `unit_id, value`. Auditor обязан восстановить эти строки из raw result manifest; готовые агрегаты без pair rows недопустимы.
 
-## Приложение D. Нормативный P_REPLAY
+## Приложение D. Нормативный full-plan replay
 
-`P_REPLAY` определяется только контрактом `docs/controls/p_replay_contract_v1.yaml`. Это receding-horizon raw rollout выбранного checkpoint A3: после каждого фактически исполненного действия Planner заново вызывается на текущем состоянии и исходной цели. LLM, domain mask, retry, repair и oracle information запрещены. Goal проверяется до вызова Planner и сразу после каждого исполнения. Метрика допуска к Stage 1B вычисляется на тех же confirmatory task IDs и из raw episode logs.
+`P_FULL_PLAN_REPLAY_RAW` определяется только `docs/controls/p_replay_contract_v1.yaml`. Planner вызывается один раз до исполнения source arm; replay повторно Planner не вызывает и последовательно исполняет exact frozen TypedActions. Контекст P08 использует precomputed Planner-confirmatory A3 WorkPlan, контекст P17 — precomputed Stage 1B E1 WorkPlan. Hash source manifest, WorkPlan и каждой позиции обязателен; подмена контекстов запрещена.

@@ -139,6 +139,8 @@ def validate_experiment_freeze(obj: dict, *, expected_run_id: str | None = None)
         "scientific_lock_sha256": "locks/scientific.lock.json",
         "implementation_lock_sha256": "locks/implementation.lock.json",
         "environment_lock_sha256": "locks/environment.lock.json",
+        "compute_profile_sha256": "reports/compute-profile.json",
+        "capacity_preflight_sha256": "reports/preflight-final.json",
     }
     for field, rel in lock_fields.items():
         path = ROOT / rel
@@ -209,12 +211,12 @@ def validate_experiment_freeze(obj: dict, *, expected_run_id: str | None = None)
         if stage["stage"] == "STAGE1B":
             cert = sealer.get("control_certification", {})
             required = {
-                cert.get("coverage_manifest_sha256"),
-                cert.get("support_audit_sha256"),
+                cert.get("task_only_selection_manifest_sha256"),
+                cert.get("preoutcome_artifact_manifest_sha256"),
                 cert.get("public_exclusion_manifest_sha256"),
             }
-            if not required.issubset(set(obj.get("control_certification_hashes", []))):
-                errors.append("Stage1B freeze omits signed hidden control-certification hashes")
+            if not required.issubset(set(obj.get("preoutcome_certification_hashes", []))):
+                errors.append("Stage1B freeze omits signed task-only/pre-outcome certification hashes")
     except Exception as exc:
         errors.append(f"cannot verify experiment freeze sealer lineage: {exc}")
     return errors

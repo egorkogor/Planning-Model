@@ -1,4 +1,4 @@
-schema_version: work-planner/1.13
+schema_version: work-planner/1.14
 experiment:
   name: work_planner_stage1_v2_6
   run_id: run-YYYYMMDD-shortname
@@ -15,7 +15,7 @@ contracts:
 planner:
   max_non_end_actions: 16
   max_steps_including_end: 17
-  final_seeds: [101, 202, 303]
+  final_seeds: [101, 202, 303, 404, 505]
 stage1:
   model_id: Qwen/Qwen3.5-0.8B
   decoding: greedy

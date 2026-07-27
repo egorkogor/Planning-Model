@@ -1,4 +1,4 @@
-schema_version: work-planner/1.13
+schema_version: work-planner/1.14
 corpus_id: blocks-training-corpus/1.6
 source: accepted_base_tasks_from_generator_manifest
 split_grouping:
@@ -11,7 +11,7 @@ oracle_suffix_expansion:
 - emit example before each oracle action
 - emit terminal goal-satisfied example with END target
 off_policy_expansion:
-  purpose: reduce receding-horizon covariate shift without claiming full state-goal coverage
+  purpose: cover off-oracle states used by frozen full-plan training without claiming full state-goal coverage
   exact_local_expansion_for_block_count_lte: 5
   exact_local_rule:
     source_states: every oracle suffix state

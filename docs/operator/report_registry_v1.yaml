@@ -1,4 +1,4 @@
-schema_version: work-planner/1.13
+schema_version: work-planner/1.14
 registry_id: report-registry/1.5
 matching: first_rule_wins
 rules:
@@ -16,6 +16,8 @@ rules:
   schema: docs/schemas/sample_size_input.schema.json
 - path_pattern: reports/implementation-patches/index.json
   schema: docs/schemas/artifact_manifest.schema.json
+- path_pattern: reports/preflight-final.json
+  schema: docs/schemas/capacity_preflight.schema.json
 - path_pattern: reports/preflight-*.json
   schema: docs/schemas/study_report.schema.json
 - path_pattern: locks/scientific.lock.json
@@ -64,6 +66,8 @@ rules:
   schema: docs/schemas/prompt_development_report.schema.json
 - path_pattern: reports/model-audit.json
   schema: docs/schemas/model_audit_report.schema.json
+- path_pattern: reports/compute-evidence/*.jsonl
+  schema_per_line: docs/schemas/compute_measurement_entry.schema.json
 - path_pattern: reports/compute-profile.json
   schema: docs/schemas/compute_profile.schema.json
 - path_pattern: reports/llm-determinism.json
@@ -104,6 +108,10 @@ rules:
   schema: docs/schemas/artifact_manifest.schema.json
 - path_pattern: checkpoints/**/manifest.json
   schema: docs/schemas/artifact_manifest.schema.json
+- path_pattern: semantic_bank/signatures/manifest.json
+  schema: docs/schemas/semantic_signature_bank.schema.json
+- path_pattern: semantic_bank/random-codebook/manifest.json
+  schema: docs/schemas/random_codebook_manifest.schema.json
 - path_pattern: semantic_bank/manifest.json
   schema: docs/schemas/artifact_manifest.schema.json
 - path_pattern: semantic_bank/**/manifest.json
@@ -114,10 +122,16 @@ rules:
   schema: docs/schemas/approved_freeze_pointer.schema.json
 - path_pattern: controls/planner-ablation/A5-*.json
   schema: docs/schemas/latent_ablation_manifest.schema.json
+- path_pattern: controls/stage1b/shuffled-plan/*.json
+  schema: docs/schemas/shuffled_plan_mapping.schema.json
 - path_pattern: controls/**/certification-*.json
   schema: docs/schemas/control_certification.schema.json
 - path_pattern: controls/**/*.json
   schema: docs/schemas/artifact_manifest.schema.json
+- path_pattern: results/**/episode-plan-manifests/*.json
+  schema: docs/schemas/episode_plan_manifest.schema.json
+- path_pattern: results/**/lineage-index.json
+  schema: docs/schemas/full_plan_lineage_index.schema.json
 - path_pattern: results/**/evaluator-result-manifest.json
   schema: docs/schemas/evaluator_result_manifest.schema.json
 - path_pattern: results/**/manifest.json

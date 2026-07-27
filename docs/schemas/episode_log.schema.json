@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/episode_log.schema.json",
-  "title": "EpisodeLog v1.13",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/episode_log.schema.json",
+  "title": "EpisodeLog v1.14",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -41,7 +41,24 @@
     "hash_violation_count",
     "base_task_id",
     "trajectory_policy",
-    "experiment_freeze_hash"
+    "experiment_freeze_hash",
+    "episode_plan_manifest_hash",
+    "plan_generation_status",
+    "replay_context",
+    "plan_positions_consumed",
+    "plan_tokens_in_actual",
+    "plan_tokens_out_actual",
+    "plan_latency_ms_actual",
+    "plan_tokens_in_attributed",
+    "plan_tokens_out_attributed",
+    "plan_latency_ms_attributed",
+    "executor_tokens_in",
+    "executor_tokens_out",
+    "executor_latency_ms",
+    "flops_actual",
+    "flops_attributed",
+    "flops_cap_per_task",
+    "flops_budget_exhausted"
   ],
   "properties": {
     "schema_version": {
@@ -219,14 +236,85 @@
       "pattern": "^bw-[0-9]{8}$"
     },
     "trajectory_policy": {
-      "type": "string",
-      "enum": [
-        "oracle_snapshot",
-        "independent_receding_horizon"
-      ]
+      "$ref": "common.schema.json#/$defs/trajectory_policy"
     },
     "experiment_freeze_hash": {
       "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "episode_plan_manifest_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "plan_generation_status": {
+      "$ref": "common.schema.json#/$defs/plan_generation_status"
+    },
+    "replay_context": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/replay_context"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "plan_positions_consumed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 17
+    },
+    "plan_tokens_in_actual": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "plan_tokens_out_actual": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "plan_latency_ms_actual": {
+      "type": "number",
+      "minimum": 0
+    },
+    "plan_tokens_in_attributed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "plan_tokens_out_attributed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "plan_latency_ms_attributed": {
+      "type": "number",
+      "minimum": 0
+    },
+    "executor_tokens_in": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "executor_tokens_out": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "executor_latency_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "flops_actual": {
+      "type": "number",
+      "minimum": 0
+    },
+    "flops_attributed": {
+      "type": "number",
+      "minimum": 0
+    },
+    "flops_cap_per_task": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "flops_budget_exhausted": {
+      "type": "boolean"
     }
   },
   "allOf": [

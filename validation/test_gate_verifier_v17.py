@@ -87,6 +87,7 @@ def resource_plan(approval: bool) -> dict:
         "statistical_reviewer":role('STATISTICAL_REVIEWER','stat-review','stat-family'),
         "machine_checks":{k:"PASS" for k in ("cpu","ram","disk","gpu","credentials","workspace","role_separation")},
         "estimated_cost":1 if approval else 0,"currency":"USD","requires_operator_budget_approval":approval,
+        "capacity_limits":{"maximum_gpu_seconds":1000000.0,"maximum_storage_bytes":1000000000,"gpu_hour_cost":0.0},
         "plan_hash":"sha256:"+"0"*64,
     }
 
@@ -100,7 +101,7 @@ def write_required_outputs(plan: dict) -> list[dict]:
     rows=[]
     scope=ROOT/'artifacts/scope.md'
     scope.parent.mkdir(parents=True,exist_ok=True)
-    scope.write_text('work-planner/1.13 runbook 2.13 locked scope\n')
+    scope.write_text('work-planner/1.14 runbook 2.14 locked scope\n')
     for rel in _phase()['required_outputs']:
         p=ROOT/rel.rstrip('/'); p.parent.mkdir(parents=True,exist_ok=True)
         if rel in {'reports/resource-plan.json','locks/infrastructure-plan.json'}:

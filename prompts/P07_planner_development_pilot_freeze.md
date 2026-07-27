@@ -24,7 +24,7 @@
 
 ## Действия
 1. выполнить bounded hyperparameter grid на development
-2. обучить three final seeds
+2. обучить five final seeds
 3. рассчитать pilot N and freeze analysis
 4. dispatch locked contracts and public-exclusion manifest to Data Sealer; Data Sealer generates a hidden 256-bit seed, returns only seed commitment, encrypted blob hash and signed sealer manifest; create candidate freeze
 5. after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision

@@ -15,7 +15,7 @@ from .hashing import (
     state_hash,
 )
 
-V = "work-planner/1.13"
+V = "work-planner/1.14"
 H1 = "sha256:" + "1" * 64
 H2 = "sha256:" + "2" * 64
 H3 = "sha256:" + "3" * 64
@@ -86,6 +86,8 @@ def step(index: int = 0, action: str = "PICK_UP", refs: tuple[str, ...] = ("@B0"
         "A2b": "DISCRETE_INTENT",
         "A2c": "STRUCTURED_DISCRETE",
         "A3": "CONTINUOUS_LATENT",
+        "A3r": "CONTINUOUS_LATENT",
+        "SELF_PLAN": "DISCRETE_INTENT",
         "A4": "CONTINUOUS_LATENT",
         "A5": "CONTINUOUS_LATENT",
     }[variant]
@@ -170,7 +172,7 @@ def plan_manifest() -> tuple[dict[str, Any], dict[str, Any]]:
         "canonical_task_hash": t["canonical_task_hash"],
         "planner_checkpoint_sha256": H1,
         "planner_config_sha256": H2,
-        "planner_seed": 2,
+        "planner_seed": 202,
         "semantic_artifact_manifest_sha256": manifest["manifest_hash"],
         "state_hash": state_hash(t["initial"]),
         "steps": steps,
@@ -200,13 +202,15 @@ def attempt(arm: str = "I1_ORACLE_CURRENT_RAW", stage: str = "STAGE1A_INTERFACE"
         "I2_SHUFFLED_RAW": "SHUFFLED_INTENT_LLM",
         "I3_PLANNER_CURRENT_RAW": "PLANNER_INTENT_LLM",
         "E0_EQUAL_TOKENS_RAW": "EQUAL_TOKEN_LLM",
-        "E1_PLANNER_CURRENT_RAW": "PLANNER_INTENT_LLM",
-        "E2_SHUFFLED_RAW": "SHUFFLED_INTENT_LLM",
-        "E3_ORACLE_REPLAN_RAW": "ORACLE_INTENT_LLM",
-        "P_REPLAY_RAW": "PLAN_REPLAY",
+        "E1_A3_FULL_PLAN_RAW": "A3_FULL_PLAN_LLM",
+        "E2_SHUFFLED_A3_FULL_PLAN_RAW": "SHUFFLED_A3_PLAN_LLM",
+        "E3_A3R_RANDOM_CODE_FULL_PLAN_RAW": "A3R_RANDOM_CODE_PLAN_LLM",
+        "E4_A2C_STRUCTURED_FULL_PLAN_RAW": "A2C_STRUCTURED_PLAN_LLM",
+        "E5_SELF_PLAN_RAW": "SELF_PLAN_LLM",
+        "P_FULL_PLAN_REPLAY_RAW": "PLAN_REPLAY",
     }[arm]
     prompt_text = "rendered prompt"
-    raw_text = '{"schema_version":"work-planner/1.13","action":"PICK_UP","args":["block_0"]}'
+    raw_text = '{"schema_version":"work-planner/1.14","action":"PICK_UP","args":["block_0"]}'
     prompt_total = 128 if is_interface else 180
     attended = prompt_total
     candidate = typed("PICK_UP", ("@B0",))
@@ -220,15 +224,23 @@ def attempt(arm: str = "I1_ORACLE_CURRENT_RAW", stage: str = "STAGE1A_INTERFACE"
         "base_task_id": t["base_task_id"],
         "snapshot_id": snapshot_id,
         "canonical_task_hash": t["canonical_task_hash"],
-        "trajectory_policy": "oracle_snapshot" if is_interface else "independent_receding_horizon",
+        "trajectory_policy": "oracle_snapshot" if is_interface else "frozen_full_plan",
         "experiment_freeze_hash": H5,
+        "episode_plan_manifest_hash": None if is_interface or arm in {"I0_EQUAL_TOKENS_RAW", "I1_ORACLE_CURRENT_RAW", "I2_SHUFFLED_RAW", "I3_PLANNER_CURRENT_RAW", "E0_EQUAL_TOKENS_RAW"} else H4,
+        "plan_generation_status": "NONE" if is_interface or arm == "E0_EQUAL_TOKENS_RAW" else "READY",
+        "replay_context": "STAGE1B_E1" if arm == "P_FULL_PLAN_REPLAY_RAW" else None,
+        "plan_position_index": None if is_interface or arm == "E0_EQUAL_TOKENS_RAW" else 0,
+        "guidance_source_position_index": None if is_interface or arm in {"E0_EQUAL_TOKENS_RAW", "P_FULL_PLAN_REPLAY_RAW"} else 0,
+        "guidance_source_step_id": None if is_interface or arm in {"E0_EQUAL_TOKENS_RAW", "P_FULL_PLAN_REPLAY_RAW"} else "S00",
+        "guidance_source_semantic_ref": None if is_interface or arm in {"E0_EQUAL_TOKENS_RAW", "P_FULL_PLAN_REPLAY_RAW"} else "latent+sha256://" + "a" * 64 + "#S00",
+        "replanning_observed": False,
         "pair_group_hash": pair_group_hash(
             stage=stage,
             task_id=t["task_id"],
             base_task_id=t["base_task_id"],
             split=split,
             snapshot_id=snapshot_id,
-            trajectory_policy="oracle_snapshot" if is_interface else "independent_receding_horizon",
+            trajectory_policy="oracle_snapshot" if is_interface else "frozen_full_plan",
             experiment_freeze_hash=H5,
         ),
         "goal_hash": goal_hash(t["goal"]),
@@ -306,11 +318,17 @@ def attempt(arm: str = "I1_ORACLE_CURRENT_RAW", stage: str = "STAGE1A_INTERFACE"
         "total_ms": 11.0,
         "timestamp": "2026-07-24T12:00:00Z",
     }
-    if arm in {"I3_PLANNER_CURRENT_RAW", "E1_PLANNER_CURRENT_RAW"}:
+    if not is_interface and arm != "E0_EQUAL_TOKENS_RAW":
+        obj.update(
+            planner_checkpoint_sha256=H1, planner_config_sha256=H2, planner_seed=202,
+            planner_support_status="STRUCTURAL_SIGNATURE_SEEN", planner_support_signature_hash=H3,
+            plan_content_hash=H2, plan_artifact_hash=H3, plan_step_id="S00",
+        )
+    if arm in {"I3_PLANNER_CURRENT_RAW"}:
         obj.update(
             planner_checkpoint_sha256=H1,
             planner_config_sha256=H2,
-            planner_seed=2,
+            planner_seed=202,
             planner_support_status="STRUCTURAL_SIGNATURE_SEEN",
             planner_support_signature_hash=H3,
             plan_step_id="S00",
@@ -327,7 +345,7 @@ def attempt(arm: str = "I1_ORACLE_CURRENT_RAW", stage: str = "STAGE1A_INTERFACE"
             semantic_min_similarity=0.5,
             semantic_min_margin=0.05,
         )
-    if arm in {"I2_SHUFFLED_RAW", "E2_SHUFFLED_RAW"}:
+    if arm == "I2_SHUFFLED_RAW":
         obj.update(
             control_source_intent_id=3,
             compatible_intent_ids=[4],
@@ -335,11 +353,13 @@ def attempt(arm: str = "I1_ORACLE_CURRENT_RAW", stage: str = "STAGE1A_INTERFACE"
             intent_compatibility_hash=H2,
             control_certification_hash=H3,
         )
-    if arm == "P_REPLAY_RAW":
+    if arm == "E2_SHUFFLED_A3_FULL_PLAN_RAW":
+        obj.update(control_mapping_hash=H1)
+    if arm == "P_FULL_PLAN_REPLAY_RAW":
         obj.update(
             planner_checkpoint_sha256=H1,
             planner_config_sha256=H2,
-            planner_seed=2,
+            planner_seed=202,
             planner_support_status="STRUCTURAL_SIGNATURE_SEEN",
             planner_support_signature_hash=H3,
             plan_step_id="S00",
@@ -383,7 +403,7 @@ def attempt(arm: str = "I1_ORACLE_CURRENT_RAW", stage: str = "STAGE1A_INTERFACE"
 
 
 def unresolved_attempt() -> dict[str, Any]:
-    obj = attempt("E1_PLANNER_CURRENT_RAW", "STAGE1B_END_TO_END")
+    obj = attempt("I3_PLANNER_CURRENT_RAW", "STAGE1A_INTERFACE")
     obj.update(
         semantic_resolution_status="UNRESOLVED",
         candidate_source="PLANNER_RESOLUTION_FAILURE",
@@ -453,7 +473,7 @@ def episode_from_attempt(a: dict[str, Any], *, goal_success: bool | None = None,
         "steps_accepted": executed,
         "attempts_total": 1,
         "retries_total": 0,
-        "planner_calls": int(a["arm"] in CrossObjectContractValidator.PLANNER_INTENT_ARMS or a["arm"] == "P_REPLAY_RAW"),
+        "planner_calls": int(a["arm"] in CrossObjectContractValidator.PLANNER_INTENT_ARMS) if is_interface else (0 if a["arm"] in {"E0_EQUAL_TOKENS_RAW", "E2_SHUFFLED_A3_FULL_PLAN_RAW", "P_FULL_PLAN_REPLAY_RAW"} else 1),
         "oracle_length": 2,
         "executed_length": executed,
         "optimality_ratio": None,
@@ -471,6 +491,23 @@ def episode_from_attempt(a: dict[str, Any], *, goal_success: bool | None = None,
         "prompt_budget_violation_count": 0,
         "contract_violation_count": 0,
         "hash_violation_count": 0,
+        "episode_plan_manifest_hash": a.get("episode_plan_manifest_hash"),
+        "plan_generation_status": a.get("plan_generation_status", "NONE"),
+        "replay_context": a.get("replay_context"),
+        "plan_positions_consumed": 0 if is_interface or a["arm"] == "E0_EQUAL_TOKENS_RAW" else executed,
+        "plan_tokens_in_actual": 0,
+        "plan_tokens_out_actual": 0,
+        "plan_latency_ms_actual": 0.0,
+        "plan_tokens_in_attributed": 0,
+        "plan_tokens_out_attributed": 0,
+        "plan_latency_ms_attributed": 0.0,
+        "executor_tokens_in": a["tokens_in"] or 0,
+        "executor_tokens_out": a["tokens_out"] or 0,
+        "executor_latency_ms": a["total_ms"] or 0,
+        "flops_actual": 0.0,
+        "flops_attributed": 0.0,
+        "flops_cap_per_task": None,
+        "flops_budget_exhausted": False,
     }
 
 

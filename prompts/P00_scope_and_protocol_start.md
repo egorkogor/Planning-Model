@@ -12,8 +12,8 @@
 - `docs/operator/self_review_loop_v1.yaml`
 - `release/BOOTSTRAP_MANIFEST.json`
 - `docs/operator/bootstrap_integrity_contract_v1.yaml`
-- `docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.13.md`
-- `docs/Planner_LLM_Stage1_Operator_Runbook_v2.13_RU.md`
+- `docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.14.md`
+- `docs/Planner_LLM_Stage1_Operator_Runbook_v2.14_RU.md`
 - `docs/schemas/decision_record.schema.json`
 
 ## Действия
@@ -43,7 +43,7 @@
 
 ## Проверки до gate
 - `P00_pre_01` — bootstrap release manifest VERIFIED; verifier: `python validation/phase_check_runner.py --phase P00 --check P00_pre_01 --report reports/phase-P00.json`
-- `P00_pre_02` — scope references work-planner/1.13 and runbook 2.13; verifier: `python validation/phase_check_runner.py --phase P00 --check P00_pre_02 --report reports/phase-P00.json`
+- `P00_pre_02` — scope references work-planner/1.14 and runbook 2.14; verifier: `python validation/phase_check_runner.py --phase P00 --check P00_pre_02 --report reports/phase-P00.json`
 - `P00_pre_03` — confirmatory outcomes absent; verifier: `python validation/phase_check_runner.py --phase P00 --check P00_pre_03 --report reports/phase-P00.json`
 - `P00_pre_04` — pre-gate evidence sealed; verifier: `python validation/phase_check_runner.py --phase P00 --check P00_pre_04 --report reports/phase-P00.json`
 

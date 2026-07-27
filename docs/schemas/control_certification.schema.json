@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/control_certification.schema.json",
-  "title": "Pre-outcome control certification manifest",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/control_certification.schema.json",
+  "title": "Pre-outcome certification manifest",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,15 +11,13 @@
     "split",
     "task_id",
     "canonical_task_hash",
-    "goal_hash",
-    "reachable_state_count",
-    "certified_state_count",
-    "unavailable_state_count",
     "task_included",
-    "mapping_file_sha256",
+    "certification_basis",
+    "outcome_accessed",
+    "planner_output_used_for_selection",
+    "llm_output_used_for_selection",
+    "arm_outcome_used_for_selection",
     "domain_sha256",
-    "catalog_sha256",
-    "control_contract_sha256",
     "certification_hash"
   ],
   "properties": {
@@ -46,28 +44,42 @@
     "canonical_task_hash": {
       "$ref": "common.schema.json#/$defs/sha256"
     },
-    "goal_hash": {
-      "$ref": "common.schema.json#/$defs/sha256"
-    },
-    "reachable_state_count": {
-      "type": "integer",
-      "minimum": 1
-    },
-    "certified_state_count": {
-      "type": "integer",
-      "minimum": 0
-    },
-    "unavailable_state_count": {
-      "type": "integer",
-      "minimum": 0
-    },
     "task_included": {
       "type": "boolean"
     },
-    "mapping_file_sha256": {
-      "$ref": "common.schema.json#/$defs/sha256"
+    "certification_basis": {
+      "enum": [
+        "STAGE1A_SNAPSHOT_CONTROL_COVERAGE",
+        "STAGE1B_TASK_DOMAIN_METADATA_ONLY"
+      ]
+    },
+    "outcome_accessed": {
+      "const": false
+    },
+    "planner_output_used_for_selection": {
+      "const": false
+    },
+    "llm_output_used_for_selection": {
+      "const": false
+    },
+    "arm_outcome_used_for_selection": {
+      "const": false
     },
     "domain_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "goal_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "certified_unit_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unavailable_unit_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "mapping_file_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
     },
     "catalog_sha256": {
@@ -76,8 +88,82 @@
     "control_contract_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
     },
+    "eligibility_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "split_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "generator_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "preoutcome_artifact_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "plan_or_control_degeneracy_exclusion_count": {
+      "const": 0
+    },
+    "failure_retention_policy": {
+      "const": "RETAIN_AS_ZERO_SUCCESS_PAIRED_OUTCOME"
+    },
     "certification_hash": {
       "$ref": "common.schema.json#/$defs/sha256"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "STAGE1A_INTERFACE"
+          }
+        },
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "properties": {
+          "certification_basis": {
+            "const": "STAGE1A_SNAPSHOT_CONTROL_COVERAGE"
+          }
+        },
+        "required": [
+          "goal_hash",
+          "certified_unit_count",
+          "unavailable_unit_count",
+          "mapping_file_sha256",
+          "catalog_sha256",
+          "control_contract_sha256"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "STAGE1B_END_TO_END"
+          }
+        },
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "properties": {
+          "certification_basis": {
+            "const": "STAGE1B_TASK_DOMAIN_METADATA_ONLY"
+          }
+        },
+        "required": [
+          "eligibility_contract_sha256",
+          "split_contract_sha256",
+          "generator_contract_sha256",
+          "preoutcome_artifact_manifest_sha256",
+          "plan_or_control_degeneracy_exclusion_count",
+          "failure_retention_policy"
+        ]
+      }
+    }
+  ]
 }

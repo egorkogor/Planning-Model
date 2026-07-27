@@ -1,0 +1,21 @@
+schema_version: work-planner/1.14
+contract_id: full-plan-shuffle/1.0
+purpose: Deterministic E2 control that reuses the exact E1 WorkPlan but permutes guidance positions without task exclusion.
+source_arm: E1_A3_FULL_PLAN_RAW
+target_arm: E2_SHUFFLED_A3_FULL_PLAN_RAW
+seed_payload:
+- run_id
+- task_id
+- source_episode_plan_manifest_hash
+- source_plan_content_hash
+- contract_sha256
+seed_hash: canonical work-planner hash_json
+permutation:
+  algorithm: nonzero_cyclic_rotation
+  offset: 1 + big_endian_uint64(first_8_bytes(SHA256(UTF8(seed_payload_hash)))) mod (plan_non_end_length - 1)
+  mapping: guidance_source_position[i] = (i + offset) mod plan_non_end_length
+  fixed_points_for_length_ge_2: forbidden
+  length_zero_or_one: DEGENERATE_CONTROL_UNAVAILABLE_PAIRED_FAILURE
+post_treatment_task_exclusion: forbidden
+planner_call_in_E2: 0
+source_workplan_reuse: exact_content_and_artifact_hash

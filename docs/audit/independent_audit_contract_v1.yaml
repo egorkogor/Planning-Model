@@ -1,4 +1,4 @@
-schema_version: work-planner/1.13
+schema_version: work-planner/1.14
 contract_id: independent-audit/1.3
 auditor:
   separate_process_or_machine: required
@@ -18,7 +18,7 @@ statistical_implementation_audit:
   - HIERARCHICAL_BOOTSTRAP
   - CLUSTERED_STAGE1A_BOOTSTRAP
   - PAIRED_STAGE1B_BOOTSTRAP
-  - PAIRED_TOST
+  - NONINFERIORITY_AND_DIRECTION_GATES
   - SAMPLE_SIZE_POWER
   - TIE_BREAK_AND_MISSING_PAIRS
   - DECISION_GATE_RECOMPUTATION
@@ -94,10 +94,23 @@ implementation_audit:
   - MODEL_LOADING_AND_RUNTIME_PINS
   - RESULT_PERSISTENCE_AND_HASHING
   - CLEAN_PREFLIGHT_REPRODUCTION
+  - ANALYSIS_INPUT_BUILDERS
+  - SEMANTIC_RESOLVER_AND_PROTOTYPE_BUILDER
+  - TASK_ONLY_SELECTION_CERTIFICATION_ENGINE
+  - SEALER_AND_DISPATCH_BOUNDARY
+  - FULL_PLAN_SHUFFLE_AND_LINEAGE
+  - A3R_RANDOM_CODEBOOK_TRAINING
+  - PER_EPISODE_FLOPS_ACCOUNTING
   required_artifact_classes:
   - src/domain
   - src/validation
-  - evaluation harness
+  - analysis input builders
+  - semantic resolver and prototype bank
+  - task-only selection certification
+  - full-plan shuffle and lineage
+  - A3r random codebook training
+  - per-episode FLOPs accounting
+  - sealer/evaluator dispatch boundary
   - model/runtime locks
   - dataset manifests
   - persistence and hashing code

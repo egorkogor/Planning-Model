@@ -108,7 +108,7 @@ def test_later_phases_run_locked_code_instead_of_implementing_it() -> None:
     p06 = " ".join(by["P06"]["actions"]).lower()
     p10 = " ".join(by["P10"]["actions"]).lower()
     p15 = " ".join(by["P15"]["actions"]).lower()
-    assert "prototype-bank builder" in p03 and "control-certification engine" in p03
+    assert "prototype-bank builder" in p03 and "task-only stage1b eligibility" in p03
     assert "every protected executable path" in p06
     assert "do not add or modify" in p10
     assert "source-code changes are forbidden" in p15

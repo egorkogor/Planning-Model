@@ -1,11 +1,11 @@
-schema_version: work-planner/1.13
-contract_id: statistics/1.3
+schema_version: work-planner/1.14
+contract_id: statistics/1.4
 alpha_familywise: 0.05
 random_seeds:
   confirmatory_bootstrap: 7301
   sample_size: 7302
 analysis_unit:
-  planner: seed outer hierarchy, then paired base_task_id within seed
+  planner: five-seed outer hierarchy, then paired base_task_id within seed
   stage1a: paired base_task_id after averaging binary snapshots within task and arm
   stage1b: paired base_task_id episode outcome
 missing_pairs:
@@ -17,10 +17,6 @@ confidence_intervals:
     method: percentile_bootstrap
     confidence_level: 0.95
     resamples: 10000
-  equivalence:
-    method: paired_TOST_t
-    alpha_each_one_sided: 0.05
-    equivalent_to: 90_percent_two_sided_CI_inside_margin
   planner_hierarchy: resample seeds with replacement, then paired base_task_id with replacement within sampled seed
   stage1a_clustering: average snapshots within base_task_id and arm before paired task bootstrap
   stage1b_pairing: paired task bootstrap
@@ -30,7 +26,7 @@ confidence_intervals:
     input: unit-level binary rows only
     all_success_or_all_failure: nondegenerate interval required
 sample_size:
-  method: estimator_matched_paired_binary_simulation_v4
+  method: estimator_matched_paired_binary_simulation_v5
   simulations_per_candidate: 1000
   candidate_step: 50
   target_power: 0.9
@@ -39,18 +35,18 @@ sample_size:
   power_acceptance_rule: one_sided_exact_binomial_lower_bound_gte_target_at_consecutive_candidate_points
   minimum_n: 300
   target_ci_half_width: 0.025
-  equivalence_margin: 0.02
   reserve_overflow: BLOCKED_PROTOCOL_CAPACITY
   minimum_effect_gate: 0.05
   design_effect_for_power: 0.075
   component_seed_rule: independent deterministic stream = component_seed + 10000019 * candidate_n
   ci_resamples_per_simulation: 1000
   required_input_structure_by_stage:
-    PLANNER: seed_groups preserving the three final seeds and paired task ids
+    PLANNER: seed_groups preserving the five final seeds and paired task ids
     STAGE1A: task_clusters preserving all snapshots per base_task_id
     STAGE1B: paired base_task_id rows
   estimator_match_required: true
-  zero_variance_policy: use locked symmetric 10-percent discordance sensitivity scenario and report both empirical and sensitivity N; select maximum
+  zero_variance_policy: use locked symmetric 10-percent discordance sensitivity scenario and report both empirical and sensitivity
+    N; select maximum
   binary_joint_model:
     allowed_pair_cells:
     - '00'
@@ -65,7 +61,8 @@ sample_size:
     discordance_model: max(observed_discordance, 0.10, abs(target_effect)+0.02)
     agreement_split: preserve pilot P(11 | concordant); use 0.5 when no concordant pairs
     continuous_effect_addition_to_difference: forbidden
-  planner_simulation: resample source seed, preserve seed residual, draw n paired-binary tasks per each of exactly three output seeds
+  planner_simulation: resample source seed, preserve seed residual, draw n paired-binary tasks per each of exactly five output
+    seeds
   stage1a_simulation: resample source task clusters, preserve snapshot count and task residual, draw paired-binary snapshots
   stage1b_simulation: draw n paired-binary tasks from pilot joint table adjusted to locked target effect
   component_set_by_stage:
@@ -77,14 +74,41 @@ sample_size:
     - primary_ci
     - primary_power
     - current_vs_shuffled_power
-    - equivalence_TOST_power
     STAGE1B:
     - primary_ci
     - primary_power
     - current_vs_shuffled_power
-    - equivalence_TOST_power
+    - random_code_power
+    - structured_noninferiority_power
+    - self_plan_power
+    - flops_direction_power
   selected_n: max(stage-specific components, minimum_n)
   non_applicable_component_policy: omit from SampleSizeInput and SampleSizeReport; never synthesize a placeholder N
+  component_decision_semantics:
+    primary_power:
+      design_effect: 0.075
+      decision_boundary: 0.05
+      rule: estimate_gte_boundary_and_ci_low_gt_zero
+    current_vs_shuffled_power:
+      design_effect: 0.05
+      decision_boundary: 0.0
+      rule: ci_low_gt_boundary
+    random_code_power:
+      design_effect: 0.05
+      decision_boundary: 0.0
+      rule: ci_low_gt_boundary
+    structured_noninferiority_power:
+      design_effect: 0.0
+      decision_boundary: -0.02
+      rule: ci_low_gte_boundary
+    self_plan_power:
+      design_effect: 0.05
+      decision_boundary: 0.0
+      rule: ci_low_gt_boundary
+    flops_direction_power:
+      design_effect: 0.02
+      decision_boundary: -0.02
+      rule: estimate_gte_zero_and_ci_low_gte_boundary
 stage_gates:
   PLANNER:
     architecture_pass: GO_PLANNER_ARCHITECTURE
@@ -189,7 +213,7 @@ stage_gates:
     decision_pass_eligible: GO_INTERFACE_STAGE1B_ELIGIBLE
     decision_pass_diagnostic: GO_INTERFACE_DIAGNOSTIC_ONLY
     decision_fail: STOP_INTERFACE
-    gates:
+    core_gates:
     - gate_id: ORACLE_GUIDANCE_PRIMARY
       comparison: I1-I0
       rule: estimate_gte_and_ci_low_gt
@@ -198,10 +222,6 @@ stage_gates:
       comparison: I1-I2
       rule: ci_low_gt
       threshold: 0.0
-    - gate_id: SHUFFLED_EQ_NEUTRAL
-      comparison: I2-I0
-      rule: paired_tost
-      threshold: 0.02
     - gate_id: ORACLE_PROGRESS_FLOOR
       comparison: I1_PROGRESS_RATE
       rule: estimate_gte
@@ -230,30 +250,43 @@ stage_gates:
       comparison: I_DETERMINISM_VIOLATION_RATE
       rule: estimate_lte
       threshold: 0.0
+    diagnostic_gates:
+    - gate_id: SHUFFLED_MINUS_NEUTRAL_DIAGNOSTIC
+      comparison: I2-I0
+      rule: estimate_lte
+      threshold: 0.02
   STAGE1B:
     decision_pass: GO_END_TO_END
     decision_fail: STOP_END_TO_END
-    gates:
-    - gate_id: CURRENT_PRIMARY
+    core_gates:
+    - gate_id: FULL_PLAN_PRIMARY
       comparison: E1-E0
       rule: estimate_gte_and_ci_low_gt
       threshold: 0.05
-    - gate_id: CURRENT_GT_SHUFFLED
+    - gate_id: A3_GT_SHUFFLED_PLAN
       comparison: E1-E2
       rule: ci_low_gt
       threshold: 0.0
-    - gate_id: SHUFFLED_EQ_NEUTRAL
-      comparison: E2-E0
-      rule: paired_tost
-      threshold: 0.02
-    - gate_id: UNRESOLVED_RATE
-      comparison: E1_UNRESOLVED_RATE
+    - gate_id: A3_GT_RANDOM_CODE_PLAN
+      comparison: E1-E3
+      rule: ci_low_gt
+      threshold: 0.0
+    - gate_id: A3_NONINFERIOR_STRUCTURED_PLAN
+      comparison: E1-E4
+      rule: ci_low_gte
+      threshold: -0.02
+    - gate_id: A3_GT_SELF_PLAN
+      comparison: E1-E5
+      rule: ci_low_gt
+      threshold: 0.0
+    - gate_id: FLOPS_MATCHED_DIRECTION
+      comparison: E1_FLOPS-E0_FLOPS
+      rule: estimate_gte_and_ci_low_gte
+      threshold: -0.02
+    - gate_id: PLAN_GENERATION_FAILURE_FLOOR
+      comparison: E_PLAN_GENERATION_FAILURE_RATE
       rule: estimate_lte
       threshold: 0.1
-    - gate_id: ORACLE_EPISODE_FLOOR
-      comparison: E3_GOAL_SUCCESS
-      rule: estimate_gte
-      threshold: 0.6
     - gate_id: UNSEEN_SUPPORT_FLOOR
       comparison: E1_UNSEEN_SUPPORT_SIGNATURE_RATE
       rule: estimate_lte
@@ -282,6 +315,19 @@ stage_gates:
       comparison: E_DETERMINISM_VIOLATION_RATE
       rule: estimate_lte
       threshold: 0.0
+    diagnostic_gates:
+    - gate_id: SHUFFLED_MINUS_NEUTRAL_DIAGNOSTIC
+      comparison: E2-E0
+      rule: estimate_lte
+      threshold: 0.02
+    - gate_id: PLAN_REPLAY_FLOOR_DIAGNOSTIC
+      comparison: P_GOAL_SUCCESS
+      rule: estimate_gte
+      threshold: 0.7
+    - gate_id: STRUCTURED_SUPERIORITY_DIAGNOSTIC
+      comparison: E1-E4
+      rule: estimate_gte
+      threshold: 0.0
 exact_mcnemar:
   diagnostic_only: true
   zero_discordant_p_value: 1.0
@@ -299,7 +345,8 @@ multiple_testing:
   - PLANNER_STAGE1B_ELIGIBILITY
   - STAGE1A_INTERFACE
   - STAGE1B_END_TO_END
-  rule: Every declared gate is recomputed. A positive stage-level claim is issued only when all mandatory gates for that claim pass. No standalone confirmatory claim is issued for a later comparison after an earlier required gate fails.
+  rule: Every declared gate is recomputed. A positive stage-level claim is issued only when all mandatory gates for that claim
+    pass. No standalone confirmatory claim is issued for a later comparison after an earlier required gate fails.
   diagnostic_metrics: may be computed after failure but remain explicitly non-confirmatory
 analysis_input:
   schema: docs/schemas/analysis_input.schema.json
@@ -319,3 +366,6 @@ analysis_input:
     required: true
     pair_rows_must_be_rebuilt_by_auditor_from_raw_result_manifest: true
     precomputed_estimates_without_pair_rows: forbidden
+historical_compatibility:
+  paired_tost: legacy_golden_case_only_not_a_confirmatory_rule_or_component
+  confirmatory_use: forbidden

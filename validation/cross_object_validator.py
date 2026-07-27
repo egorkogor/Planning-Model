@@ -54,6 +54,8 @@ class CrossObjectContractValidator:
         "A2b": "DISCRETE_INTENT",
         "A2c": "STRUCTURED_DISCRETE",
         "A3": "CONTINUOUS_LATENT",
+        "A3r": "CONTINUOUS_LATENT",
+        "SELF_PLAN": "DISCRETE_INTENT",
         "A4": "CONTINUOUS_LATENT",
         "A5": "CONTINUOUS_LATENT",
     }
@@ -65,38 +67,41 @@ class CrossObjectContractValidator:
     }
     END_TO_END_ARMS = {
         "E0_EQUAL_TOKENS_RAW",
-        "E1_PLANNER_CURRENT_RAW",
-        "E2_SHUFFLED_RAW",
-        "E3_ORACLE_REPLAN_RAW",
-        "P_REPLAY_RAW",
+        "E1_A3_FULL_PLAN_RAW",
+        "E2_SHUFFLED_A3_FULL_PLAN_RAW",
+        "E3_A3R_RANDOM_CODE_FULL_PLAN_RAW",
+        "E4_A2C_STRUCTURED_FULL_PLAN_RAW",
+        "E5_SELF_PLAN_RAW",
+        "P_FULL_PLAN_REPLAY_RAW",
         "E0_EQUAL_TOKENS_OPERATIONAL",
-        "E1_PLANNER_CURRENT_OPERATIONAL",
+        "E1_A3_FULL_PLAN_OPERATIONAL",
     }
-    PLANNER_INTENT_ARMS = {
-        "I3_PLANNER_CURRENT_RAW",
-        "E1_PLANNER_CURRENT_RAW",
-        "E1_PLANNER_CURRENT_OPERATIONAL",
-    }
-    ORACLE_INTENT_ARMS = {"I1_ORACLE_CURRENT_RAW", "E3_ORACLE_REPLAN_RAW"}
-    SHUFFLED_ARMS = {"I2_SHUFFLED_RAW", "E2_SHUFFLED_RAW"}
+    FULL_PLAN_ARMS = END_TO_END_ARMS - {"E0_EQUAL_TOKENS_RAW", "E0_EQUAL_TOKENS_OPERATIONAL"}
+    FULL_PLAN_LLM_ARMS = FULL_PLAN_ARMS - {"P_FULL_PLAN_REPLAY_RAW"}
+    PLANNER_INTENT_ARMS = {"I3_PLANNER_CURRENT_RAW"}
+    ORACLE_INTENT_ARMS = {"I1_ORACLE_CURRENT_RAW"}
+    SHUFFLED_INTENT_ARMS = {"I2_SHUFFLED_RAW"}
+    SHUFFLED_PLAN_ARMS = {"E2_SHUFFLED_A3_FULL_PLAN_RAW"}
     EQUAL_TOKEN_ARMS = {
         "I0_EQUAL_TOKENS_RAW",
         "E0_EQUAL_TOKENS_RAW",
         "E0_EQUAL_TOKENS_OPERATIONAL",
     }
-    LLM_ARMS = (INTERFACE_ARMS | END_TO_END_ARMS) - {"P_REPLAY_RAW"}
+    LLM_ARMS = (INTERFACE_ARMS | END_TO_END_ARMS) - {"P_FULL_PLAN_REPLAY_RAW"}
     EXPECTED_SOURCE = {
         "I0_EQUAL_TOKENS_RAW": "EQUAL_TOKEN_LLM",
         "I1_ORACLE_CURRENT_RAW": "ORACLE_INTENT_LLM",
         "I2_SHUFFLED_RAW": "SHUFFLED_INTENT_LLM",
         "I3_PLANNER_CURRENT_RAW": "PLANNER_INTENT_LLM",
         "E0_EQUAL_TOKENS_RAW": "EQUAL_TOKEN_LLM",
-        "E1_PLANNER_CURRENT_RAW": "PLANNER_INTENT_LLM",
-        "E2_SHUFFLED_RAW": "SHUFFLED_INTENT_LLM",
-        "E3_ORACLE_REPLAN_RAW": "ORACLE_INTENT_LLM",
-        "P_REPLAY_RAW": "PLAN_REPLAY",
+        "E1_A3_FULL_PLAN_RAW": "A3_FULL_PLAN_LLM",
+        "E2_SHUFFLED_A3_FULL_PLAN_RAW": "SHUFFLED_A3_PLAN_LLM",
+        "E3_A3R_RANDOM_CODE_FULL_PLAN_RAW": "A3R_RANDOM_CODE_PLAN_LLM",
+        "E4_A2C_STRUCTURED_FULL_PLAN_RAW": "A2C_STRUCTURED_PLAN_LLM",
+        "E5_SELF_PLAN_RAW": "SELF_PLAN_LLM",
+        "P_FULL_PLAN_REPLAY_RAW": "PLAN_REPLAY",
         "E0_EQUAL_TOKENS_OPERATIONAL": "EQUAL_TOKEN_LLM",
-        "E1_PLANNER_CURRENT_OPERATIONAL": "PLANNER_INTENT_LLM",
+        "E1_A3_FULL_PLAN_OPERATIONAL": "A3_FULL_PLAN_LLM",
     }
 
     def __init__(
@@ -485,7 +490,7 @@ class CrossObjectContractValidator:
                 out.append(self._v("CONTRACT_VIOLATION", "arm", "not a Stage1B arm"))
             if attempt["state_source"] != "ACTUAL_TRAJECTORY" or attempt["snapshot_id"] is not None:
                 out.append(self._v("CONTRACT_VIOLATION", "state_source", "Stage1B requires actual trajectory"))
-        expected_policy = "oracle_snapshot" if stage == "STAGE1A_INTERFACE" else "independent_receding_horizon"
+        expected_policy = "oracle_snapshot" if stage == "STAGE1A_INTERFACE" else "frozen_full_plan"
         if attempt["trajectory_policy"] != expected_policy:
             out.append(self._v("CONTRACT_VIOLATION", "trajectory_policy", f"expected {expected_policy}"))
         expected_pair_hash = pair_group_hash(
@@ -577,10 +582,10 @@ class CrossObjectContractValidator:
             if attempt.get("semantic_top1_intent_id") == attempt.get("semantic_top2_intent_id"):
                 out.append(self._v("CONTRACT_VIOLATION", "semantic_top2_intent_id", "top-2 intent class must differ"))
         elif attempt["planner_support_status"] != "NOT_APPLICABLE" or attempt["planner_support_signature_hash"] is not None:
-            if arm != "P_REPLAY_RAW":
+            if arm not in self.FULL_PLAN_ARMS:
                 out.append(self._v("CONTRACT_VIOLATION", "planner_support_status", "non-planner arm must be NOT_APPLICABLE"))
 
-        if arm in self.SHUFFLED_ARMS:
+        if arm in self.SHUFFLED_INTENT_ARMS:
             fields = (
                 "control_source_intent_id",
                 "compatible_intent_ids",
@@ -592,6 +597,14 @@ class CrossObjectContractValidator:
                 out.append(self._v("CONTRACT_VIOLATION", "control_*", "shuffled arm requires frozen control identity"))
             elif attempt["control_source_intent_id"] in attempt["compatible_intent_ids"]:
                 out.append(self._v("CONTRACT_VIOLATION", "control_source_intent_id", "wrong intent must be incompatible"))
+        elif arm in self.SHUFFLED_PLAN_ARMS:
+            if attempt.get("control_mapping_hash") is None:
+                out.append(self._v("CONTRACT_VIOLATION", "control_mapping_hash", "full-plan shuffle requires frozen mapping hash"))
+            if self._nullable_fields_present(
+                attempt,
+                ("control_source_intent_id", "compatible_intent_ids", "intent_compatibility_hash", "control_certification_hash"),
+            ):
+                out.append(self._v("CONTRACT_VIOLATION", "control_*", "position shuffle must not claim incompatible-intent control fields"))
         elif self._nullable_fields_present(
             attempt,
             (
@@ -602,11 +615,11 @@ class CrossObjectContractValidator:
                 "control_certification_hash",
             ),
         ):
-            out.append(self._v("CONTRACT_VIOLATION", "control_*", "non-shuffled arm must not carry control fields"))
+            out.append(self._v("CONTRACT_VIOLATION", "control_*", "non-control arm must not carry control fields"))
 
         if arm in self.EQUAL_TOKEN_ARMS and attempt["intent_text_hash"] is not None:
             out.append(self._v("CONTRACT_VIOLATION", "intent_text_hash", "neutral arm has no intent text"))
-        if arm not in self.EQUAL_TOKEN_ARMS and arm != "P_REPLAY_RAW" and not unresolved and attempt["intent_text_hash"] is None:
+        if arm not in self.EQUAL_TOKEN_ARMS and arm != "P_FULL_PLAN_REPLAY_RAW" and not unresolved and attempt["intent_text_hash"] is None:
             out.append(self._v("CONTRACT_VIOLATION", "intent_text_hash", "intent-guided LLM arm requires intent text hash"))
 
         llm_called = arm in self.LLM_ARMS and not unresolved and issue != "LLM_TIMEOUT"
@@ -633,11 +646,11 @@ class CrossObjectContractValidator:
             if attempt["matched_control_tokens"] != 32:
                 out.append(self._v("CONTRACT_VIOLATION", "matched_control_tokens", "Stage1B equalizes guidance only at 32 tokens"))
 
-        if arm == "P_REPLAY_RAW":
+        if arm == "P_FULL_PLAN_REPLAY_RAW":
             if attempt["planner_checkpoint_sha256"] is None or attempt["planner_config_sha256"] is None or attempt["plan_step_id"] is None:
-                out.append(self._v("CONTRACT_VIOLATION", "P_REPLAY", "requires planner checkpoint/config and plan_step_id"))
+                out.append(self._v("CONTRACT_VIOLATION", "P_FULL_PLAN_REPLAY", "requires planner checkpoint/config and plan_step_id"))
             if attempt["raw_unmasked_action"] is None or attempt["raw_unmasked_args"] is None or attempt["candidate_typed_action"] is None:
-                out.append(self._v("CONTRACT_VIOLATION", "P_REPLAY", "requires raw unmasked planner action/args and candidate TypedAction"))
+                out.append(self._v("CONTRACT_VIOLATION", "P_FULL_PLAN_REPLAY", "requires raw unmasked planner action/args and candidate TypedAction"))
             if parse_status != "NOT_APPLICABLE":
                 out.append(self._v("CONTRACT_VIOLATION", "parse_status", "P_REPLAY parser is N/A"))
             if attempt["planner_support_status"] == "NOT_APPLICABLE" or attempt["planner_support_signature_hash"] is None:
@@ -648,6 +661,29 @@ class CrossObjectContractValidator:
                 out.append(self._v("CONTRACT_VIOLATION", "unresolved", "must terminate before LLM/parser/validator"))
             if attempt["raw_output"] is not None or attempt["parsed_llm_response"] is not None or attempt["parsed_typed_action"] is not None or attempt["candidate_typed_action"] is not None:
                 out.append(self._v("CONTRACT_VIOLATION", "unresolved", "unresolved flow must have no LLM output"))
+
+        if stage == "STAGE1B_END_TO_END":
+            if arm in self.FULL_PLAN_ARMS:
+                if attempt.get("episode_plan_manifest_hash") is None or attempt.get("plan_generation_status") != "READY":
+                    out.append(self._v("CONTRACT_VIOLATION", "episode_plan_manifest_hash", "full-plan arm requires READY EpisodePlanManifest"))
+                if attempt.get("plan_position_index") != attempt.get("step_index"):
+                    out.append(self._v("CONTRACT_VIOLATION", "plan_position_index", "must equal sequential execution step index"))
+                if attempt.get("plan_step_id") is None or attempt.get("plan_content_hash") is None or attempt.get("plan_artifact_hash") is None:
+                    out.append(self._v("CONTRACT_VIOLATION", "plan lineage", "full-plan attempt requires frozen WorkPlan identity"))
+                if attempt.get("replanning_observed") is not False:
+                    out.append(self._v("CONTRACT_VIOLATION", "replanning_observed", "replanning is forbidden"))
+                if arm == "P_FULL_PLAN_REPLAY_RAW":
+                    if attempt.get("guidance_source_position_index") is not None or attempt.get("guidance_source_step_id") is not None or attempt.get("guidance_source_semantic_ref") is not None:
+                        out.append(self._v("CONTRACT_VIOLATION", "guidance_source_*", "raw replay must not carry LLM guidance identity"))
+                elif any(attempt.get(field) is None for field in ("guidance_source_position_index", "guidance_source_step_id", "guidance_source_semantic_ref")):
+                    out.append(self._v("CONTRACT_VIOLATION", "guidance_source_*", "full-plan LLM attempt requires exact frozen guidance source identity"))
+                if arm == "P_FULL_PLAN_REPLAY_RAW" and attempt.get("replay_context") is None:
+                    out.append(self._v("CONTRACT_VIOLATION", "replay_context", "replay context is mandatory"))
+                if arm != "P_FULL_PLAN_REPLAY_RAW" and attempt.get("replay_context") is not None:
+                    out.append(self._v("CONTRACT_VIOLATION", "replay_context", "only replay arm carries replay context"))
+            else:
+                if attempt.get("episode_plan_manifest_hash") is not None or attempt.get("plan_generation_status") != "NONE" or attempt.get("plan_position_index") is not None:
+                    out.append(self._v("CONTRACT_VIOLATION", "plan lineage", "E0 must not carry a plan"))
 
         if stage == "STAGE1A_INTERFACE":
             if attempt["oracle_distance_before"] is None:
@@ -756,9 +792,18 @@ class CrossObjectContractValidator:
         retries = sum(a["attempt_index"] > 0 for a in attempts)
         if retries != episode["retries_total"]:
             out.append(self._v("CONTRACT_VIOLATION", "retries_total", "does not equal retry rows"))
-        planner_calls = sum(a["arm"] in self.PLANNER_INTENT_ARMS or a["arm"] == "P_REPLAY_RAW" for a in attempts)
-        if planner_calls != episode["planner_calls"]:
-            out.append(self._v("CONTRACT_VIOLATION", "planner_calls", "does not equal planner attempts"))
+        if episode["stage"] == "STAGE1A_INTERFACE":
+            planner_calls = sum(a["arm"] in self.PLANNER_INTENT_ARMS for a in attempts)
+            if planner_calls != episode["planner_calls"]:
+                out.append(self._v("CONTRACT_VIOLATION", "planner_calls", "does not equal planner attempts"))
+        else:
+            expected_planner_calls = 1 if episode["arm"] in {
+                "E1_A3_FULL_PLAN_RAW", "E3_A3R_RANDOM_CODE_FULL_PLAN_RAW",
+                "E4_A2C_STRUCTURED_FULL_PLAN_RAW", "E5_SELF_PLAN_RAW",
+                "E1_A3_FULL_PLAN_OPERATIONAL", "PLANNER_A3_RAW",
+            } else 0
+            if episode["planner_calls"] != expected_planner_calls:
+                out.append(self._v("CONTRACT_VIOLATION", "planner_calls", "does not match EpisodePlanManifest generation policy"))
         resolver_calls = sum(a["semantic_resolution_status"] in {"RESOLVED", "UNRESOLVED"} for a in attempts)
         if resolver_calls != episode["semantic_resolver_calls"]:
             out.append(self._v("CONTRACT_VIOLATION", "semantic_resolver_calls", "does not equal resolver attempts"))
@@ -782,7 +827,7 @@ class CrossObjectContractValidator:
             out.append(self._v("CONTRACT_VIOLATION", "total_latency_ms", "does not equal attempt sum"))
         budget_violations = sum(
             a["stage"] == "STAGE1B_END_TO_END"
-            and a["arm"] != "P_REPLAY_RAW"
+            and a["arm"] != "P_FULL_PLAN_REPLAY_RAW"
             and a["semantic_resolution_status"] != "UNRESOLVED"
             and (a["prompt_tokens_total"] > 512 or a["padded_sequence_length"] > 512 or a.get("padding_side") not in {"NONE", "LEFT"})
             for a in attempts

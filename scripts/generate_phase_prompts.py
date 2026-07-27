@@ -9,7 +9,7 @@ STATE=ROOT/'docs/operator/phase_state_machine_v1.yaml'
 FILES={
 'P00':'P00_scope_and_protocol_start.md','P01':'P01_provisioning_roles_and_budget.md','P02':'P02_environment_pins_and_contract_lock.md',
 'P03':'P03_runtime_contracts_and_validation.md','P04':'P04_domain_oracle_generator_intent_labeler.md','P05':'P05_dataset_corpus_and_leakage.md',
-'P06':'P06_planner_models_a1_a5.md','P07':'P07_planner_development_pilot_freeze.md','P08':'P08_planner_sealed_confirmatory.md',
+'P06':'P06_planner_models_variants.md','P07':'P07_planner_development_pilot_freeze.md','P08':'P08_planner_sealed_confirmatory.md',
 'P09':'P09_planner_decision_and_eligibility.md','P10':'P10_frozen_llm_and_resolver.md','P11':'P11_prompt_development_and_freeze.md',
 'P12':'P12_stage1a_pilot_and_freeze.md','P13':'P13_stage1a_sealed_confirmatory.md','P14':'P14_interface_decision.md',
 'P15':'P15_stage1b_support_and_controls.md','P16':'P16_stage1b_pilot_and_freeze.md','P17':'P17_stage1b_sealed_confirmatory.md',

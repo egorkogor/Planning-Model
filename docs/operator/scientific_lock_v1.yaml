@@ -1,10 +1,11 @@
-schema_version: work-planner/1.13
+schema_version: work-planner/1.14
 contract_id: scientific-lock/1.0
 created_phase: P02
-purpose: Freeze every outcome-relevant choice before implementation or outcome data exists.
+purpose: Freeze every outcome-relevant choice before implementation or outcome data
+  exists.
 protected_paths:
-- docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.13.md
-- docs/Planner_LLM_Stage1_Operator_Runbook_v2.13_RU.md
+- docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.14.md
+- docs/Planner_LLM_Stage1_Operator_Runbook_v2.14_RU.md
 - docs/operator/phase_state_machine_v1.yaml
 - docs/operator/phase_registry_v1.yaml
 - docs/operator/agent_execution_contract_v1.yaml
@@ -96,6 +97,21 @@ protected_paths:
 - docs/schemas/sealer_manifest.schema.json
 - docs/schemas/audit_report.schema.json
 - validation/sealer_manifest_validator.py
+- docs/schemas/attempt_log.schema.json
+- docs/schemas/episode_log.schema.json
+- docs/schemas/episode_plan_manifest.schema.json
+- docs/schemas/full_plan_lineage_index.schema.json
+- docs/schemas/compute_profile.schema.json
+- docs/schemas/compute_measurement_entry.schema.json
+- docs/controls/random_codebook_contract_v1.yaml
+- docs/schemas/semantic_signature_bank.schema.json
+- docs/schemas/random_codebook_manifest.schema.json
+- validation/random_codebook_validator.py
+- docs/schemas/capacity_preflight.schema.json
+- validation/full_plan_lineage_validator.py
+- validation/capacity_validator.py
+- docs/controls/full_plan_shuffle_contract_v1.yaml
+- docs/schemas/shuffled_plan_mapping.schema.json
 manifest_path: locks/scientific.lock.json
 mismatch_action: INVALID_RUN
 change_policy:

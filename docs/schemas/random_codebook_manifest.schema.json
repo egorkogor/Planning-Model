@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/random_codebook_manifest.schema.json",
+  "title": "Frozen A3r random codebook manifest v1.14",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "contract_sha256",
+    "source_signature_bank_path",
+    "source_signature_bank_sha256",
+    "algorithm",
+    "seed_hex",
+    "dimension",
+    "entries",
+    "maximum_abs_pairwise_cosine",
+    "created_at",
+    "manifest_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-random-codebook/1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "source_signature_bank_path": {
+      "const": "semantic_bank/signatures/manifest.json"
+    },
+    "source_signature_bank_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "algorithm": {
+      "const": "SHAKE256_BITS_V1"
+    },
+    "seed_hex": {
+      "const": "905098775febd6fe3b64b9ab8ddb4262f569dcb156915e7c805cef54e14314ca"
+    },
+    "dimension": {
+      "const": 384
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "signature_sha256",
+          "code_hex"
+        ],
+        "properties": {
+          "signature_sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "code_hex": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{96}$"
+          }
+        }
+      }
+    },
+    "maximum_abs_pairwise_cosine": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 0.3
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

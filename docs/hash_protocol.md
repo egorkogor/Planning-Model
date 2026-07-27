@@ -1,4 +1,4 @@
-# Нормативный hash protocol v1.13
+# Нормативный hash protocol v1.14
 
 Все runtime hashes имеют вид `sha256:<64 lowercase hex>`. `SHA256SUMS.txt` использует стандартный формат `<hex><two spaces><relative POSIX path>`.
 
@@ -82,7 +82,7 @@ Payload contains stage, split, base task, optional snapshot, trajectory policy a
 
 `control_mapping_hash` includes state, goal, selected intent, catalog/control hashes and compatibility hash.
 
-`control_certification_hash` includes ordered mapping hashes and eligible/excluded unit set, excludes outcomes by construction.
+`control_certification_hash` is stage-specific: Stage 1A binds frozen snapshot-control mappings; Stage 1B binds only task/domain/split eligibility and pre-outcome artifact manifests. Stage 1B never hashes Planner/LLM outputs into an inclusion decision.
 
 ## 10. Freeze and decisions
 
@@ -102,7 +102,7 @@ Payload contains stage, split, base task, optional snapshot, trajectory policy a
 
 Hash is computed only after schema and cross-object validation. Writers recalculate after read-back. Mismatch is a fatal contract violation; no runtime row may be silently rehashed after outcome.
 
-## Signed role manifests (v1.13)
+## Signed role manifests (v1.14)
 
 For Data Sealer and Evaluation Runner manifests, canonical signed bytes are UTF-8 canonical JSON with sorted keys and compact separators after removing `signature` and `manifest_hash`. `manifest_hash` is SHA-256 of those bytes. `signature` is Ed25519 over exactly the same bytes. The public key must be present in `locks/public-keys.json` and bound to the expected role and role-identity hash.
 

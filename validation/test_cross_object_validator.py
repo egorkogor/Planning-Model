@@ -153,24 +153,24 @@ def test_plan_manifest_hash_and_tensor_uri_are_verified():
 def test_valid_attempts_for_every_raw_arm():
     for arm in sorted(V.INTERFACE_ARMS):
         assert not V.validate_attempt(attempt(arm, "STAGE1A_INTERFACE")), arm
-    for arm in sorted({"E0_EQUAL_TOKENS_RAW", "E1_PLANNER_CURRENT_RAW", "E2_SHUFFLED_RAW", "E3_ORACLE_REPLAN_RAW", "P_REPLAY_RAW"}):
+    for arm in sorted({"E0_EQUAL_TOKENS_RAW", "E1_A3_FULL_PLAN_RAW", "E2_SHUFFLED_A3_FULL_PLAN_RAW", "E3_A3R_RANDOM_CODE_FULL_PLAN_RAW", "E4_A2C_STRUCTURED_FULL_PLAN_RAW", "E5_SELF_PLAN_RAW", "P_FULL_PLAN_REPLAY_RAW"}):
         assert not V.validate_attempt(attempt(arm, "STAGE1B_END_TO_END")), arm
 
 
 def test_stage1b_requires_max_512_unpadded_and_32_guidance_tokens():
-    bad = attempt("E1_PLANNER_CURRENT_RAW", "STAGE1B_END_TO_END")
+    bad = attempt("E1_A3_FULL_PLAN_RAW", "STAGE1B_END_TO_END")
     bad["prompt_tokens_total"] = 513
     bad["attended_prompt_tokens"] = 513
     bad["tokens_in"] = 513
     bad["padded_sequence_length"] = 513
     assert "PROMPT_BUDGET_EXCEEDED" in codes(V.validate_attempt(bad))
-    bad = attempt("E1_PLANNER_CURRENT_RAW", "STAGE1B_END_TO_END")
+    bad = attempt("E1_A3_FULL_PLAN_RAW", "STAGE1B_END_TO_END")
     bad["added_block_tokens"] = 31
     assert "CONTRACT_VIOLATION" in codes(V.validate_attempt(bad))
 
 
 def test_p_replay_requires_planner_identity_and_candidate():
-    bad = attempt("P_REPLAY_RAW", "STAGE1B_END_TO_END")
+    bad = attempt("P_FULL_PLAN_REPLAY_RAW", "STAGE1B_END_TO_END")
     bad["planner_config_sha256"] = None
     bad["candidate_typed_action"] = None
     assert "CONTRACT_VIOLATION" in codes(V.validate_attempt(bad))
@@ -202,7 +202,7 @@ def test_stage1a_pair_group_is_exact_and_complete():
 
 
 def test_episode_aggregates_attempts_exactly():
-    a = attempt("E1_PLANNER_CURRENT_RAW", "STAGE1B_END_TO_END")
+    a = attempt("E1_A3_FULL_PLAN_RAW", "STAGE1B_END_TO_END")
     e = episode_from_attempt(a)
     assert not V.validate_episode_attempts(e, [a])
     bad = deepcopy(e)

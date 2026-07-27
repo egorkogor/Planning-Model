@@ -1,6 +1,7 @@
-schema_version: work-planner/1.13
+schema_version: work-planner/1.14
 contract_id: planner-scientific-design/1.0
-purpose: Outcome-relevant architecture comparison fixed by Scientific lock; executable wiring remains in planner_architecture_v1.yaml until Implementation lock.
+purpose: Outcome-relevant architecture comparison fixed by Scientific lock; executable
+  wiring remains in planner_architecture_v1.yaml until Implementation lock.
 arms:
   A1:
     representation: LOSSLESS_TOKEN_GRAMMAR
@@ -17,6 +18,10 @@ arms:
   A3:
     representation: CONTINUOUS_LATENT
     role: primary latent hypothesis
+  A3r:
+    representation: RANDOM_CODE_CONTINUOUS_LATENT
+    role: parameter-matched learned control trained on a frozen random code per exact
+      semantic signature
   A4:
     representation: A3_ZERO_FEEDBACK
     role: inference intervention using the exact A3 checkpoint
@@ -30,6 +35,10 @@ causal_constraints:
   raw_unmasked_candidate_logged_before_recovery: true
   domain_mask_not_applied_before_raw_log: true
   A5_manifest_contract: docs/controls/planner_latent_ablation_contract_v1.yaml
+  A3r_architecture_and_training_schedule_equal_A3: true
+  A3r_only_target_difference: semantic target embedding replaced by frozen deterministic
+    random codebook
+  A3r_codebook_contract: docs/controls/random_codebook_contract_v1.yaml
 comparison_order:
 - A2_vs_A1_HORIZON
 - A2b_vs_A2_HORIZON
@@ -42,14 +51,20 @@ comparison_order:
 - A3_vs_A4_SIZE_OOD
 - A3_vs_A5_SIZE_OOD
 - A3_vs_A2c_FLOPS_HORIZON
+- A3_vs_A3r_STAGE1B_RANDOM_CODE
 compute_matching:
   regimes:
   - equal_data_equal_updates
   - inference_FLOPs_matched
   parameter_count_tolerance_fraction: 0.0
   final_optimizer_updates_exact: 12000
-  parameter_inventory: exact common superset across A1/A2/A2b/A2c/A3
+  parameter_inventory: exact common superset across A1/A2/A2b/A2c/A3/A3r
   dormant_modules_cannot_affect_outputs: true
+  flops_sensitivity_comparison:
+  - A3
+  - A2c
+  cap_rule: minimum measured per-step FLOPs across A3/A2c multiplied by 12000
+  separate_sensitivity_models_per_final_seed: true
 endpoints:
   primary: raw goal_success
   secondary:

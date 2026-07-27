@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/resource_plan.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/resource_plan.schema.json",
   "title": "Resource plan",
   "type": "object",
   "additionalProperties": false,
@@ -16,7 +16,8 @@
     "currency",
     "requires_operator_budget_approval",
     "plan_hash",
-    "statistical_reviewer"
+    "statistical_reviewer",
+    "capacity_limits"
   ],
   "properties": {
     "schema_version": {
@@ -171,6 +172,29 @@
           }
         }
       ]
+    },
+    "capacity_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maximum_gpu_seconds",
+        "maximum_storage_bytes",
+        "gpu_hour_cost"
+      ],
+      "properties": {
+        "maximum_gpu_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maximum_storage_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "gpu_hour_cost": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
     }
   }
 }

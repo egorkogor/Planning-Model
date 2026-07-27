@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/shuffled_plan_mapping.schema.json",
+  "title": "Deterministic E2 full-plan guidance mapping v1.14",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "run_id", "task_id", "source_episode_plan_manifest_hash",
+    "source_plan_content_hash", "contract_sha256", "plan_non_end_length", "status",
+    "seed_payload_hash", "rotation_offset", "permutation", "mapping_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "work-planner-shuffled-plan/1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "pattern": "^bw-[0-9]{8}$"},
+    "source_episode_plan_manifest_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+    "source_plan_content_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+    "contract_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "plan_non_end_length": {"type": "integer", "minimum": 0, "maximum": 16},
+    "status": {"enum": ["VALID", "DEGENERATE"]},
+    "seed_payload_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+    "rotation_offset": {"type": ["integer", "null"], "minimum": 1, "maximum": 15},
+    "permutation": {"type": "array", "maxItems": 16, "items": {"type": "integer", "minimum": 0, "maximum": 15}},
+    "mapping_hash": {"$ref": "common.schema.json#/$defs/sha256"}
+  }
+}

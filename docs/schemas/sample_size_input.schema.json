@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/sample_size_input.schema.json",
-  "title": "Estimator-matched paired-binary pilot inputs for sample-size simulation v1.4",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/sample_size_input.schema.json",
+  "title": "Estimator-matched paired-binary pilot inputs for sample-size simulation v1.5",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -18,7 +18,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "work-planner-sample-size-input/1.4"
+      "const": "work-planner-sample-size-input/1.5"
     },
     "run_id": {
       "type": "string"
@@ -53,7 +53,16 @@
         "current_vs_shuffled_power": {
           "$ref": "#/$defs/requirement"
         },
-        "equivalence_TOST_power": {
+        "random_code_power": {
+          "$ref": "#/$defs/requirement"
+        },
+        "structured_noninferiority_power": {
+          "$ref": "#/$defs/requirement"
+        },
+        "self_plan_power": {
+          "$ref": "#/$defs/requirement"
+        },
+        "flops_direction_power": {
           "$ref": "#/$defs/requirement"
         }
       }
@@ -132,8 +141,8 @@
         },
         "seed_groups": {
           "type": "object",
-          "minProperties": 3,
-          "maxProperties": 3,
+          "minProperties": 5,
+          "maxProperties": 5,
           "additionalProperties": {
             "type": "array",
             "minItems": 20,
@@ -247,7 +256,16 @@
               "current_vs_shuffled_power": {
                 "$ref": "#/$defs/planner"
               },
-              "equivalence_TOST_power": {
+              "random_code_power": {
+                "$ref": "#/$defs/planner"
+              },
+              "structured_noninferiority_power": {
+                "$ref": "#/$defs/planner"
+              },
+              "self_plan_power": {
+                "$ref": "#/$defs/planner"
+              },
+              "flops_direction_power": {
                 "$ref": "#/$defs/planner"
               }
             },
@@ -256,11 +274,7 @@
               "primary_power",
               "current_vs_shuffled_power"
             ],
-            "not": {
-              "required": [
-                "equivalence_TOST_power"
-              ]
-            }
+            "additionalProperties": false
           }
         }
       }
@@ -289,16 +303,25 @@
               "current_vs_shuffled_power": {
                 "$ref": "#/$defs/stage1a"
               },
-              "equivalence_TOST_power": {
+              "random_code_power": {
+                "$ref": "#/$defs/stage1a"
+              },
+              "structured_noninferiority_power": {
+                "$ref": "#/$defs/stage1a"
+              },
+              "self_plan_power": {
+                "$ref": "#/$defs/stage1a"
+              },
+              "flops_direction_power": {
                 "$ref": "#/$defs/stage1a"
               }
             },
             "required": [
               "primary_ci",
               "primary_power",
-              "current_vs_shuffled_power",
-              "equivalence_TOST_power"
-            ]
+              "current_vs_shuffled_power"
+            ],
+            "additionalProperties": false
           }
         }
       }
@@ -327,7 +350,16 @@
               "current_vs_shuffled_power": {
                 "$ref": "#/$defs/stage1b"
               },
-              "equivalence_TOST_power": {
+              "random_code_power": {
+                "$ref": "#/$defs/stage1b"
+              },
+              "structured_noninferiority_power": {
+                "$ref": "#/$defs/stage1b"
+              },
+              "self_plan_power": {
+                "$ref": "#/$defs/stage1b"
+              },
+              "flops_direction_power": {
                 "$ref": "#/$defs/stage1b"
               }
             },
@@ -335,8 +367,12 @@
               "primary_ci",
               "primary_power",
               "current_vs_shuffled_power",
-              "equivalence_TOST_power"
-            ]
+              "random_code_power",
+              "structured_noninferiority_power",
+              "self_plan_power",
+              "flops_direction_power"
+            ],
+            "additionalProperties": false
           }
         }
       }

@@ -11,7 +11,7 @@
 
 ## G00_SCOPE
 
-Подтверждает только область архивного эксперимента и protocol v1.13/v2.13.
+Подтверждает только область архивного эксперимента и protocol v1.14/v2.14.
 
 ```text
 APPROVE G00_SCOPE <scope_sha256>
@@ -52,7 +52,7 @@ STOP G07_PLANNER_CONFIRMATORY_FREEZE
 
 ## G12_STAGE1A_CONFIRMATORY_FREEZE
 
-Проверить prompt lock, snapshot/control manifest, clustered N/TOST и sealed evaluator dispatch.
+Проверить prompt lock, snapshot/control manifest, clustered N and diagnostic/core gate separation и sealed evaluator dispatch.
 
 ```text
 APPROVE G12_STAGE1A_CONFIRMATORY_FREEZE <freeze_sha256>
@@ -62,7 +62,7 @@ STOP G12_STAGE1A_CONFIRMATORY_FREEZE
 
 ## G16_STAGE1B_CONFIRMATORY_FREEZE
 
-Проверить 100% pre-outcome control coverage, eligibility manifest, independent trajectories и reserve capacity.
+Проверить task-only eligibility manifest, нулевое использование Planner/LLM outputs при selection, сохранение degeneracy/failures как paired outcomes и reserve capacity.
 
 ```text
 APPROVE G16_STAGE1B_CONFIRMATORY_FREEZE <freeze_sha256>

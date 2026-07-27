@@ -1,0 +1,38 @@
+schema_version: work-planner/1.14
+contract_id: random-codebook/1.0
+purpose: Parameter-matched A3r control that preserves exact semantic-signature identity
+  while destroying pretrained semantic geometry.
+source_signature_bank:
+  path: semantic_bank/signatures/manifest.json
+  split: train_only
+  exact_full_semantic_signature: required
+  development_pilot_confirmatory_outcomes: forbidden
+code_generation:
+  algorithm: SHAKE256_BITS_V1
+  seed_hex: 905098775febd6fe3b64b9ab8ddb4262f569dcb156915e7c805cef54e14314ca
+  payload: seed_bytes || UTF8(signature_sha256)
+  output_bytes: 48
+  dimension: 384
+  bit_mapping: 0_to_minus_one; 1_to_plus_one
+  model_target: float32(bit_value / sqrt(384))
+  signature_order: ascending_signature_sha256
+  rejection_or_manual_selection: forbidden
+quality_checks:
+  unique_codes_required: true
+  maximum_abs_pairwise_cosine: 0.3
+  exact_regeneration_required: true
+  prelock_exhaustive_schema_universe_max_abs_pairwise_cosine: 0.2864583333333333
+  prelock_universe_size: 7560
+training:
+  variant: A3r
+  architecture: exactly_A3
+  examples_order_updates_optimizer_hyperparameters: exactly_A3
+  only_allowed_difference: latent target from this random codebook instead of semantic
+    target embedding
+  separate_checkpoint: required
+  A3_checkpoint_reuse: forbidden
+freeze:
+  create_phase: P05
+  required_before_any_A3r_training: true
+  manifest: semantic_bank/random-codebook/manifest.json
+  scientific_change_after_P02: forbidden

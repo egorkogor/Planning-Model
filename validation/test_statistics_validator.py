@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import yaml
 
-from analysis.decision_gates import paired_tost
+from analysis.decision_gates import evaluate_gate, paired_tost
 from analysis.sample_size import (
     _draw_requirement,
     calculate_components_from_structured_requirements,
@@ -16,7 +16,7 @@ from validation.statistics_validator import (
     validate_scientific_decision,
 )
 
-REQS = ("primary_ci", "primary_power", "current_vs_shuffled_power", "equivalence_TOST_power")
+REQS = ("primary_ci", "primary_power", "current_vs_shuffled_power", "random_code_power", "structured_noninferiority_power", "self_plan_power", "flops_direction_power")
 
 
 def _pair_rows(name: str, values: list[float]) -> list[dict]:
@@ -46,54 +46,28 @@ def _paired_requirement(name: str, values: list[float]) -> dict:
 
 
 def test_sample_size_is_recomputed_from_estimator_matched_inputs():
-    differences = {
-        "primary_ci": [-1, 0, 0, 1] * 5,
-        "primary_power": [-1, 0, 0, 1] * 5,
-        "current_vs_shuffled_power": [-1, 0, 0, 1] * 5,
-        "equivalence_TOST_power": [-1, 0, 0, 1] * 5,
-    }
-    requirements = {k: _paired_requirement(k, v) for k, v in differences.items()}
+    values = [-1, 0, 0, 1] * 5
+    requirements = {k: _paired_requirement(k, values) for k in REQS}
     inputs = {
         "pilot_sd_by_requirement": {k: paired_sd(v) for k, v in requirements.items()},
-        "target_effect": 0.5,
-        "minimum_effect_gate": 0.1,
-        "target_ci_half_width": 0.5,
-        "equivalence_margin": 0.5,
-        "target_power": 0.25,
-        "round_up_multiple": 10,
-        "minimum_n": 20,
-        "simulation_count": 4,
-        "ci_resamples_per_simulation": 30,
-        "maximum_n": 100,
-        "power_confidence_level": 0.60,
-        "power_confirmation_points": 1,
+        "target_effect": 0.5, "minimum_effect_gate": 0.1,
+        "target_ci_half_width": 0.5, "target_power": 0.10,
+        "round_up_multiple": 10, "minimum_n": 20, "simulation_count": 4,
+        "ci_resamples_per_simulation": 30, "maximum_n": 500,
+        "power_confidence_level": 0.51, "power_confirmation_points": 1,
     }
     components = calculate_components_from_structured_requirements(
-        requirements,
-        simulations=4,
-        ci_resamples=30,
-        target_power=0.25,
-        minimum_n=20,
-        design_effect=0.5,
-        minimum_effect_gate=0.1,
-        half_width=0.5,
-        round_multiple=10,
-        maximum_n=100,
-        equivalence_margin=0.5,
-        power_confidence_level=0.60,
-        power_confirmation_points=1,
+        requirements, simulations=4, ci_resamples=30, target_power=0.10,
+        minimum_n=20, design_effect=0.5, minimum_effect_gate=0.1,
+        half_width=0.5, round_multiple=10, maximum_n=500,
+        power_confidence_level=0.51, power_confirmation_points=1,
     )
     selected = components.pop("selected_n")
     sample_input = {"stage": "STAGE1B", "requirements": requirements}
     obj = {
-        "stage": "STAGE1B",
-        "method": "estimator_matched_paired_binary_simulation_v4",
-        "inputs": inputs,
-        "component_requirements": components,
-        "selected_n": selected,
-        "reserve_n": selected + 10,
-        "status": "PASS",
-        "random_seed": 7302,
+        "stage": "STAGE1B", "method": "estimator_matched_paired_binary_simulation_v5",
+        "inputs": inputs, "component_requirements": components, "selected_n": selected,
+        "reserve_n": selected + 10, "status": "PASS", "random_seed": 7302,
         "analysis_code_sha256": analysis_code_digest(),
     }
     assert not validate_sample_size_report(obj, sample_input)
@@ -106,43 +80,33 @@ def test_sample_size_rejects_wrong_estimator_and_fabricated_sd():
     requirements = {k: _paired_requirement(k, values) for k in REQS}
     sample_input = {"stage": "STAGE1B", "requirements": requirements}
     obj = {
-        "stage": "STAGE1B",
-        "method": "wrong-estimator",
+        "stage": "STAGE1B", "method": "wrong-estimator",
         "inputs": {"pilot_sd_by_requirement": {k: 0.9 for k in REQS}},
-        "component_requirements": {},
-        "selected_n": 20,
-        "reserve_n": 20,
-        "status": "PASS",
-        "random_seed": 7302,
+        "component_requirements": {}, "selected_n": 20, "reserve_n": 20,
+        "status": "PASS", "random_seed": 7302, "analysis_code_sha256": analysis_code_digest(),
     }
     errors = validate_sample_size_report(obj, sample_input)
     assert any("method differs" in x for x in errors)
     assert any("pilot_sd" in x for x in errors)
 
 
+
+
 def _comparison(kind: str, values: list[float]):
     if kind == "TASK_PAIRED":
-        return {
-            "analysis_type": kind,
-            "complete_pair_count": len(values),
-            "pairs": _pair_rows("t", values),
-        }
+        return {"analysis_type": kind, "complete_pair_count": len(values), "pairs": _pair_rows("t", values)}
     if kind == "SCALAR_RATE":
-        return {
-            "analysis_type": kind,
-            "complete_pair_count": len(values),
-            "units": [{"unit_id": f"u{i}", "value": float(v)} for i, v in enumerate(values)],
-        }
+        return {"analysis_type": kind, "complete_pair_count": len(values),
+                "units": [{"unit_id": f"u{i}", "value": float(v)} for i, v in enumerate(values)]}
     raise AssertionError(kind)
 
-
-def test_scientific_decision_includes_validity_floors_and_tost_90_ci():
+def test_scientific_decision_diagnostic_control_cannot_veto_core_go():
     analysis_input = {
         "stage": "STAGE1A",
         "comparisons": {
             "I1-I0": _comparison("TASK_PAIRED", [0.1] * 40),
             "I1-I2": _comparison("TASK_PAIRED", [0.1] * 40),
-            "I2-I0": _comparison("TASK_PAIRED", [-0.005, 0.005] * 20),
+            "I2-I0": _comparison("TASK_PAIRED", [0.1] * 40),
             "I1_PROGRESS_RATE": _comparison("SCALAR_RATE", [1.0] * 28 + [0.0] * 12),
             "I_PARSE_FAILURE_RATE": _comparison("SCALAR_RATE", [0.0] * 40),
             "I_INFRASTRUCTURE_FAILURE_RATE": _comparison("SCALAR_RATE", [0.0] * 40),
@@ -154,45 +118,31 @@ def test_scientific_decision_includes_validity_floors_and_tost_90_ci():
         "raw_result_manifest_sha256": "sha256:" + "a" * 64,
     }
     contract = yaml.safe_load(open("docs/statistics/statistics_contract_v1.yaml"))
-    defs = contract["stage_gates"]["STAGE1A"]["gates"]
-    gates = []
+    row = contract["stage_gates"]["STAGE1A"]
+    defs = ([{**g, "gate_group": "INTERFACE"} for g in row["core_gates"]]
+            + [{**g, "gate_group": "DIAGNOSTIC"} for g in row["diagnostic_gates"]])
+    gates=[]
     for definition in defs:
-        comp = analysis_input["comparisons"][definition["comparison"]]
-        if definition["rule"] == "paired_tost":
-            result = paired_tost([x["difference"] for x in comp["pairs"]], definition["threshold"])
-            est, lo, hi, passed = result["estimate"], result["ci_low"], result["ci_high"], result["pass"]
-        else:
-            est, lo, hi = summarize_comparison(comp)
-            rule = definition["rule"]
-            passed = {
-                "estimate_gte_and_ci_low_gt": est >= definition["threshold"] and lo > 0,
-                "ci_low_gt": lo > definition["threshold"],
-                "estimate_gte": est >= definition["threshold"],
-                "estimate_lte": est <= definition["threshold"],
-            }[rule]
-        gates.append({
-            **definition,
-            "gate_group": "INTERFACE",
-            "estimate": est,
-            "ci_low": lo,
-            "ci_high": hi,
-            "pass": bool(passed),
-        })
-    upstream = {"decision": "GO_PLANNER_STAGE1B_ELIGIBLE"}
-    obj = {
-        "stage": "STAGE1A",
-        "planner_stage1b_eligible": True,
-        "upstream_decision_sha256": "sha256:" + "b" * 64,
-        "raw_result_manifest_sha256": "sha256:" + "a" * 64,
-        "gates": gates,
-        "decision": "GO_INTERFACE_STAGE1B_ELIGIBLE",
-    }
-    assert not validate_scientific_decision(obj, analysis_input, upstream)
-    tost_gate = next(g for g in obj["gates"] if g["gate_id"] == "SHUFFLED_EQ_NEUTRAL")
-    _, lo95, hi95 = summarize_comparison(analysis_input["comparisons"]["I2-I0"])
-    tost_gate["ci_low"], tost_gate["ci_high"] = lo95, hi95
-    assert validate_scientific_decision(obj, analysis_input, upstream)
+        est,lo,hi=summarize_comparison(analysis_input["comparisons"][definition["comparison"]])
+        gates.append({**definition,"estimate":est,"ci_low":lo,"ci_high":hi,
+                      "pass":evaluate_gate(definition["rule"],est,lo,hi,definition["threshold"])})
+    assert next(g for g in gates if g["gate_group"]=="DIAGNOSTIC")["pass"] is False
+    upstream={"decision":"GO_PLANNER_STAGE1B_ELIGIBLE"}
+    obj={"stage":"STAGE1A","planner_stage1b_eligible":True,
+         "upstream_decision_sha256":"sha256:"+"b"*64,
+         "raw_result_manifest_sha256":"sha256:"+"a"*64,
+         "gates":gates,"decision":"GO_INTERFACE_STAGE1B_ELIGIBLE"}
+    assert not validate_scientific_decision(obj,analysis_input,upstream)
 
+
+def test_confirmatory_contract_forbids_tost_and_separates_design_effect_from_go_boundary():
+    contract=yaml.safe_load(open("docs/statistics/statistics_contract_v1.yaml"))
+    assert all("equivalence_TOST_power" not in rows for rows in contract["sample_size"]["component_set_by_stage"].values())
+    for stage in ("STAGE1A","STAGE1B"):
+        rules=[g["rule"] for key in ("core_gates","diagnostic_gates") for g in contract["stage_gates"][stage].get(key,[])]
+        assert "paired_tost" not in rules
+    semantics=contract["sample_size"]["component_decision_semantics"]["primary_power"]
+    assert semantics["design_effect"] > semantics["decision_boundary"]
 
 def test_analysis_input_rejects_fabricated_differences_duplicate_ids_and_incomplete_seed_pairing():
     pair = lambda i, l, r, d: {"pair_id": i, "left": l, "right": r, "difference": d}

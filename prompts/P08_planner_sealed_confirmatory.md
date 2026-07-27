@@ -14,6 +14,8 @@
 - `docs/schemas/dispatch_record.schema.json`
 - `docs/schemas/evaluator_result_manifest.schema.json`
 - `docs/schemas/approved_freeze_pointer.schema.json`
+- `docs/schemas/episode_plan_manifest.schema.json`
+- `docs/schemas/full_plan_lineage_index.schema.json`
 
 ## Действия
 1. dispatch approved freeze to separate evaluator
@@ -52,6 +54,7 @@
 - `P08_exec_03` — contract/hash violations zero; verifier: `python validation/phase_check_runner.py --phase P08 --check P08_exec_03 --report reports/phase-P08.json`
 - `P08_exec_04` — implementation lock VERIFIED; verifier: `python validation/phase_check_runner.py --phase P08 --check P08_exec_04 --report reports/phase-P08.json`
 - `P08_exec_05` — scientific lock VERIFIED; verifier: `python validation/phase_check_runner.py --phase P08 --check P08_exec_05 --report reports/phase-P08.json`
+- `P08_exec_06` — A3 WorkPlan generated once and replayed without replanning; verifier: `python validation/phase_check_runner.py --phase P08 --check P08_exec_06 --report reports/phase-P08.json`
 
 ## Проверки после approval
 - нет

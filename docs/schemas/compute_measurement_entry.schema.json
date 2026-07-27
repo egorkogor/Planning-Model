@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/compute_measurement_entry.schema.json",
+  "title": "Raw compute measurement entry v1.14",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "run_id", "trial_id", "measurement_type", "device_name",
+    "variant", "arm", "measured_flops", "elapsed_seconds", "peak_vram_bytes"
+  ],
+  "properties": {
+    "schema_version": {"const": "work-planner-compute-measurement/1.0"},
+    "run_id": {"type": "string", "minLength": 1},
+    "trial_id": {"type": "string", "minLength": 1},
+    "measurement_type": {"enum": ["TRAIN_OPTIMIZER_STEP", "STAGE1B_TASK"]},
+    "device_name": {"type": "string", "minLength": 1},
+    "variant": {"type": ["string", "null"], "enum": ["A1", "A2", "A2b", "A2c", "A3", null]},
+    "arm": {
+      "oneOf": [
+        {"$ref": "common.schema.json#/$defs/arm"},
+        {"type": "null"}
+      ]
+    },
+    "measured_flops": {"type": "number", "exclusiveMinimum": 0},
+    "elapsed_seconds": {"type": "number", "exclusiveMinimum": 0},
+    "peak_vram_bytes": {"type": "integer", "minimum": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"measurement_type": {"const": "TRAIN_OPTIMIZER_STEP"}}, "required": ["measurement_type"]},
+      "then": {"properties": {"variant": {"enum": ["A1", "A2", "A2b", "A2c", "A3"]}, "arm": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"measurement_type": {"const": "STAGE1B_TASK"}}, "required": ["measurement_type"]},
+      "then": {"properties": {"variant": {"type": "null"}, "arm": {"enum": [
+        "E0_EQUAL_TOKENS_RAW", "E1_A3_FULL_PLAN_RAW", "E2_SHUFFLED_A3_FULL_PLAN_RAW",
+        "E3_A3R_RANDOM_CODE_FULL_PLAN_RAW", "E4_A2C_STRUCTURED_FULL_PLAN_RAW",
+        "E5_SELF_PLAN_RAW", "P_FULL_PLAN_REPLAY_RAW"
+      ]}}}
+    }
+  ]
+}

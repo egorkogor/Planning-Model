@@ -1,0 +1,399 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/episode_plan_manifest.schema.json",
+  "title": "EpisodePlanManifest v1.14",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "episode_id",
+    "trajectory_id",
+    "stage",
+    "task_id",
+    "base_task_id",
+    "canonical_task_hash",
+    "split",
+    "arm",
+    "generator_type",
+    "plan_status",
+    "planner_call_count",
+    "generated_before_execution",
+    "generation_started_at",
+    "generation_completed_at",
+    "initial_state_hash",
+    "goal_hash",
+    "work_plan_content_hash",
+    "work_plan_artifact_hash",
+    "work_plan_path",
+    "source_episode_plan_manifest_hash",
+    "source_arm",
+    "semantic_signature_bank_hash",
+    "generation_failure_code",
+    "control_artifact_path",
+    "control_artifact_hash",
+    "control_status",
+    "actual_cost",
+    "attributed_cost",
+    "replay_context",
+    "manifest_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "common.schema.json#/$defs/schema_version"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "episode_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trajectory_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "enum": [
+        "PLANNER_ONLY",
+        "STAGE1B_END_TO_END"
+      ]
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "base_task_id": {
+      "type": "string",
+      "pattern": "^bw-[0-9]{8}$"
+    },
+    "canonical_task_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "split": {
+      "$ref": "common.schema.json#/$defs/split"
+    },
+    "arm": {
+      "$ref": "common.schema.json#/$defs/arm"
+    },
+    "generator_type": {
+      "$ref": "common.schema.json#/$defs/plan_generator_type"
+    },
+    "plan_status": {
+      "enum": [
+        "READY",
+        "FAILED"
+      ]
+    },
+    "planner_call_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "generated_before_execution": {
+      "const": true
+    },
+    "generation_started_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "generation_completed_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "initial_state_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "goal_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "work_plan_content_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "work_plan_artifact_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "work_plan_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^results/[a-z0-9._/-]+/plans/[A-Za-z0-9._/-]+\\.json$"
+    },
+    "source_episode_plan_manifest_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "source_arm": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/arm"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "semantic_signature_bank_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "generation_failure_code": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/issue_code"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "actual_cost": {
+      "$ref": "#/$defs/cost"
+    },
+    "attributed_cost": {
+      "$ref": "#/$defs/cost"
+    },
+    "replay_context": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/replay_context"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "control_status": {
+      "enum": [
+        "NOT_APPLICABLE",
+        "VALID",
+        "DEGENERATE"
+      ]
+    },
+    "control_artifact_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^(?:controls/stage1b/shuffled-plan|semantic_bank/random-codebook)/[A-Za-z0-9._/-]+\\.json$"
+    },
+    "control_artifact_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    }
+  },
+  "$defs": {
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tokens_in",
+        "tokens_out",
+        "latency_ms"
+      ],
+      "properties": {
+        "tokens_in": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens_out": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latency_ms": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "plan_status": {
+            "const": "READY"
+          }
+        },
+        "required": [
+          "plan_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "work_plan_content_hash": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "work_plan_artifact_hash": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "work_plan_path": {
+            "type": "string"
+          },
+          "generation_failure_code": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "plan_status": {
+            "const": "FAILED"
+          }
+        },
+        "required": [
+          "plan_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "work_plan_content_hash": {
+            "type": "null"
+          },
+          "work_plan_artifact_hash": {
+            "type": "null"
+          },
+          "work_plan_path": {
+            "type": "null"
+          },
+          "generation_failure_code": {
+            "$ref": "common.schema.json#/$defs/issue_code"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "generator_type": {
+            "const": "REUSED_E1_A3"
+          }
+        },
+        "required": [
+          "generator_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "planner_call_count": {
+            "const": 0
+          },
+          "source_episode_plan_manifest_hash": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          },
+          "source_arm": {
+            "enum": [
+              "PLANNER_A3_RAW",
+              "E1_A3_FULL_PLAN_RAW"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "planner_call_count": {
+            "const": 1
+          },
+          "source_episode_plan_manifest_hash": {
+            "type": "null"
+          },
+          "source_arm": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "generator_type": {
+            "const": "MICRO_PLANNER_A2C"
+          }
+        },
+        "required": [
+          "generator_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "semantic_signature_bank_hash": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "semantic_signature_bank_hash": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "arm": {
+            "const": "E2_SHUFFLED_A3_FULL_PLAN_RAW"
+          }
+        },
+        "required": [
+          "arm"
+        ]
+      },
+      "then": {
+        "properties": {
+          "control_status": {
+            "enum": [
+              "VALID",
+              "DEGENERATE"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "control_status": {
+            "const": "NOT_APPLICABLE"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "arm": {
+            "enum": [
+              "E2_SHUFFLED_A3_FULL_PLAN_RAW",
+              "E3_A3R_RANDOM_CODE_FULL_PLAN_RAW"
+            ]
+          }
+        },
+        "required": [
+          "arm"
+        ]
+      },
+      "then": {
+        "properties": {
+          "control_artifact_path": {
+            "type": "string"
+          },
+          "control_artifact_hash": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "control_artifact_path": {
+            "type": "null"
+          },
+          "control_artifact_hash": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

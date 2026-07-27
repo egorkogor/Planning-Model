@@ -1,56 +1,45 @@
-# Release self-review v1.13 / v2.13
+# Release self-review v1.14 / v2.14
 
 ## Scope
 
-Проверены документы, YAML/JSON contracts, validators, state machine, prompts, lock policies и packaging. Обучение A1–A5, Qwen inference, pilot и confirmatory не выполнялись.
+Проверены документы, 70 JSON Schema, machine-readable YAML contracts, validators, state machine, generated phase prompts, lock policies и packaging. Реальное обучение, Qwen inference, pilot и confirmatory run не выполнялись.
 
-## Trust boundary
+## Целевая гипотеза
 
-- P01 всегда создаёт обязательный Trust Topology lock.
-- Lock подписывается операторским Ed25519-ключом вне репозитория и Builder environment.
-- Валидатор отклоняет private или public trust-root key, размещённый внутри repository root.
-- Operator attestation фиксирует out-of-band identity verification, разные environment identities и credential principals, а также отсутствие private key у Builder.
-- Scientific lock хеширует Trust Topology lock, resource/infrastructure plans, public-key registry и runtime/model manifests.
+Stage 1B проверяет **один полный frozen plan**, созданный до исполнения. Planner не вызывается повторно по текущему state. Каждая позиция плана, WorkPlan hash, semantic source и attempt lineage проверяются машинно. Plan-generation, resolution, shuffle-degeneracy и compute-cap failures остаются paired zero-success outcomes и не дают исключать задачу.
 
-## Lock ordering
+## Экспериментальные arms
 
-- P02 фиксирует scientific contracts и доверенную runtime topology.
+- шесть обучаемых parameter-matched вариантов: A1, A2, A2b, A2c, A3 и A3r;
+- A3r использует frozen train-only random codebook, а не несуществующий бесплатный control;
+- Stage 1B требует ровно семь arms E0–E5/P для каждой выбранной задачи;
+- E2 использует детерминированную перестановку позиций frozen E1 plan;
+- P08 и P17 имеют разные precomputed replay-contexts и не могут подменять друг друга.
+
+## Причинная защита selection
+
+Stage 1B hidden selection использует только locked task/domain/split metadata. Reachable-state Planner support, plan validity, semantic resolution, shuffled-plan degeneracy, LLM output и arm outcome запрещены как eligibility inputs. Data Sealer подписывает task-only selection и pre-outcome artifact manifests до HMAC ranking и outcome access.
+
+## Статистика
+
+- design alternative 7,5 п.п. отделена от GO boundary 5 п.п.;
+- acceptance мощности требует нижнюю exact-binomial bound ≥0,90 на двух соседних N;
+- estimator structure фиксирована по stage: hierarchical Planner, clustered-by-task Stage 1A, paired task-level Stage 1B;
+- confirmatory TOST удалён из active rules и sample-size components; legacy helper сохранён только для исторического golden-case.
+
+## Compute и capacity
+
+Preflight пересчитывает 24 development, 30 primary-final и 10 A3/A2c FLOPs-sensitivity workloads — всего 64 training workloads — плюс семь Stage 1B inference arms. Primary final training фиксирован на 12 000 updates × batch 128. Compute profile связан с raw measurement evidence, measurement code, environment и confirmatory freeze. Per-episode FLOPs пересчитываются из locked coefficients; превышение cap — typed paired failure.
+
+## Trust boundary и lock ordering
+
+- P01 создаёт внешний Ed25519-signed Trust Topology lock; operator key внутри репозитория запрещён.
+- P02 фиксирует Scientific lock.
 - P03 реализует весь outcome-relevant executable code.
-- G06 получает два независимых подписанных аудита одного implementation commit.
-- После APPROVE G06 создаётся Implementation lock на `src/**`, `analysis/**`, validators, scripts и tests.
-- P10/P15 только запускают заблокированный код и не могут добавлять parser, prototype builder или control-certification logic.
+- G06 требует statistical audit и implementation audit одного commit.
+- Implementation audit содержит ровно 15 обязательных checks, включая full-plan lineage, A3r, task-only selection и FLOPs accounting.
+- После G06 Implementation lock запрещает позднее добавление outcome-relevant кода.
 
-## Independent review
+## Известные границы
 
-Implementation audit содержит 12 обязательных checks, включая:
-
-- oracle/generator/runtime checkers;
-- dataset split/leakage;
-- analysis input builders;
-- semantic resolver и prototype builder;
-- control-certification engine;
-- sealer/evaluator boundary;
-- model loading/runtime pins;
-- persistence/hashing и clean reproduction.
-
-Implementation-lock candidate связывает оба аудита, Trust Topology lock, Scientific lock и один reviewed commit.
-
-## Entry points и status
-
-- `validation/verify_gate.py` — единственная canonical реализация gate verification.
-- `scripts/verify_gate.py`, `scripts/verify_trust_topology.py` и `scripts/phase_check_runner.py` — thin wrappers.
-- Trust Topology, Scientific и Implementation statuses разделены и семантически сверяются с фазой.
-
-## Adversarial coverage
-
-Проверяется, что:
-
-- изменение resource plan, public keys или runtime/model manifest ломает lock;
-- P03 analysis builders можно создать после Scientific lock;
-- operator key внутри репозитория отклоняется;
-- поздние фазы не реализуют новый outcome-relevant code;
-- compatibility entrypoints загружают canonical modules.
-
-## Ограничения
-
-Release делает плейбук исполнимым, но не доказывает корректность ещё не созданной реализации Planner и не является результатом эксперимента. Организационная независимость ролей требует фактически отдельных principals/environments и внешнего оператора, а не только разных строк в manifest.
+Release является исполняемым протоколом, но не результатом эксперимента. Организационная независимость Sealer, Evaluator, reviewers и оператора должна обеспечиваться реальными отдельными principals/environments. Корректность будущей реализации Planner будет доказана только P03–P09 checks и sealed runs.

@@ -65,6 +65,8 @@ def validate_candidate(obj: dict)->list[str]:
     if not trust.is_file() or obj.get('trust_topology_lock_sha256')!=file_digest(trust): errors.append('trust topology lock file hash mismatch')
     scientific=ROOT/'locks/scientific.lock.json'
     if not scientific.is_file() or obj.get('scientific_lock_sha256')!=file_digest(scientific): errors.append('scientific lock file hash mismatch')
+    compute_profile=ROOT/'reports/compute-profile.json'
+    if not compute_profile.is_file() or obj.get('compute_profile_sha256')!=file_digest(compute_profile): errors.append('compute profile hash mismatch')
     preflight=ROOT/'reports/preflight-final.json'
     if not preflight.is_file() or obj.get('preflight_report_sha256')!=file_digest(preflight): errors.append('preflight report hash mismatch')
     else:

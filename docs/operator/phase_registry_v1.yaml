@@ -1,5 +1,5 @@
-schema_version: work-planner-agent/1.4
-registry_id: work-planner-phases/1.4
+schema_version: work-planner/1.14
+registry_id: phase-registry/1.14
 phases:
 - phase_id: P00
   title: Scope и запуск протокола
@@ -21,7 +21,7 @@ phases:
     description: bootstrap release manifest VERIFIED
     verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_01 --report reports/phase-P00.json
   - check_id: P00_pre_02
-    description: scope references work-planner/1.13 and runbook 2.13
+    description: scope references work-planner/1.14 and runbook 2.14
     verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_02 --report reports/phase-P00.json
   - check_id: P00_pre_03
     description: confirmatory outcomes absent
@@ -48,8 +48,8 @@ phases:
   required_sources:
   - release/BOOTSTRAP_MANIFEST.json
   - docs/operator/bootstrap_integrity_contract_v1.yaml
-  - docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.13.md
-  - docs/Planner_LLM_Stage1_Operator_Runbook_v2.13_RU.md
+  - docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.14.md
+  - docs/Planner_LLM_Stage1_Operator_Runbook_v2.14_RU.md
   - docs/schemas/decision_record.schema.json
   execution_role: BUILDER
   approval_target_output: artifacts/scope.md
@@ -180,9 +180,11 @@ phases:
   - implement locked phase runtime checker without trusting phase-report PASS claims
   - implement analysis/build_analysis_input.py and analysis/build_sample_size_input.py with reproducibility modes
   - implement semantic resolver parser, alias handling and train-only prototype-bank builder used later in P10
-  - implement reachable-state graph and control-certification engine used later in P15
+  - implement task-only Stage1B eligibility and pre-outcome artifact certification used later in P15
   - implement deterministic storage, model loading, evaluator and sealer interfaces needed through P17
   - run toy end-to-end preflight and record exact implementation patches only when fixing implementation defects
+  - implement deterministic full-plan shuffle mapping and fail-closed frozen-plan lineage validator used in P17
+  - implement deterministic A3r random-codebook target generation and per-episode FLOPs accounting used in P06/P17
   required_outputs:
   - src/contracts/
   - tests/contracts/
@@ -297,6 +299,8 @@ phases:
   - заморозить corpus manifests
   required_outputs:
   - reports/dataset-capacity-audit.json
+  - semantic_bank/random-codebook/manifest.json
+  - semantic_bank/signatures/manifest.json
   - data/manifests/training-corpus.json
   - reports/leakage.json
   - reports/support-coverage.json
@@ -324,6 +328,9 @@ phases:
   - check_id: P05_exec_06
     description: all implementation-only changes have patch records and repeated toy preflight
     verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_06 --report reports/phase-P05.json
+  - check_id: P05_exec_07
+    description: train-only semantic signature bank and deterministic A3r random codebook regenerate exactly
+    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_07 --report reports/phase-P05.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -335,13 +342,17 @@ phases:
   - docs/domain/training_corpus_contract_v1.yaml
   - docs/schemas/training_example.schema.json
   - docs/schemas/corpus_manifest.schema.json
+  - docs/controls/random_codebook_contract_v1.yaml
+  - docs/schemas/semantic_signature_bank.schema.json
+  - docs/schemas/random_codebook_manifest.schema.json
   execution_role: BUILDER
 - phase_id: P06
   title: Planner implementations, independent implementation/statistics audits и Implementation lock
   approval_mode: manual
   manual_gate_id: G06_STATISTICAL_IMPLEMENTATION_AUDIT
   actions:
-  - finish Planner A1–A5 implementations and all outcome-relevant runtime modules required through P17
+  - finish six trained Planner variants A1/A2/A2b/A2c/A3/A3r, A4/A5 inference interventions and all outcome-relevant runtime
+    modules required through P17
   - prove P10 prototype-bank/parser path and P15 graph/control-certification path execute on toy/public fixtures
   - run full toy preflight from clean checkout
   - create implementation commit containing every protected executable path
@@ -366,7 +377,8 @@ phases:
     description: implementation-lock candidate matches reviewed commit and policy
     verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_02 --report reports/phase-P06.json
   - check_id: P06_pre_03
-    description: 'clean-checkout full toy preflight: every arm forward/backward, two-batch overfit, serialization, fake episode and statistics golden cases PASS'
+    description: 'clean-checkout full toy preflight: every arm forward/backward, two-batch overfit, serialization, fake episode
+      and statistics golden cases PASS'
     verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_03 --report reports/phase-P06.json
   - check_id: P06_pre_04
     description: signed statistical audit is independent from Builder
@@ -378,8 +390,9 @@ phases:
     description: signed implementation audit is independent from Builder
     verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_06 --report reports/phase-P06.json
   - check_id: P06_pre_07
-    description: implementation audit covers oracle, generator, runtime checks, analysis builders, semantic resolver/prototype builder, control certification, data
-      isolation, sealer, evaluator, model loading and persistence
+    description: implementation audit covers oracle, generator, runtime checks, analysis builders, semantic resolver, deterministic
+      full-plan shuffle/lineage, A3r random-codebook training, per-episode FLOPs accounting, data isolation, sealer, evaluator,
+      model loading and persistence
     verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_07 --report reports/phase-P06.json
   - check_id: P06_pre_08
     description: pre-gate evidence sealed
@@ -415,6 +428,10 @@ phases:
   - docs/schemas/statistical_audit.schema.json
   - docs/schemas/implementation_audit.schema.json
   - docs/schemas/decision_record.schema.json
+  - docs/schemas/capacity_preflight.schema.json
+  - validation/capacity_validator.py
+  - docs/schemas/compute_profile.schema.json
+  - docs/training/hyperparameter_search_v1.yaml
   pre_gate_required_outputs:
   - reports/preflight-final.json
   - reports/statistical-implementation-audit.json
@@ -430,10 +447,10 @@ phases:
   manual_gate_id: G07_PLANNER_CONFIRMATORY_FREEZE
   actions:
   - выполнить bounded hyperparameter grid на development
-  - обучить three final seeds
+  - обучить five final seeds
   - рассчитать pilot N and freeze analysis
-  - dispatch locked contracts and public-exclusion manifest to Data Sealer; Data Sealer generates a hidden 256-bit seed, returns only seed commitment, encrypted blob
-    hash and signed sealer manifest; create candidate freeze
+  - dispatch locked contracts and public-exclusion manifest to Data Sealer; Data Sealer generates a hidden 256-bit seed, returns
+    only seed commitment, encrypted blob hash and signed sealer manifest; create candidate freeze
   - after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
   required_outputs:
   - reports/planner-pilot.json
@@ -552,6 +569,9 @@ phases:
   - check_id: P08_exec_05
     description: scientific lock VERIFIED
     verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_05 --report reports/phase-P08.json
+  - check_id: P08_exec_06
+    description: A3 WorkPlan generated once and replayed without replanning
+    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_06 --report reports/phase-P08.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -563,6 +583,8 @@ phases:
   - docs/schemas/dispatch_record.schema.json
   - docs/schemas/evaluator_result_manifest.schema.json
   - docs/schemas/approved_freeze_pointer.schema.json
+  - docs/schemas/episode_plan_manifest.schema.json
+  - docs/schemas/full_plan_lineage_index.schema.json
   execution_role: EVALUATION_RUNNER
   required_inputs:
   - freezes/planner-confirmatory.approved.json
@@ -720,7 +742,8 @@ phases:
   - build oracle snapshots and pre-outcome controls on pilot/development only
   - run paired dry run and pilot
   - calculate clustered N including equivalence requirement
-  - dispatch locked Stage 1A contracts and public-exclusion manifest to Data Sealer; hidden seed is generated inside the sealer environment
+  - dispatch locked Stage 1A contracts and public-exclusion manifest to Data Sealer; hidden seed is generated inside the sealer
+    environment
   - receive only encrypted blob commitment and sealer manifest; create candidate freeze
   - after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
   required_outputs:
@@ -898,14 +921,15 @@ phases:
   - docs/schemas/scientific_decision.schema.json
   execution_role: AUDITOR
 - phase_id: P15
-  title: Stage 1B public support certification run
+  title: Stage 1B task-only selection and pre-outcome artifact certification run
   approval_mode: auto
   manual_gate_id: null
   actions:
   - verify Scientific, Trust Topology and Implementation locks
-  - run the locked reachable-state graph and control-certification engine on public/pilot tasks
-  - verify post-treatment exclusion is impossible under the locked contract
-  - materialize public exclusion/support manifests only; source-code changes are forbidden
+  - run the locked task/domain/split eligibility checker on public and pilot tasks
+  - verify no Planner, semantic, LLM, shuffle-degeneracy or arm outcome can affect inclusion
+  - verify A3r codebook, signature bank, shuffle algorithm and failure-retention policy are frozen before hidden selection
+  - materialize public exclusion and task-only support manifests only; source-code changes are forbidden
   - do not materialize hidden confirmatory task ids or hidden task bodies in Builder environment
   required_outputs:
   - controls/stage1b-certification-preflight/
@@ -918,13 +942,13 @@ phases:
   pre_gate_checks: []
   execution_checks:
   - check_id: P15_exec_01
-    description: post-treatment exclusion impossible
+    description: selection predicates use task/domain/split metadata only; post-treatment exclusion impossible
     verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_01 --report reports/phase-P15.json
   - check_id: P15_exec_02
-    description: all included tasks have total control coverage
+    description: all public/pilot included tasks satisfy task-only eligibility; no plan/control degeneracy exclusion
     verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_02 --report reports/phase-P15.json
   - check_id: P15_exec_03
-    description: support threshold passes
+    description: pre-outcome A3r codebook, signature bank, shuffle algorithm and retention policy are frozen
     verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_03 --report reports/phase-P15.json
   - check_id: P15_exec_04
     description: implementation lock VERIFIED
@@ -939,9 +963,10 @@ phases:
   - BLOCKED
   max_internal_fix_attempts: 2
   required_sources:
-  - docs/controls/intent_control_contract_v1.yaml
-  - docs/semantic/semantic_resolver_v1.yaml
   - docs/data/dataset_split_contract_v1.yaml
+  - docs/controls/full_plan_shuffle_contract_v1.yaml
+  - docs/controls/random_codebook_contract_v1.yaml
+  - docs/controls/confirmatory_sealing_contract_v1.yaml
   execution_role: BUILDER
 - phase_id: P16
   title: Stage 1B pilot, N и freeze
@@ -951,9 +976,12 @@ phases:
   - run independent trajectories pilot
   - measure unresolved and infrastructure rates
   - calculate final N with all registered components
-  - dispatch locked Stage 1B contracts, certification algorithm hashes and public-exclusion manifest to Data Sealer
-  - Data Sealer generates hidden candidates, certifies 100% reachable-state control coverage and support eligibility before HMAC selection and encryption
-  - receive only encrypted blob commitment and signed sealer manifest containing control_certification; create candidate freeze
+  - dispatch locked Stage 1B task-only eligibility contracts, pre-outcome artifact hashes and public-exclusion manifest to
+    Data Sealer
+  - Data Sealer fixes eligibility from task/domain/split metadata only, then HMAC-ranks and encrypts the selected tasks before
+    any Planner or LLM output exists
+  - receive only encrypted blob commitment and signed sealer manifest containing task-only selection certification; create
+    candidate freeze
   - after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
   required_outputs:
   - reports/stage1b-pilot.json
@@ -967,8 +995,8 @@ phases:
   - RUN_STATUS.json
   pre_gate_checks:
   - check_id: P16_pre_01
-    description: signed Data Sealer manifest verifies plaintext deletion and hidden Stage1B control/support certification with coverage_rate=1.0; no hidden task body
-      or id visible to Builder
+    description: signed Data Sealer manifest verifies plaintext deletion and task-only Stage1B selection certification; no
+      hidden task body or id visible to Builder
     verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_01 --report reports/phase-P16.json
   - check_id: P16_pre_02
     description: no total-token equality claim across trajectories
@@ -1041,7 +1069,7 @@ phases:
   manual_gate_id: null
   actions:
   - dispatch approved freeze to evaluator
-  - run independent E0/E1/E2/E3/P_REPLAY trajectories once
+  - run seven E0-E5/P full-plan trajectories once
   - validate attempts, episodes and aggregates online
   - collect signed evaluator manifest
   required_outputs:
@@ -1069,6 +1097,9 @@ phases:
   - check_id: P17_exec_05
     description: implementation lock VERIFIED
     verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_05 --report reports/phase-P17.json
+  - check_id: P17_exec_06
+    description: seven-arm frozen full-plan lineage complete and replay-safe
+    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_06 --report reports/phase-P17.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -1080,6 +1111,8 @@ phases:
   - docs/schemas/episode_log.schema.json
   - docs/schemas/evaluator_result_manifest.schema.json
   - docs/schemas/approved_freeze_pointer.schema.json
+  - docs/schemas/episode_plan_manifest.schema.json
+  - docs/schemas/full_plan_lineage_index.schema.json
   execution_role: EVALUATION_RUNNER
   required_inputs:
   - freezes/stage1b-confirmatory.approved.json

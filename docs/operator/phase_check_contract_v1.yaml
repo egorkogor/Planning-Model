@@ -1,5 +1,5 @@
-schema_version: work-planner-agent/1.11
-contract_id: phase-machine-checks/1.3
+schema_version: work-planner-agent/1.14
+contract_id: phase-machine-checks/1.4
 canonical_phase_report_path: reports/phase-{phase_id}.json
 core_checks:
   P00_pre_01: bootstrap_manifest
@@ -60,6 +60,10 @@ core_checks:
   P01_pre_05: trust_topology_lock
   P02_exec_06: trust_topology_lock
   P20_pre_06: operator_identity
+  P08_exec_06: planner_confirmatory_full_plan_lineage
+  P17_exec_06: stage1b_full_plan_lineage
+  P06_pre_03: capacity_preflight
+  P05_exec_07: random_codebook
 runtime_checker:
   module: src.validation.phase_checks
   command_template: python -m src.validation.phase_checks --phase {phase_id} --check {check_id} --phase-report reports/phase-{phase_id}.json

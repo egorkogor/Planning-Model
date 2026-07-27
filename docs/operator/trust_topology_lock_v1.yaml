@@ -1,4 +1,4 @@
-schema_version: work-planner/1.13
+schema_version: work-planner/1.14
 contract_id: trust-topology-lock/1.0
 created_phase: P01 before G01_TRUST_AND_RESOURCES approval
 purpose: Bind role identities, public signing keys and infrastructure allocation to an operator-controlled key outside the

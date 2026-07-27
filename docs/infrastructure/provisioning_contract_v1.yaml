@@ -1,4 +1,4 @@
-schema_version: work-planner/1.13
+schema_version: work-planner/1.14
 contract_id: provisioning/1.0
 execution_roles:
   builder:
@@ -9,7 +9,8 @@ execution_roles:
     minimum_gpu_vram_gb: 8
     gpu_optional_until_model_training: true
   data_sealer:
-    purpose: generate sealed confirmatory datasets from an internally generated hidden seed and contracts
+    purpose: generate sealed confirmatory datasets from an internally generated hidden
+      seed and contracts
     minimum_cpu_cores: 4
     minimum_ram_gb: 16
     minimum_disk_free_gb: 50

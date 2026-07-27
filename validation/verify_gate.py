@@ -349,10 +349,10 @@ def verify_semantic_report(rel: str, obj: dict, report: dict) -> list[str]:
                 errors.append(f'auditor seed envelope file mismatch: {envelope_path}')
             if obj.get('stage') == 'STAGE1B':
                 cert = obj.get('control_certification', {})
-                for field in ('coverage_manifest_sha256', 'support_audit_sha256', 'public_exclusion_manifest_sha256'):
+                for field in ('task_only_selection_manifest_sha256', 'preoutcome_artifact_manifest_sha256', 'public_exclusion_manifest_sha256'):
                     expected = cert.get(field)
                     if expected not in artifact_map.values():
-                        errors.append(f'Stage1B certification artifact hash absent from phase evidence: {field}')
+                        errors.append(f'Stage1B task-only/pre-outcome certification artifact hash absent from phase evidence: {field}')
             evidence=obj['deletion_evidence']
             for path_field,hash_field in (('workspace_scan_artifact','workspace_scan_sha256'),('process_log_artifact','process_log_sha256'),('volume_destroy_artifact','volume_destroy_sha256')):
                 ep=evidence[path_field]; expected=evidence[hash_field]

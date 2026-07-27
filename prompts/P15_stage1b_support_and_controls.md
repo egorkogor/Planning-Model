@@ -1,4 +1,4 @@
-# P15 — Stage 1B public support certification run
+# P15 — Stage 1B task-only selection and pre-outcome artifact certification run
 
 **Gate:** `нет`
 **Execution role:** `BUILDER`
@@ -10,16 +10,18 @@
 - `docs/operator/phase_registry_v1.yaml`
 - `docs/operator/report_registry_v1.yaml`
 - `docs/operator/self_review_loop_v1.yaml`
-- `docs/controls/intent_control_contract_v1.yaml`
-- `docs/semantic/semantic_resolver_v1.yaml`
 - `docs/data/dataset_split_contract_v1.yaml`
+- `docs/controls/full_plan_shuffle_contract_v1.yaml`
+- `docs/controls/random_codebook_contract_v1.yaml`
+- `docs/controls/confirmatory_sealing_contract_v1.yaml`
 
 ## Действия
 1. verify Scientific, Trust Topology and Implementation locks
-2. run the locked reachable-state graph and control-certification engine on public/pilot tasks
-3. verify post-treatment exclusion is impossible under the locked contract
-4. materialize public exclusion/support manifests only; source-code changes are forbidden
-5. do not materialize hidden confirmatory task ids or hidden task bodies in Builder environment
+2. run the locked task/domain/split eligibility checker on public and pilot tasks
+3. verify no Planner, semantic, LLM, shuffle-degeneracy or arm outcome can affect inclusion
+4. verify A3r codebook, signature bank, shuffle algorithm and failure-retention policy are frozen before hidden selection
+5. materialize public exclusion and task-only support manifests only; source-code changes are forbidden
+6. do not materialize hidden confirmatory task ids or hidden task bodies in Builder environment
 
 ## Обязательные результаты фазы
 - `controls/stage1b-certification-preflight/`
@@ -46,9 +48,9 @@
 - нет
 
 ## Проверки исполнения
-- `P15_exec_01` — post-treatment exclusion impossible; verifier: `python validation/phase_check_runner.py --phase P15 --check P15_exec_01 --report reports/phase-P15.json`
-- `P15_exec_02` — all included tasks have total control coverage; verifier: `python validation/phase_check_runner.py --phase P15 --check P15_exec_02 --report reports/phase-P15.json`
-- `P15_exec_03` — support threshold passes; verifier: `python validation/phase_check_runner.py --phase P15 --check P15_exec_03 --report reports/phase-P15.json`
+- `P15_exec_01` — selection predicates use task/domain/split metadata only; post-treatment exclusion impossible; verifier: `python validation/phase_check_runner.py --phase P15 --check P15_exec_01 --report reports/phase-P15.json`
+- `P15_exec_02` — all public/pilot included tasks satisfy task-only eligibility; no plan/control degeneracy exclusion; verifier: `python validation/phase_check_runner.py --phase P15 --check P15_exec_02 --report reports/phase-P15.json`
+- `P15_exec_03` — pre-outcome A3r codebook, signature bank, shuffle algorithm and retention policy are frozen; verifier: `python validation/phase_check_runner.py --phase P15 --check P15_exec_03 --report reports/phase-P15.json`
 - `P15_exec_04` — implementation lock VERIFIED; verifier: `python validation/phase_check_runner.py --phase P15 --check P15_exec_04 --report reports/phase-P15.json`
 - `P15_exec_05` — scientific lock VERIFIED; verifier: `python validation/phase_check_runner.py --phase P15 --check P15_exec_05 --report reports/phase-P15.json`
 

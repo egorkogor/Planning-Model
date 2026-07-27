@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/gate_ledger_entry.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/gate_ledger_entry.schema.json",
   "title": "Gate ledger entry",
   "type": "object",
   "additionalProperties": false,

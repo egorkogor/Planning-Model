@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/attempt_log.schema.json",
-  "title": "AttemptLog v1.13",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/attempt_log.schema.json",
+  "title": "AttemptLog v1.14",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -90,7 +90,15 @@
     "candidate_typed_action",
     "base_task_id",
     "trajectory_policy",
-    "experiment_freeze_hash"
+    "experiment_freeze_hash",
+    "episode_plan_manifest_hash",
+    "plan_generation_status",
+    "replay_context",
+    "plan_position_index",
+    "guidance_source_position_index",
+    "guidance_source_semantic_ref",
+    "guidance_source_step_id",
+    "replanning_observed"
   ],
   "properties": {
     "schema_version": {
@@ -525,11 +533,7 @@
       "pattern": "^bw-[0-9]{8}$"
     },
     "trajectory_policy": {
-      "type": "string",
-      "enum": [
-        "oracle_snapshot",
-        "independent_receding_horizon"
-      ]
+      "$ref": "common.schema.json#/$defs/trajectory_policy"
     },
     "experiment_freeze_hash": {
       "$ref": "common.schema.json#/$defs/sha256"
@@ -544,6 +548,54 @@
         "LEFT",
         null
       ]
+    },
+    "episode_plan_manifest_hash": {
+      "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "plan_generation_status": {
+      "$ref": "common.schema.json#/$defs/plan_generation_status"
+    },
+    "replay_context": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/replay_context"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "plan_position_index": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 16
+    },
+    "replanning_observed": {
+      "const": false
+    },
+    "guidance_source_position_index": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 15
+    },
+    "guidance_source_step_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/step_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "guidance_source_semantic_ref": {
+      "$ref": "common.schema.json#/$defs/nullable_semantic_ref"
     }
   },
   "allOf": [

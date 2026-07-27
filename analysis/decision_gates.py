@@ -121,6 +121,7 @@ def evaluate_gate(rule: str, estimate: float, ci_low: float, ci_high: float, thr
     if rule == "ci_low_gte": return ci_low >= threshold
     if rule == "ci_low_gt": return ci_low > threshold
     if rule == "estimate_gte_and_ci_low_gt": return estimate >= threshold and ci_low > 0
+    if rule == "estimate_gte_and_ci_low_gte": return estimate >= 0 and ci_low >= threshold
     if rule == "estimate_gte": return estimate >= threshold
     if rule == "estimate_lte": return estimate <= threshold
     if rule == "minimum_positive_seed_count": return estimate >= threshold
@@ -131,7 +132,8 @@ def evaluate_gate(rule: str, estimate: float, ci_low: float, ci_high: float, thr
 
 
 def stage_decision(stage: str, gates: list[dict[str, Any]], *, planner_stage1b_eligible: bool | None = None) -> str:
-    passed = all(bool(g["pass"]) for g in gates)
+    decision_gates = [g for g in gates if g.get("gate_group") != "DIAGNOSTIC"]
+    passed = bool(decision_gates) and all(bool(g["pass"]) for g in decision_gates)
     if stage == "PLANNER":
         architecture = [g for g in gates if g.get("gate_group") == "ARCHITECTURE"]
         eligibility = [g for g in gates if g.get("gate_group") == "STAGE1B_ELIGIBILITY"]

@@ -14,10 +14,12 @@
 - `docs/schemas/episode_log.schema.json`
 - `docs/schemas/evaluator_result_manifest.schema.json`
 - `docs/schemas/approved_freeze_pointer.schema.json`
+- `docs/schemas/episode_plan_manifest.schema.json`
+- `docs/schemas/full_plan_lineage_index.schema.json`
 
 ## Действия
 1. dispatch approved freeze to evaluator
-2. run independent E0/E1/E2/E3/P_REPLAY trajectories once
+2. run seven E0-E5/P full-plan trajectories once
 3. validate attempts, episodes and aggregates online
 4. collect signed evaluator manifest
 
@@ -52,6 +54,7 @@
 - `P17_exec_03` — hash/contract violations zero; verifier: `python validation/phase_check_runner.py --phase P17 --check P17_exec_03 --report reports/phase-P17.json`
 - `P17_exec_04` — scientific lock VERIFIED; verifier: `python validation/phase_check_runner.py --phase P17 --check P17_exec_04 --report reports/phase-P17.json`
 - `P17_exec_05` — implementation lock VERIFIED; verifier: `python validation/phase_check_runner.py --phase P17 --check P17_exec_05 --report reports/phase-P17.json`
+- `P17_exec_06` — seven-arm frozen full-plan lineage complete and replay-safe; verifier: `python validation/phase_check_runner.py --phase P17 --check P17_exec_06 --report reports/phase-P17.json`
 
 ## Проверки после approval
 - нет

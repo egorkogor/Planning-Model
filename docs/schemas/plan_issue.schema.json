@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.13/plan_issue.schema.json",
-  "title": "PlanIssue v1.13",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/plan_issue.schema.json",
+  "title": "PlanIssue v1.14",
   "type": "object",
   "additionalProperties": false,
   "required": [

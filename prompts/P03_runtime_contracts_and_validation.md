@@ -24,9 +24,11 @@
 2. implement locked phase runtime checker without trusting phase-report PASS claims
 3. implement analysis/build_analysis_input.py and analysis/build_sample_size_input.py with reproducibility modes
 4. implement semantic resolver parser, alias handling and train-only prototype-bank builder used later in P10
-5. implement reachable-state graph and control-certification engine used later in P15
+5. implement task-only Stage1B eligibility and pre-outcome artifact certification used later in P15
 6. implement deterministic storage, model loading, evaluator and sealer interfaces needed through P17
 7. run toy end-to-end preflight and record exact implementation patches only when fixing implementation defects
+8. implement deterministic full-plan shuffle mapping and fail-closed frozen-plan lineage validator used in P17
+9. implement deterministic A3r random-codebook target generation and per-episode FLOPs accounting used in P06/P17
 
 ## Обязательные результаты фазы
 - `src/contracts/`
