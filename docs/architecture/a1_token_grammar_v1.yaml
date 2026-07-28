@@ -1,4 +1,4 @@
-schema_version: work-planner/1.18
+schema_version: work-planner/1.19
 grammar_id: a1-token-grammar/1.6
 max_non_END_actions: 16
 max_planner_steps_including_END: 17

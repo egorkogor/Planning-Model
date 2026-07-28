@@ -1,10 +1,10 @@
-schema_version: work-planner/1.18
+schema_version: work-planner-agent/1.19
 contract_id: scientific-lock/1.0
 created_phase: P02
 purpose: Freeze every outcome-relevant choice before implementation or outcome data exists.
 protected_paths:
-- docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.18.md
-- docs/Planner_LLM_Stage1_Operator_Runbook_v2.18_RU.md
+- docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.19.md
+- docs/Planner_LLM_Stage1_Operator_Runbook_v2.19_RU.md
 - docs/operator/phase_state_machine_v1.yaml
 - docs/operator/phase_registry_v1.yaml
 - docs/operator/agent_execution_contract_v1.yaml
@@ -117,6 +117,15 @@ protected_paths:
 - docs/schemas/model_training_report.schema.json
 - docs/schemas/model_audit_report.schema.json
 - validation/planner_initialization_validator.py
+- docs/architecture/planner_module_inventory_v1.yaml
+- validation/planner_evidence_validator.py
+- docs/schemas/parameter_inventory_manifest.schema.json
+- docs/schemas/selected_planner_config.schema.json
+- docs/schemas/ordered_training_examples.schema.json
+- docs/schemas/initialization_manifest.schema.json
+- docs/schemas/dormant_gradient_audit.schema.json
+- docs/schemas/checkpoint_manifest.schema.json
+- docs/schemas/model_audit_check_evidence.schema.json
 manifest_path: locks/scientific.lock.json
 mismatch_action: INVALID_RUN
 change_policy:

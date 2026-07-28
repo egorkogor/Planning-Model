@@ -101,7 +101,7 @@ def write_required_outputs(plan: dict) -> list[dict]:
     rows=[]
     scope=ROOT/'artifacts/scope.md'
     scope.parent.mkdir(parents=True,exist_ok=True)
-    scope.write_text('work-planner/1.18 runbook 2.18 locked scope\n')
+    scope.write_text('work-planner/1.19 runbook 2.18 locked scope\n')
     for rel in _phase()['required_outputs']:
         p=ROOT/rel.rstrip('/'); p.parent.mkdir(parents=True,exist_ok=True)
         if rel in {'reports/resource-plan.json','locks/infrastructure-plan.json'}:

@@ -1,4 +1,4 @@
-schema_version: work-planner/1.18
+schema_version: work-planner/1.19
 catalog_id: blocks_intents/1.6
 text_language: en
 forbidden_content:

@@ -1,4 +1,4 @@
-schema_version: work-planner/1.18
+schema_version: work-planner-agent/1.19
 registry_id: phase-registry/1.16
 phases:
 - phase_id: P00
@@ -19,16 +19,20 @@ phases:
   pre_gate_checks:
   - check_id: P00_pre_01
     description: bootstrap release manifest VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_01 --report reports/phase-P00.json
+    verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_01
+      --report reports/phase-P00.json
   - check_id: P00_pre_02
-    description: scope references work-planner/1.18 and runbook 2.18
-    verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_02 --report reports/phase-P00.json
+    description: scope references work-planner/1.19 and runbook 2.18
+    verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_02
+      --report reports/phase-P00.json
   - check_id: P00_pre_03
     description: confirmatory outcomes absent
-    verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_03 --report reports/phase-P00.json
+    verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_03
+      --report reports/phase-P00.json
   - check_id: P00_pre_04
     description: pre-gate evidence sealed
-    verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_04 --report reports/phase-P00.json
+    verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_04
+      --report reports/phase-P00.json
   execution_checks: []
   post_gate_checks:
   - check_id: P00_post_01
@@ -48,8 +52,8 @@ phases:
   required_sources:
   - release/BOOTSTRAP_MANIFEST.json
   - docs/operator/bootstrap_integrity_contract_v1.yaml
-  - docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.18.md
-  - docs/Planner_LLM_Stage1_Operator_Runbook_v2.18_RU.md
+  - docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.19.md
+  - docs/Planner_LLM_Stage1_Operator_Runbook_v2.19_RU.md
   - docs/schemas/decision_record.schema.json
   execution_role: BUILDER
   approval_target_output: artifacts/scope.md
@@ -59,10 +63,12 @@ phases:
   manual_gate_id: G01_TRUST_AND_RESOURCES
   actions:
   - инвентаризировать локальные ресурсы и оценить стоимость
-  - сформировать resource plan для Builder, Data Sealer, Evaluation Runner, Audit Agent и Statistical Reviewer
+  - сформировать resource plan для Builder, Data Sealer, Evaluation Runner, Audit
+    Agent и Statistical Reviewer
   - получить role challenge signatures от четырёх небuilder execution identities
   - создать infrastructure plan и public-key registry
-  - передать три trust artifacts внешнему операторскому signer; Builder не получает private key
+  - передать три trust artifacts внешнему операторскому signer; Builder не получает
+    private key
   - создать и проверить locks/trust-topology.lock.json по внешнему public key
   required_outputs:
   - reports/resource-plan.json
@@ -76,19 +82,26 @@ phases:
   pre_gate_checks:
   - check_id: P01_pre_01
     description: resource plan проходит schema
-    verifier: python validation/phase_check_runner.py --phase P01 --check P01_pre_01 --report reports/phase-P01.json
+    verifier: python validation/phase_check_runner.py --phase P01 --check P01_pre_01
+      --report reports/phase-P01.json
   - check_id: P01_pre_02
     description: роли разделены либо confirmatory заранее помечен INVALID
-    verifier: python validation/phase_check_runner.py --phase P01 --check P01_pre_02 --report reports/phase-P01.json
+    verifier: python validation/phase_check_runner.py --phase P01 --check P01_pre_02
+      --report reports/phase-P01.json
   - check_id: P01_pre_03
     description: стоимость не превышает hard budget
-    verifier: python validation/phase_check_runner.py --phase P01 --check P01_pre_03 --report reports/phase-P01.json
+    verifier: python validation/phase_check_runner.py --phase P01 --check P01_pre_03
+      --report reports/phase-P01.json
   - check_id: P01_pre_04
-    description: Ed25519 public-key registry schema valid and role key IDs match resource plan
-    verifier: python validation/phase_check_runner.py --phase P01 --check P01_pre_04 --report reports/phase-P01.json
+    description: Ed25519 public-key registry schema valid and role key IDs match resource
+      plan
+    verifier: python validation/phase_check_runner.py --phase P01 --check P01_pre_04
+      --report reports/phase-P01.json
   - check_id: P01_pre_05
-    description: trust topology lock externally signed, artifact hashes exact and operator key is outside repository
-    verifier: python validation/phase_check_runner.py --phase P01 --check P01_pre_05 --report reports/phase-P01.json
+    description: trust topology lock externally signed, artifact hashes exact and
+      operator key is outside repository
+    verifier: python validation/phase_check_runner.py --phase P01 --check P01_pre_05
+      --report reports/phase-P01.json
   execution_checks: []
   post_gate_checks:
   - check_id: P01_post_01
@@ -125,7 +138,8 @@ phases:
   - verify externally signed trust topology lock before reading role-bound credentials
   - создать environment/runtime stack lock
   - разрешить immutable model revisions and offline cache manifests
-  - создать outcome-relevant Scientific lock after all runtime/model/trust artifacts exist
+  - создать outcome-relevant Scientific lock after all runtime/model/trust artifacts
+    exist
   - проверить bootstrap manifest и неизменяемые trust/lock verifiers
   required_outputs:
   - locks/environment.lock.json
@@ -140,22 +154,29 @@ phases:
   execution_checks:
   - check_id: P02_exec_01
     description: model revisions immutable
-    verifier: python validation/phase_check_runner.py --phase P02 --check P02_exec_01 --report reports/phase-P02.json
+    verifier: python validation/phase_check_runner.py --phase P02 --check P02_exec_01
+      --report reports/phase-P02.json
   - check_id: P02_exec_02
     description: bundle tests pass
-    verifier: python validation/phase_check_runner.py --phase P02 --check P02_exec_02 --report reports/phase-P02.json
+    verifier: python validation/phase_check_runner.py --phase P02 --check P02_exec_02
+      --report reports/phase-P02.json
   - check_id: P02_exec_03
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P02 --check P02_exec_03 --report reports/phase-P02.json
+    verifier: python validation/phase_check_runner.py --phase P02 --check P02_exec_03
+      --report reports/phase-P02.json
   - check_id: P02_exec_04
     description: lock verifier files covered by bootstrap manifest
-    verifier: python validation/phase_check_runner.py --phase P02 --check P02_exec_04 --report reports/phase-P02.json
+    verifier: python validation/phase_check_runner.py --phase P02 --check P02_exec_04
+      --report reports/phase-P02.json
   - check_id: P02_exec_05
-    description: runtime stack lock is immutable, offline-capable and bound to model locks
-    verifier: python validation/phase_check_runner.py --phase P02 --check P02_exec_05 --report reports/phase-P02.json
+    description: runtime stack lock is immutable, offline-capable and bound to model
+      locks
+    verifier: python validation/phase_check_runner.py --phase P02 --check P02_exec_05
+      --report reports/phase-P02.json
   - check_id: P02_exec_06
     description: externally signed trust topology lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P02 --check P02_exec_06 --report reports/phase-P02.json
+    verifier: python validation/phase_check_runner.py --phase P02 --check P02_exec_06
+      --report reports/phase-P02.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -178,14 +199,22 @@ phases:
   actions:
   - implement schemas, strict IO and runtime validators
   - implement locked phase runtime checker without trusting phase-report PASS claims
-  - implement analysis/build_analysis_input.py and analysis/build_sample_size_input.py with reproducibility modes
-  - implement semantic resolver parser, alias handling and train-only prototype-bank builder used later in P10
-  - implement task-only Stage1B eligibility and pre-outcome artifact certification used later in P15
-  - implement deterministic storage, model loading, evaluator and sealer interfaces needed through P17
-  - run toy end-to-end preflight and record exact implementation patches only when fixing implementation defects
-  - implement deterministic full-plan shuffle mapping and fail-closed frozen-plan lineage validator used in P17
-  - implement deterministic A3r random-codebook target generation and per-episode FLOPs accounting used in P06/P17
-  - implement canonical tensor-name-derived initialization and A3r nearest-code external resolver exactly as locked
+  - implement analysis/build_analysis_input.py and analysis/build_sample_size_input.py
+    with reproducibility modes
+  - implement semantic resolver parser, alias handling and train-only prototype-bank
+    builder used later in P10
+  - implement task-only Stage1B eligibility and pre-outcome artifact certification
+    used later in P15
+  - implement deterministic storage, model loading, evaluator and sealer interfaces
+    needed through P17
+  - run toy end-to-end preflight and record exact implementation patches only when
+    fixing implementation defects
+  - implement deterministic full-plan shuffle mapping and fail-closed frozen-plan
+    lineage validator used in P17
+  - implement deterministic A3r random-codebook target generation and per-episode
+    FLOPs accounting used in P06/P17
+  - implement canonical tensor-name-derived initialization and A3r nearest-code external
+    resolver exactly as locked
   required_outputs:
   - src/contracts/
   - tests/contracts/
@@ -208,25 +237,34 @@ phases:
   execution_checks:
   - check_id: P03_exec_01
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_01 --report reports/phase-P03.json
+    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_01
+      --report reports/phase-P03.json
   - check_id: P03_exec_02
     description: exact required-output and check-set gate adversarial tests pass
-    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_02 --report reports/phase-P03.json
+    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_02
+      --report reports/phase-P03.json
   - check_id: P03_exec_03
     description: contract-level toy fixture содержит 20–50 synthetic задач с n=3
-    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_03 --report reports/phase-P03.json
+    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_03
+      --report reports/phase-P03.json
   - check_id: P03_exec_04
-    description: stub interfaces и все нормативные artifacts проходят serialization round-trip
-    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_04 --report reports/phase-P03.json
+    description: stub interfaces и все нормативные artifacts проходят serialization
+      round-trip
+    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_04
+      --report reports/phase-P03.json
   - check_id: P03_exec_05
-    description: atomic persistence/recovery и полный fake episode проходят без реальных model outcomes
-    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_05 --report reports/phase-P03.json
+    description: atomic persistence/recovery и полный fake episode проходят без реальных
+      model outcomes
+    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_05
+      --report reports/phase-P03.json
   - check_id: P03_exec_06
     description: statistics and sample-size golden run pass
-    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_06 --report reports/phase-P03.json
+    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_06
+      --report reports/phase-P03.json
   - check_id: P03_exec_07
     description: every implementation-only patch has a schema-valid diff record
-    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_07 --report reports/phase-P03.json
+    verifier: python validation/phase_check_runner.py --phase P03 --check P03_exec_07
+      --report reports/phase-P03.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -269,19 +307,25 @@ phases:
   execution_checks:
   - check_id: P04_exec_01
     description: domain property tests pass
-    verifier: python validation/phase_check_runner.py --phase P04 --check P04_exec_01 --report reports/phase-P04.json
+    verifier: python validation/phase_check_runner.py --phase P04 --check P04_exec_01
+      --report reports/phase-P04.json
   - check_id: P04_exec_02
     description: intent labeler manifest complete
-    verifier: python validation/phase_check_runner.py --phase P04 --check P04_exec_02 --report reports/phase-P04.json
+    verifier: python validation/phase_check_runner.py --phase P04 --check P04_exec_02
+      --report reports/phase-P04.json
   - check_id: P04_exec_03
     description: generator byte reproducible
-    verifier: python validation/phase_check_runner.py --phase P04 --check P04_exec_03 --report reports/phase-P04.json
+    verifier: python validation/phase_check_runner.py --phase P04 --check P04_exec_03
+      --report reports/phase-P04.json
   - check_id: P04_exec_04
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P04 --check P04_exec_04 --report reports/phase-P04.json
+    verifier: python validation/phase_check_runner.py --phase P04 --check P04_exec_04
+      --report reports/phase-P04.json
   - check_id: P04_exec_05
-    description: all implementation-only changes have patch records and repeated toy preflight
-    verifier: python validation/phase_check_runner.py --phase P04 --check P04_exec_05 --report reports/phase-P04.json
+    description: all implementation-only changes have patch records and repeated toy
+      preflight
+    verifier: python validation/phase_check_runner.py --phase P04 --check P04_exec_05
+      --report reports/phase-P04.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -318,25 +362,34 @@ phases:
   execution_checks:
   - check_id: P05_exec_01
     description: dataset capacity audit proves every quota feasible
-    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_01 --report reports/phase-P05.json
+    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_01
+      --report reports/phase-P05.json
   - check_id: P05_exec_02
     description: split intersections zero
-    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_02 --report reports/phase-P05.json
+    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_02
+      --report reports/phase-P05.json
   - check_id: P05_exec_03
     description: all quotas met or protocol capacity BLOCKED
-    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_03 --report reports/phase-P05.json
+    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_03
+      --report reports/phase-P05.json
   - check_id: P05_exec_04
     description: holding and hand-empty coverage present
-    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_04 --report reports/phase-P05.json
+    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_04
+      --report reports/phase-P05.json
   - check_id: P05_exec_05
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_05 --report reports/phase-P05.json
+    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_05
+      --report reports/phase-P05.json
   - check_id: P05_exec_06
-    description: all implementation-only changes have patch records and repeated toy preflight
-    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_06 --report reports/phase-P05.json
+    description: all implementation-only changes have patch records and repeated toy
+      preflight
+    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_06
+      --report reports/phase-P05.json
   - check_id: P05_exec_07
-    description: train-only semantic signature bank and deterministic A3r random codebook regenerate exactly
-    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_07 --report reports/phase-P05.json
+    description: train-only semantic signature bank and deterministic A3r random codebook
+      regenerate exactly
+    verifier: python validation/phase_check_runner.py --phase P05 --check P05_exec_07
+      --report reports/phase-P05.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -353,22 +406,31 @@ phases:
   - docs/schemas/random_codebook_manifest.schema.json
   execution_role: BUILDER
 - phase_id: P06
-  title: Planner implementations, independent implementation/statistics audits и Implementation lock
+  title: Planner implementations, independent implementation/statistics audits и Implementation
+    lock
   approval_mode: manual
   manual_gate_id: G06_STATISTICAL_IMPLEMENTATION_AUDIT
   actions:
-  - finish six trainable Planner variants A1/A2/A2b/A2c/A3/A3r, A4/A5 inference interventions and all outcome-relevant runtime modules required
-    through P17
-  - prove P10 prototype-bank/parser path and P15 graph/control-certification path execute on toy/public fixtures
+  - finish six trainable Planner variants A1/A2/A2b/A2c/A3/A3r, A4/A5 inference interventions
+    and all outcome-relevant runtime modules required through P17
+  - materialize exact state_dict inventory, seed-17 initialization checkpoint and
+    six variant-specific dormant-gradient audits under reports/model-evidence before
+    issuing model-audit PASS
+  - prove P10 prototype-bank/parser path and P15 graph/control-certification path
+    execute on toy/public fixtures
   - run full toy preflight from clean checkout
   - create implementation commit containing every protected executable path
-  - obtain signed independent statistical audit and signed independent implementation audit of the same commit
-  - create implementation-lock candidate binding both audits, Scientific lock, Trust Topology lock and reviewed commit
-  - after G06 approval create and verify active Implementation lock; no later source implementation is permitted
+  - obtain signed independent statistical audit and signed independent implementation
+    audit of the same commit
+  - create implementation-lock candidate binding both audits, Scientific lock, Trust
+    Topology lock and reviewed commit
+  - after G06 approval create and verify active Implementation lock; no later source
+    implementation is permitted
   required_outputs:
   - src/models/
   - semantic_bank/bootstrap/
   - reports/model-audit.json
+  - reports/model-evidence/
   - reports/compute-profile.json
   - reports/preflight-final.json
   - reports/self-review-P06.json
@@ -378,40 +440,53 @@ phases:
   pre_gate_checks:
   - check_id: P06_pre_01
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_01 --report reports/phase-P06.json
+    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_01
+      --report reports/phase-P06.json
   - check_id: P06_pre_02
     description: implementation-lock candidate matches reviewed commit and policy
-    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_02 --report reports/phase-P06.json
+    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_02
+      --report reports/phase-P06.json
   - check_id: P06_pre_03
-    description: 'clean-checkout full toy preflight: every arm forward/backward, two-batch overfit, serialization, fake episode and statistics
-      golden cases PASS'
-    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_03 --report reports/phase-P06.json
+    description: 'clean-checkout full toy preflight: every arm forward/backward, two-batch
+      overfit, serialization, fake episode and statistics golden cases PASS'
+    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_03
+      --report reports/phase-P06.json
   - check_id: P06_pre_04
     description: signed statistical audit is independent from Builder
-    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_04 --report reports/phase-P06.json
+    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_04
+      --report reports/phase-P06.json
   - check_id: P06_pre_05
     description: statistical audit covers every locked statistical check
-    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_05 --report reports/phase-P06.json
+    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_05
+      --report reports/phase-P06.json
   - check_id: P06_pre_06
     description: signed implementation audit is independent from Builder
-    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_06 --report reports/phase-P06.json
+    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_06
+      --report reports/phase-P06.json
   - check_id: P06_pre_07
-    description: implementation audit covers oracle, generator, runtime checks, analysis builders, semantic resolver, deterministic full-plan
-      shuffle/lineage, A3r random-codebook training, per-episode FLOPs accounting, data isolation, sealer, evaluator, model loading and persistence
-    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_07 --report reports/phase-P06.json
+    description: implementation audit covers oracle, generator, runtime checks, analysis
+      builders, semantic resolver, deterministic full-plan shuffle/lineage, A3r random-codebook
+      training, per-episode FLOPs accounting, data isolation, sealer, evaluator, model
+      loading and persistence
+    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_07
+      --report reports/phase-P06.json
   - check_id: P06_pre_08
     description: pre-gate evidence sealed
-    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_08 --report reports/phase-P06.json
+    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_08
+      --report reports/phase-P06.json
   - check_id: P06_pre_09
-    description: model audit binds architecture and initialization contracts, exact eight variants and dormant-gradient evidence
-    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_09 --report reports/phase-P06.json
+    description: model audit validates the exact locked state_dict inventory, deterministic
+      initialization, active/dormant masks and evidence-bound checks
+    verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_09
+      --report reports/phase-P06.json
   execution_checks: []
   post_gate_checks:
   - check_id: P06_post_01
     description: externally signed DecisionRecord schema and signature valid
     verifier: null
   - check_id: P06_post_02
-    description: approved target hash matches reviewed Implementation-lock candidate; both signed audits remain sealed evidence
+    description: approved target hash matches reviewed Implementation-lock candidate;
+      both signed audits remain sealed evidence
     verifier: null
   - check_id: P06_post_03
     description: gate and decision ledgers updated
@@ -441,6 +516,7 @@ phases:
   - docs/schemas/compute_profile.schema.json
   - docs/training/hyperparameter_search_v1.yaml
   - docs/training/planner_initialization_contract_v1.yaml
+  - docs/architecture/planner_module_inventory_v1.yaml
   pre_gate_required_outputs:
   - reports/preflight-final.json
   - reports/statistical-implementation-audit.json
@@ -456,15 +532,21 @@ phases:
   manual_gate_id: G07_PLANNER_CONFIRMATORY_FREEZE
   actions:
   - выполнить bounded hyperparameter grid на development
-  - train six variants × five locked final seeds from the deterministic common-superset initialization; emit exactly 30 final training reports
+  - train six variants × five final seeds plus A2c/A3 FLOPs-sensitivity × five seeds;
+    emit 30 final and 10 sensitivity reports with verified sidecars
   - рассчитать pilot N and freeze analysis
-  - dispatch locked contracts and public-exclusion manifest to Data Sealer; Data Sealer generates a hidden 256-bit seed, returns only seed commitment,
-    encrypted blob hash and signed sealer manifest; create candidate freeze
-  - after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
-  - Data Sealer must emit an exact selected-task manifest before outcomes and bind its path, SHA-256 and task_count in the signed sealer manifest
+  - dispatch locked contracts and public-exclusion manifest to Data Sealer; Data Sealer
+    generates a hidden 256-bit seed, returns only seed commitment, encrypted blob
+    hash and signed sealer manifest; create candidate freeze
+  - after external approval, create ApprovedFreezePointer and immutable evaluator
+    dispatch linked to the signed decision
+  - Data Sealer must emit an exact selected-task manifest before outcomes and bind
+    its path, SHA-256 and task_count in the signed sealer manifest
   required_outputs:
   - reports/planner-pilot.json
   - reports/training/final/
+  - reports/training/flops-sensitivity/
+  - reports/training/checkpoints/
   - reports/sample-size-planner.json
   - checkpoints/planner-seeds/manifest.json
   - freezes/planner-confirmatory.candidate.json
@@ -478,31 +560,43 @@ phases:
   pre_gate_checks:
   - check_id: P07_pre_01
     description: G06 independent statistical implementation audit APPROVED
-    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_01 --report reports/phase-P07.json
+    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_01
+      --report reports/phase-P07.json
   - check_id: P07_pre_02
-    description: Data Sealer manifest verifies plaintext deletion; no confirmatory plaintext visible to Builder
-    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_02 --report reports/phase-P07.json
+    description: Data Sealer manifest verifies plaintext deletion; no confirmatory
+      plaintext visible to Builder
+    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_02
+      --report reports/phase-P07.json
   - check_id: P07_pre_03
     description: grid and seed selection reproducible
-    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_03 --report reports/phase-P07.json
+    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_03
+      --report reports/phase-P07.json
   - check_id: P07_pre_04
     description: reserve >= selected N
-    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_04 --report reports/phase-P07.json
+    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_04
+      --report reports/phase-P07.json
   - check_id: P07_pre_05
     description: candidate freeze valid
-    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_05 --report reports/phase-P07.json
+    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_05
+      --report reports/phase-P07.json
   - check_id: P07_pre_06
     description: pre-gate evidence sealed
-    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_06 --report reports/phase-P07.json
+    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_06
+      --report reports/phase-P07.json
   - check_id: P07_pre_07
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_07 --report reports/phase-P07.json
+    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_07
+      --report reports/phase-P07.json
   - check_id: P07_pre_08
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_08 --report reports/phase-P07.json
+    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_08
+      --report reports/phase-P07.json
   - check_id: P07_pre_09
-    description: exact 6 variants × 5 seeds final training evidence; step-12000 checkpoints, common initialization and ordered examples verified
-    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_09 --report reports/phase-P07.json
+    description: exact 30 final plus 10 FLOPs-sensitivity training reports; checkpoint
+      headers, optimizer states, config, corpus, initialization, ordering and dormant
+      gradients recomputed
+    verifier: python validation/phase_check_runner.py --phase P07 --check P07_pre_09
+      --report reports/phase-P07.json
   execution_checks: []
   post_gate_checks:
   - check_id: P07_post_01
@@ -542,13 +636,15 @@ phases:
   post_gate_checks_by_outcome:
     APPROVE_FREEZE:
     - check_id: P07_post_04
-      description: externally signed DecisionRecord is bound to the Trust Topology operator key
+      description: externally signed DecisionRecord is bound to the Trust Topology
+        operator key
       verifier: null
     - check_id: P07_post_05
       description: ApprovedFreezePointer hash and candidate/decision lineage verified
       verifier: null
     - check_id: P07_post_06
-      description: immutable evaluator dispatch binds approved pointer and all active locks
+      description: immutable evaluator dispatch binds approved pointer and all active
+        locks
       verifier: null
 - phase_id: P08
   title: Planner sealed confirmatory execution
@@ -556,12 +652,13 @@ phases:
   manual_gate_id: null
   actions:
   - dispatch approved freeze to separate evaluator
-  - run the exact matrix `selected task × seeds 101/202/303/404/505 × A1/A2/A2b/A2c/A3/A3r/A4/A5/P_FULL_PLAN_REPLAY_RAW` once per cell; duplicates
-    and omissions are invalid
+  - run the exact matrix `selected task × seeds 101/202/303/404/505 × A1/A2/A2b/A2c/A3/A3r/A4/A5/A2C_FLOPS/A3_FLOPS/P_FULL_PLAN_REPLAY_RAW`
+    once per cell; duplicates and omissions are invalid
   - collect signed raw result manifest
   - validate no source mutation
-  - verify lineage covers the exact selected-task set, exact seed/arm matrix, and every nested artifact has the same run_id, PLANNER stage and
-    planner_seed
+  - verify lineage covers the exact selected-task set, primary and FLOPs-sensitivity
+    seed/arm matrix, and every nested artifact has the same run_id, PLANNER stage
+    and planner_seed
   required_outputs:
   - results/planner-confirmatory/
   - reports/planner-confirmatory-run.json
@@ -574,22 +671,30 @@ phases:
   execution_checks:
   - check_id: P08_exec_01
     description: evaluator commit equals freeze
-    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_01 --report reports/phase-P08.json
+    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_01
+      --report reports/phase-P08.json
   - check_id: P08_exec_02
     description: signed manifest valid
-    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_02 --report reports/phase-P08.json
+    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_02
+      --report reports/phase-P08.json
   - check_id: P08_exec_03
     description: contract/hash violations zero
-    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_03 --report reports/phase-P08.json
+    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_03
+      --report reports/phase-P08.json
   - check_id: P08_exec_04
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_04 --report reports/phase-P08.json
+    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_04
+      --report reports/phase-P08.json
   - check_id: P08_exec_05
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_05 --report reports/phase-P08.json
+    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_05
+      --report reports/phase-P08.json
   - check_id: P08_exec_06
-    description: exact task × five-seed × all-arm matrix is complete; A3 WorkPlan is generated once per task/seed and replayed without replanning
-    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_06 --report reports/phase-P08.json
+    description: exact task × five-seed × 11-arm matrix is complete; primary A3 WorkPlan
+      is generated once per task/seed and replayed without replanning; A2c/A3 FLOPs
+      arms use their locked sensitivity checkpoints
+    verifier: python validation/phase_check_runner.py --phase P08 --check P08_exec_06
+      --report reports/phase-P08.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -603,6 +708,8 @@ phases:
   - docs/schemas/approved_freeze_pointer.schema.json
   - docs/schemas/episode_plan_manifest.schema.json
   - docs/schemas/full_plan_lineage_index.schema.json
+  - docs/schemas/checkpoint_manifest.schema.json
+  - docs/training/planner_training_contract_v1.yaml
   execution_role: EVALUATION_RUNNER
   required_inputs:
   - freezes/planner-confirmatory.approved.json
@@ -612,9 +719,12 @@ phases:
   approval_mode: auto
   manual_gate_id: null
   actions:
-  - build AnalysisInput from the signed Planner selected-task manifest; every comparison must contain the exact same task IDs
-  - recompute Planner metrics from sealed raw logs through locked analysis code
-  - apply architecture relative gates separately from absolute Stage 1B eligibility floor
+  - build AnalysisInput from the signed Planner selected-task manifest; every comparison
+    must contain the exact same task IDs
+  - recompute primary and train-FLOPs-matched Planner metrics from the same sealed
+    task set through locked analysis code
+  - apply architecture relative gates separately from absolute Stage 1B eligibility
+    floor
   - record one of GO_PLANNER_STAGE1B_ELIGIBLE, GO_PLANNER_DIAGNOSTIC_ONLY or STOP_PLANNER
   required_outputs:
   - reports/planner-decision.json
@@ -628,28 +738,36 @@ phases:
   execution_checks:
   - check_id: P09_exec_01
     description: all gates numeric
-    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_01 --report reports/phase-P09.json
+    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_01
+      --report reports/phase-P09.json
   - check_id: P09_exec_02
     description: equal-data and FLOPs sensitivity direction consistent
-    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_02 --report reports/phase-P09.json
+    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_02
+      --report reports/phase-P09.json
   - check_id: P09_exec_03
     description: eligibility machine-readable
-    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_03 --report reports/phase-P09.json
+    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_03
+      --report reports/phase-P09.json
   - check_id: P09_exec_04
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_04 --report reports/phase-P09.json
+    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_04
+      --report reports/phase-P09.json
   - check_id: P09_exec_05
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_05 --report reports/phase-P09.json
+    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_05
+      --report reports/phase-P09.json
   - check_id: P09_exec_06
     description: A3 HORIZON point estimate and CI floor checked
-    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_06 --report reports/phase-P09.json
+    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_06
+      --report reports/phase-P09.json
   - check_id: P09_exec_07
     description: A3 valid-action-rate and P_REPLAY floors checked
-    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_07 --report reports/phase-P09.json
+    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_07
+      --report reports/phase-P09.json
   - check_id: P09_exec_08
     description: Stage 1B eligibility is separate from architecture GO
-    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_08 --report reports/phase-P09.json
+    verifier: python validation/phase_check_runner.py --phase P09 --check P09_exec_08
+      --report reports/phase-P09.json
   post_gate_checks: []
   allowed_outcomes:
   - GO_PLANNER_STAGE1B_ELIGIBLE
@@ -669,7 +787,8 @@ phases:
   actions:
   - verify Scientific, Trust Topology and Implementation locks
   - load exact locked Qwen revision using locked model loader
-  - run the locked train-only prototype-bank builder; do not add or modify parser/resolver code
+  - run the locked train-only prototype-bank builder; do not add or modify parser/resolver
+    code
   - run the locked strict parser and alias resolver on deterministic golden prompts
   - persist only generated semantic-bank manifests and determinism reports
   required_outputs:
@@ -683,19 +802,24 @@ phases:
   execution_checks:
   - check_id: P10_exec_01
     description: 20/20 deterministic outputs on golden prompts
-    verifier: python validation/phase_check_runner.py --phase P10 --check P10_exec_01 --report reports/phase-P10.json
+    verifier: python validation/phase_check_runner.py --phase P10 --check P10_exec_01
+      --report reports/phase-P10.json
   - check_id: P10_exec_02
     description: silent repair absent
-    verifier: python validation/phase_check_runner.py --phase P10 --check P10_exec_02 --report reports/phase-P10.json
+    verifier: python validation/phase_check_runner.py --phase P10 --check P10_exec_02
+      --report reports/phase-P10.json
   - check_id: P10_exec_03
     description: prototype hashes reproducible
-    verifier: python validation/phase_check_runner.py --phase P10 --check P10_exec_03 --report reports/phase-P10.json
+    verifier: python validation/phase_check_runner.py --phase P10 --check P10_exec_03
+      --report reports/phase-P10.json
   - check_id: P10_exec_04
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P10 --check P10_exec_04 --report reports/phase-P10.json
+    verifier: python validation/phase_check_runner.py --phase P10 --check P10_exec_04
+      --report reports/phase-P10.json
   - check_id: P10_exec_05
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P10 --check P10_exec_05 --report reports/phase-P10.json
+    verifier: python validation/phase_check_runner.py --phase P10 --check P10_exec_05
+      --report reports/phase-P10.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -728,19 +852,24 @@ phases:
   execution_checks:
   - check_id: P11_exec_01
     description: selected candidate meets all floors
-    verifier: python validation/phase_check_runner.py --phase P11 --check P11_exec_01 --report reports/phase-P11.json
+    verifier: python validation/phase_check_runner.py --phase P11 --check P11_exec_01
+      --report reports/phase-P11.json
   - check_id: P11_exec_02
     description: no confirmatory data accessed
-    verifier: python validation/phase_check_runner.py --phase P11 --check P11_exec_02 --report reports/phase-P11.json
+    verifier: python validation/phase_check_runner.py --phase P11 --check P11_exec_02
+      --report reports/phase-P11.json
   - check_id: P11_exec_03
     description: left padding only for batching; unpadded prompt hashes frozen
-    verifier: python validation/phase_check_runner.py --phase P11 --check P11_exec_03 --report reports/phase-P11.json
+    verifier: python validation/phase_check_runner.py --phase P11 --check P11_exec_03
+      --report reports/phase-P11.json
   - check_id: P11_exec_04
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P11 --check P11_exec_04 --report reports/phase-P11.json
+    verifier: python validation/phase_check_runner.py --phase P11 --check P11_exec_04
+      --report reports/phase-P11.json
   - check_id: P11_exec_05
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P11 --check P11_exec_05 --report reports/phase-P11.json
+    verifier: python validation/phase_check_runner.py --phase P11 --check P11_exec_05
+      --report reports/phase-P11.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -760,11 +889,15 @@ phases:
   actions:
   - build oracle snapshots and pre-outcome controls on pilot/development only
   - run paired dry run and pilot
-  - calculate clustered N from the registered paired primary and shuffled-control components
-  - dispatch locked Stage 1A contracts and public-exclusion manifest to Data Sealer; hidden seed is generated inside the sealer environment
+  - calculate clustered N from the registered paired primary and shuffled-control
+    components
+  - dispatch locked Stage 1A contracts and public-exclusion manifest to Data Sealer;
+    hidden seed is generated inside the sealer environment
   - receive only encrypted blob commitment and sealer manifest; create candidate freeze
-  - after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
-  - Data Sealer must emit an exact selected-task manifest before outcomes; all Stage 1A comparisons use this same set
+  - after external approval, create ApprovedFreezePointer and immutable evaluator
+    dispatch linked to the signed decision
+  - Data Sealer must emit an exact selected-task manifest before outcomes; all Stage
+    1A comparisons use this same set
   required_outputs:
   - controls/stage1a-certification/
   - reports/stage1a-pilot.json
@@ -779,29 +912,38 @@ phases:
   - RUN_STATUS.json
   pre_gate_checks:
   - check_id: P12_pre_01
-    description: Data Sealer manifest verifies plaintext deletion; no Stage 1A confirmatory plaintext visible to Builder
-    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_01 --report reports/phase-P12.json
+    description: Data Sealer manifest verifies plaintext deletion; no Stage 1A confirmatory
+      plaintext visible to Builder
+    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_01
+      --report reports/phase-P12.json
   - check_id: P12_pre_02
     description: all four arms pair-complete
-    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_02 --report reports/phase-P12.json
+    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_02
+      --report reports/phase-P12.json
   - check_id: P12_pre_03
     description: prompt totals equal naturally without right padding
-    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_03 --report reports/phase-P12.json
+    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_03
+      --report reports/phase-P12.json
   - check_id: P12_pre_04
     description: reserve >= selected N
-    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_04 --report reports/phase-P12.json
+    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_04
+      --report reports/phase-P12.json
   - check_id: P12_pre_05
     description: candidate freeze valid
-    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_05 --report reports/phase-P12.json
+    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_05
+      --report reports/phase-P12.json
   - check_id: P12_pre_06
     description: pre-gate evidence sealed
-    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_06 --report reports/phase-P12.json
+    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_06
+      --report reports/phase-P12.json
   - check_id: P12_pre_07
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_07 --report reports/phase-P12.json
+    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_07
+      --report reports/phase-P12.json
   - check_id: P12_pre_08
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_08 --report reports/phase-P12.json
+    verifier: python validation/phase_check_runner.py --phase P12 --check P12_pre_08
+      --report reports/phase-P12.json
   execution_checks: []
   post_gate_checks:
   - check_id: P12_post_01
@@ -839,21 +981,23 @@ phases:
   post_gate_checks_by_outcome:
     APPROVE_FREEZE:
     - check_id: P12_post_04
-      description: externally signed DecisionRecord is bound to the Trust Topology operator key
+      description: externally signed DecisionRecord is bound to the Trust Topology
+        operator key
       verifier: null
     - check_id: P12_post_05
       description: ApprovedFreezePointer hash and candidate/decision lineage verified
       verifier: null
     - check_id: P12_post_06
-      description: immutable evaluator dispatch binds approved pointer and all active locks
+      description: immutable evaluator dispatch binds approved pointer and all active
+        locks
       verifier: null
 - phase_id: P13
   title: Stage 1A sealed confirmatory execution
   approval_mode: auto
   manual_gate_id: null
   actions:
-  - execute every frozen Stage 1A arm on the identical frozen snapshot set for each selected task; missing or comparison-specific snapshots invalidate
-    the run
+  - execute every frozen Stage 1A arm on the identical frozen snapshot set for each
+    selected task; missing or comparison-specific snapshots invalidate the run
   - dispatch approved freeze to evaluator
   - run I0/I1/I2/I3 once per snapshot
   - save raw bytes before parsing
@@ -870,19 +1014,24 @@ phases:
   execution_checks:
   - check_id: P13_exec_01
     description: pair completeness within threshold
-    verifier: python validation/phase_check_runner.py --phase P13 --check P13_exec_01 --report reports/phase-P13.json
+    verifier: python validation/phase_check_runner.py --phase P13 --check P13_exec_01
+      --report reports/phase-P13.json
   - check_id: P13_exec_02
     description: no retry or domain mask
-    verifier: python validation/phase_check_runner.py --phase P13 --check P13_exec_02 --report reports/phase-P13.json
+    verifier: python validation/phase_check_runner.py --phase P13 --check P13_exec_02
+      --report reports/phase-P13.json
   - check_id: P13_exec_03
     description: contract/hash violations zero
-    verifier: python validation/phase_check_runner.py --phase P13 --check P13_exec_03 --report reports/phase-P13.json
+    verifier: python validation/phase_check_runner.py --phase P13 --check P13_exec_03
+      --report reports/phase-P13.json
   - check_id: P13_exec_04
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P13 --check P13_exec_04 --report reports/phase-P13.json
+    verifier: python validation/phase_check_runner.py --phase P13 --check P13_exec_04
+      --report reports/phase-P13.json
   - check_id: P13_exec_05
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P13 --check P13_exec_05 --report reports/phase-P13.json
+    verifier: python validation/phase_check_runner.py --phase P13 --check P13_exec_05
+      --report reports/phase-P13.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -903,8 +1052,9 @@ phases:
   approval_mode: auto
   manual_gate_id: null
   actions:
-  - build AnalysisInput from the signed Stage 1A selected-task manifest; no comparison-specific filtering is allowed, and every comparison must
-    use the identical snapshot pair_id set for each task
+  - build AnalysisInput from the signed Stage 1A selected-task manifest; no comparison-specific
+    filtering is allowed, and every comparison must use the identical snapshot pair_id
+    set for each task
   - recompute Stage 1A interface decision from sealed raw logs
   - combine interface result with immutable Planner Stage 1B eligibility lineage
   - permit Stage 1B only for GO_INTERFACE_STAGE1B_ELIGIBLE
@@ -919,19 +1069,24 @@ phases:
   execution_checks:
   - check_id: P14_exec_01
     description: all numeric gates applied
-    verifier: python validation/phase_check_runner.py --phase P14 --check P14_exec_01 --report reports/phase-P14.json
+    verifier: python validation/phase_check_runner.py --phase P14 --check P14_exec_01
+      --report reports/phase-P14.json
   - check_id: P14_exec_02
     description: I3 remains diagnostic
-    verifier: python validation/phase_check_runner.py --phase P14 --check P14_exec_02 --report reports/phase-P14.json
+    verifier: python validation/phase_check_runner.py --phase P14 --check P14_exec_02
+      --report reports/phase-P14.json
   - check_id: P14_exec_03
     description: eligibility machine-readable
-    verifier: python validation/phase_check_runner.py --phase P14 --check P14_exec_03 --report reports/phase-P14.json
+    verifier: python validation/phase_check_runner.py --phase P14 --check P14_exec_03
+      --report reports/phase-P14.json
   - check_id: P14_exec_04
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P14 --check P14_exec_04 --report reports/phase-P14.json
+    verifier: python validation/phase_check_runner.py --phase P14 --check P14_exec_04
+      --report reports/phase-P14.json
   - check_id: P14_exec_05
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P14 --check P14_exec_05 --report reports/phase-P14.json
+    verifier: python validation/phase_check_runner.py --phase P14 --check P14_exec_05
+      --report reports/phase-P14.json
   post_gate_checks: []
   allowed_outcomes:
   - GO_INTERFACE_STAGE1B_ELIGIBLE
@@ -951,10 +1106,14 @@ phases:
   actions:
   - verify Scientific, Trust Topology and Implementation locks
   - run the locked task/domain/split eligibility checker on public and pilot tasks
-  - verify no Planner, semantic, LLM, shuffle-degeneracy or arm outcome can affect inclusion
-  - verify A3r codebook, signature bank, shuffle algorithm and failure-retention policy are frozen before hidden selection
-  - materialize public exclusion and task-only support manifests only; source-code changes are forbidden
-  - do not materialize hidden confirmatory task ids or hidden task bodies in Builder environment
+  - verify no Planner, semantic, LLM, shuffle-degeneracy or arm outcome can affect
+    inclusion
+  - verify A3r codebook, signature bank, shuffle algorithm and failure-retention policy
+    are frozen before hidden selection
+  - materialize public exclusion and task-only support manifests only; source-code
+    changes are forbidden
+  - do not materialize hidden confirmatory task ids or hidden task bodies in Builder
+    environment
   required_outputs:
   - controls/stage1b-certification-preflight/
   - reports/stage1b-support-audit-public.json
@@ -966,20 +1125,28 @@ phases:
   pre_gate_checks: []
   execution_checks:
   - check_id: P15_exec_01
-    description: selection predicates use task/domain/split metadata only; post-treatment exclusion impossible
-    verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_01 --report reports/phase-P15.json
+    description: selection predicates use task/domain/split metadata only; post-treatment
+      exclusion impossible
+    verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_01
+      --report reports/phase-P15.json
   - check_id: P15_exec_02
-    description: all public/pilot included tasks satisfy task-only eligibility; no plan/control degeneracy exclusion
-    verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_02 --report reports/phase-P15.json
+    description: all public/pilot included tasks satisfy task-only eligibility; no
+      plan/control degeneracy exclusion
+    verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_02
+      --report reports/phase-P15.json
   - check_id: P15_exec_03
-    description: pre-outcome A3r codebook, signature bank, shuffle algorithm and retention policy are frozen
-    verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_03 --report reports/phase-P15.json
+    description: pre-outcome A3r codebook, signature bank, shuffle algorithm and retention
+      policy are frozen
+    verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_03
+      --report reports/phase-P15.json
   - check_id: P15_exec_04
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_04 --report reports/phase-P15.json
+    verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_04
+      --report reports/phase-P15.json
   - check_id: P15_exec_05
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_05 --report reports/phase-P15.json
+    verifier: python validation/phase_check_runner.py --phase P15 --check P15_exec_05
+      --report reports/phase-P15.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -1000,12 +1167,16 @@ phases:
   - run independent trajectories pilot
   - measure unresolved and infrastructure rates
   - calculate final N with all registered components
-  - dispatch locked Stage 1B task-only eligibility contracts, pre-outcome artifact hashes and public-exclusion manifest to Data Sealer
-  - Data Sealer fixes eligibility from task/domain/split metadata only, then HMAC-ranks and encrypts the selected tasks before any Planner or
-    LLM output exists
-  - receive only encrypted blob commitment and signed sealer manifest containing task-only selection certification; create candidate freeze
-  - after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
-  - Data Sealer must emit an exact selected-task manifest before any Planner/LLM call and bind it in the signed sealer manifest
+  - dispatch locked Stage 1B task-only eligibility contracts, pre-outcome artifact
+    hashes and public-exclusion manifest to Data Sealer
+  - Data Sealer fixes eligibility from task/domain/split metadata only, then HMAC-ranks
+    and encrypts the selected tasks before any Planner or LLM output exists
+  - receive only encrypted blob commitment and signed sealer manifest containing task-only
+    selection certification; create candidate freeze
+  - after external approval, create ApprovedFreezePointer and immutable evaluator
+    dispatch linked to the signed decision
+  - Data Sealer must emit an exact selected-task manifest before any Planner/LLM call
+    and bind it in the signed sealer manifest
   required_outputs:
   - reports/stage1b-pilot.json
   - reports/sample-size-stage1b.json
@@ -1019,30 +1190,38 @@ phases:
   - RUN_STATUS.json
   pre_gate_checks:
   - check_id: P16_pre_01
-    description: signed Data Sealer manifest verifies plaintext deletion and task-only Stage1B selection certification; no hidden task body or
-      id visible to Builder
-    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_01 --report reports/phase-P16.json
+    description: signed Data Sealer manifest verifies plaintext deletion and task-only
+      Stage1B selection certification; no hidden task body or id visible to Builder
+    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_01
+      --report reports/phase-P16.json
   - check_id: P16_pre_02
     description: no total-token equality claim across trajectories
-    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_02 --report reports/phase-P16.json
+    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_02
+      --report reports/phase-P16.json
   - check_id: P16_pre_03
     description: same 32-token guidance budget
-    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_03 --report reports/phase-P16.json
+    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_03
+      --report reports/phase-P16.json
   - check_id: P16_pre_04
     description: reserve >= selected N
-    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_04 --report reports/phase-P16.json
+    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_04
+      --report reports/phase-P16.json
   - check_id: P16_pre_05
     description: candidate freeze valid
-    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_05 --report reports/phase-P16.json
+    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_05
+      --report reports/phase-P16.json
   - check_id: P16_pre_06
     description: pre-gate evidence sealed
-    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_06 --report reports/phase-P16.json
+    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_06
+      --report reports/phase-P16.json
   - check_id: P16_pre_07
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_07 --report reports/phase-P16.json
+    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_07
+      --report reports/phase-P16.json
   - check_id: P16_pre_08
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_08 --report reports/phase-P16.json
+    verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_08
+      --report reports/phase-P16.json
   execution_checks: []
   post_gate_checks:
   - check_id: P16_post_01
@@ -1079,13 +1258,15 @@ phases:
   post_gate_checks_by_outcome:
     APPROVE_FREEZE:
     - check_id: P16_post_04
-      description: externally signed DecisionRecord is bound to the Trust Topology operator key
+      description: externally signed DecisionRecord is bound to the Trust Topology
+        operator key
       verifier: null
     - check_id: P16_post_05
       description: ApprovedFreezePointer hash and candidate/decision lineage verified
       verifier: null
     - check_id: P16_post_06
-      description: immutable evaluator dispatch binds approved pointer and all active locks
+      description: immutable evaluator dispatch binds approved pointer and all active
+        locks
       verifier: null
 - phase_id: P17
   title: Stage 1B sealed confirmatory execution
@@ -1096,7 +1277,8 @@ phases:
   - run seven E0-E5/P full-plan trajectories once
   - validate attempts, episodes and aggregates online
   - collect signed evaluator manifest
-  - verify selected task IDs × seven arms exactly; recompute evaluator task_count from lineage and forbid task removal
+  - verify selected task IDs × seven arms exactly; recompute evaluator task_count
+    from lineage and forbid task removal
   required_outputs:
   - results/stage1b-confirmatory/
   - reports/stage1b-confirmatory-run.json
@@ -1109,22 +1291,28 @@ phases:
   execution_checks:
   - check_id: P17_exec_01
     description: goal checked before loop and after each action
-    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_01 --report reports/phase-P17.json
+    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_01
+      --report reports/phase-P17.json
   - check_id: P17_exec_02
     description: no post-selection
-    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_02 --report reports/phase-P17.json
+    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_02
+      --report reports/phase-P17.json
   - check_id: P17_exec_03
     description: hash/contract violations zero
-    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_03 --report reports/phase-P17.json
+    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_03
+      --report reports/phase-P17.json
   - check_id: P17_exec_04
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_04 --report reports/phase-P17.json
+    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_04
+      --report reports/phase-P17.json
   - check_id: P17_exec_05
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_05 --report reports/phase-P17.json
+    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_05
+      --report reports/phase-P17.json
   - check_id: P17_exec_06
     description: seven-arm frozen full-plan lineage complete and replay-safe
-    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_06 --report reports/phase-P17.json
+    verifier: python validation/phase_check_runner.py --phase P17 --check P17_exec_06
+      --report reports/phase-P17.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -1147,7 +1335,8 @@ phases:
   approval_mode: auto
   manual_gate_id: null
   actions:
-  - build AnalysisInput from the signed Stage 1B selected-task manifest; task IDs must equal lineage and evaluator task_count
+  - build AnalysisInput from the signed Stage 1B selected-task manifest; task IDs
+    must equal lineage and evaluator task_count
   - recompute paired task-level estimates
   - apply all end-to-end gates
   - publish scientific decision and limitations
@@ -1161,19 +1350,24 @@ phases:
   execution_checks:
   - check_id: P18_exec_01
     description: all thresholds exact
-    verifier: python validation/phase_check_runner.py --phase P18 --check P18_exec_01 --report reports/phase-P18.json
+    verifier: python validation/phase_check_runner.py --phase P18 --check P18_exec_01
+      --report reports/phase-P18.json
   - check_id: P18_exec_02
     description: diagnostic arms not substituted for primary
-    verifier: python validation/phase_check_runner.py --phase P18 --check P18_exec_02 --report reports/phase-P18.json
+    verifier: python validation/phase_check_runner.py --phase P18 --check P18_exec_02
+      --report reports/phase-P18.json
   - check_id: P18_exec_03
     description: raw lineage complete
-    verifier: python validation/phase_check_runner.py --phase P18 --check P18_exec_03 --report reports/phase-P18.json
+    verifier: python validation/phase_check_runner.py --phase P18 --check P18_exec_03
+      --report reports/phase-P18.json
   - check_id: P18_exec_04
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P18 --check P18_exec_04 --report reports/phase-P18.json
+    verifier: python validation/phase_check_runner.py --phase P18 --check P18_exec_04
+      --report reports/phase-P18.json
   - check_id: P18_exec_05
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P18 --check P18_exec_05 --report reports/phase-P18.json
+    verifier: python validation/phase_check_runner.py --phase P18 --check P18_exec_05
+      --report reports/phase-P18.json
   post_gate_checks: []
   allowed_outcomes:
   - GO_END_TO_END
@@ -1190,7 +1384,8 @@ phases:
   approval_mode: auto
   manual_gate_id: null
   actions:
-  - 'derive audit profile from actual phase-state-machine path: PLANNER_STOP, INTERFACE_STOP, or END_TO_END'
+  - 'derive audit profile from actual phase-state-machine path: PLANNER_STOP, INTERFACE_STOP,
+    or END_TO_END'
   - run audit agent on separate clean checkout
   - validate every registered artifact
   - recompute all statistics
@@ -1208,25 +1403,32 @@ phases:
   execution_checks:
   - check_id: P19_exec_01
     description: clean reproduction mandatory and PASS
-    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_01 --report reports/phase-P19.json
+    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_01
+      --report reports/phase-P19.json
   - check_id: P19_exec_02
     description: all reported metrics exact
-    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_02 --report reports/phase-P19.json
+    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_02
+      --report reports/phase-P19.json
   - check_id: P19_exec_03
     description: raw logs and lineage complete
-    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_03 --report reports/phase-P19.json
+    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_03
+      --report reports/phase-P19.json
   - check_id: P19_exec_04
     description: claims within scope
-    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_04 --report reports/phase-P19.json
+    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_04
+      --report reports/phase-P19.json
   - check_id: P19_exec_05
     description: audit profile reproduces only stages that actually executed
-    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_05 --report reports/phase-P19.json
+    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_05
+      --report reports/phase-P19.json
   - check_id: P19_exec_06
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_06 --report reports/phase-P19.json
+    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_06
+      --report reports/phase-P19.json
   - check_id: P19_exec_07
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_07 --report reports/phase-P19.json
+    verifier: python validation/phase_check_runner.py --phase P19 --check P19_exec_07
+      --report reports/phase-P19.json
   post_gate_checks: []
   allowed_outcomes:
   - PASS
@@ -1258,22 +1460,28 @@ phases:
   pre_gate_checks:
   - check_id: P20_pre_01
     description: P19 audit PASS
-    verifier: python validation/phase_check_runner.py --phase P20 --check P20_pre_01 --report reports/phase-P20.json
+    verifier: python validation/phase_check_runner.py --phase P20 --check P20_pre_01
+      --report reports/phase-P20.json
   - check_id: P20_pre_02
     description: release checksums pass
-    verifier: python validation/phase_check_runner.py --phase P20 --check P20_pre_02 --report reports/phase-P20.json
+    verifier: python validation/phase_check_runner.py --phase P20 --check P20_pre_02
+      --report reports/phase-P20.json
   - check_id: P20_pre_03
     description: pre-gate evidence sealed
-    verifier: python validation/phase_check_runner.py --phase P20 --check P20_pre_03 --report reports/phase-P20.json
+    verifier: python validation/phase_check_runner.py --phase P20 --check P20_pre_03
+      --report reports/phase-P20.json
   - check_id: P20_pre_04
     description: scientific lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P20 --check P20_pre_04 --report reports/phase-P20.json
+    verifier: python validation/phase_check_runner.py --phase P20 --check P20_pre_04
+      --report reports/phase-P20.json
   - check_id: P20_pre_05
     description: implementation lock VERIFIED
-    verifier: python validation/phase_check_runner.py --phase P20 --check P20_pre_05 --report reports/phase-P20.json
+    verifier: python validation/phase_check_runner.py --phase P20 --check P20_pre_05
+      --report reports/phase-P20.json
   - check_id: P20_pre_06
     description: operator executor identity equals Trust Topology operator key fingerprint
-    verifier: python validation/phase_check_runner.py --phase P20 --check P20_pre_06 --report reports/phase-P20.json
+    verifier: python validation/phase_check_runner.py --phase P20 --check P20_pre_06
+      --report reports/phase-P20.json
   execution_checks: []
   post_gate_checks:
   - check_id: P20_post_01

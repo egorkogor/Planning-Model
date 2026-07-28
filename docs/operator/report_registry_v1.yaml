@@ -1,4 +1,4 @@
-schema_version: work-planner/1.18
+schema_version: work-planner-agent/1.19
 registry_id: report-registry/1.5
 matching: first_rule_wins
 rules:
@@ -146,4 +146,26 @@ rules:
   schema: docs/schemas/evaluator_result_manifest.schema.json
 - path_pattern: results/**/manifest.json
   schema: docs/schemas/artifact_manifest.schema.json
+- path_pattern: reports/model-evidence/parameter-inventory.json
+  schema: docs/schemas/parameter_inventory_manifest.schema.json
+- path_pattern: reports/model-evidence/initialization/*.json
+  schema: docs/schemas/initialization_manifest.schema.json
+- path_pattern: reports/model-evidence/dormant-gradients/*.json
+  schema: docs/schemas/dormant_gradient_audit.schema.json
+- path_pattern: reports/model-evidence/checkpoints/*.json
+  schema: docs/schemas/checkpoint_manifest.schema.json
+- path_pattern: reports/model-evidence/checks/*.json
+  schema: docs/schemas/model_audit_check_evidence.schema.json
+- path_pattern: reports/training/selected-config.json
+  schema: docs/schemas/selected_planner_config.schema.json
+- path_pattern: reports/training/initialization/*.json
+  schema: docs/schemas/initialization_manifest.schema.json
+- path_pattern: reports/training/ordered-examples/*.json
+  schema: docs/schemas/ordered_training_examples.schema.json
+- path_pattern: reports/training/dormant-gradients/*.json
+  schema: docs/schemas/dormant_gradient_audit.schema.json
+- path_pattern: reports/training/checkpoints/*.json
+  schema: docs/schemas/checkpoint_manifest.schema.json
+- path_pattern: reports/training/flops-sensitivity/*.json
+  schema: docs/schemas/model_training_report.schema.json
 unregistered_json_artifact_action: BLOCKED_UNREGISTERED_ARTIFACT

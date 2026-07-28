@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/initialization_manifest.schema.json",
+  "title": "Deterministic Planner initialization manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "seed",
+    "initialization_contract_sha256",
+    "parameter_inventory_manifest_path",
+    "parameter_inventory_manifest_sha256",
+    "parameter_inventory_sha256",
+    "checkpoint_manifest_path",
+    "checkpoint_manifest_sha256",
+    "tensor_seeds",
+    "manifest_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-initialization-manifest/1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "initialization_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "parameter_inventory_manifest_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parameter_inventory_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "parameter_inventory_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "checkpoint_manifest_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checkpoint_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "tensor_seeds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "tensor_seed"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "tensor_seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          }
+        }
+      }
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

@@ -97,6 +97,6 @@ def test_implementation_audit_contract_schema_and_validator_have_one_exact_check
     contract_ids = set(contract["implementation_audit"]["required_checks"])
     schema_ids = set(schema["properties"]["checks"]["items"]["properties"]["check_id"]["enum"])
     assert contract_ids == schema_ids == validator.REQUIRED
-    assert len(contract_ids) == 15
+    assert len(contract_ids) == 16
     assert "TASK_ONLY_SELECTION_CERTIFICATION_ENGINE" in contract_ids
     assert "CONTROL_CERTIFICATION_ENGINE" not in contract_ids

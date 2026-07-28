@@ -1,4 +1,4 @@
-schema_version: work-planner/1.18
+schema_version: work-planner/1.19
 contract_id: planner-architecture/1.0
 task_encoder:
   layers: 4
@@ -109,3 +109,16 @@ A3r_external_resolution:
   exact_tie_action: deterministic selection, not failure
   concept_packer_feedback: raw normalized predicted z, never the selected codebook vector
   work_plan_semantic_signature: semantic signature associated with the selected signature_sha256
+module_inventory_contract: docs/architecture/planner_module_inventory_v1.yaml
+exact_implementation:
+  attention_projection_layout: separate_q_k_v_out; no attention projection bias
+  layer_norm_eps: 1.0e-05
+  gelu_approximate: none
+  final_encoder_norm: true
+  final_decoder_norm: true
+  task_vocabulary_size: 40
+  task_padding_idx: 0
+  a1_padding_idx: 0
+  bos_embedding: separate standalone parameter
+  previous_arg_projections: separate bias-free projections
+  state_dict_names_and_shapes: normative in planner_module_inventory_v1.yaml

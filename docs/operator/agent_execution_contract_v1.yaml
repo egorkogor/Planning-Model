@@ -1,4 +1,4 @@
-schema_version: work-planner/1.18
+schema_version: work-planner/1.19
 agent_execution_contract_id: work-planner-agent/1.5
 operator_role: observe progress, approve scope/budget/frozen packages, and accept or stop the final run
 execution_roles:
@@ -6,7 +6,8 @@ execution_roles:
     duties: implementation, development, pilot, freeze construction
     confirmatory_plaintext_access: forbidden
   data_sealer:
-    duties: deterministic confirmatory generation, immediate authenticated encryption, plaintext destruction and commitment publication
+    duties: deterministic confirmatory generation, immediate authenticated encryption, plaintext destruction and commitment
+      publication
     repository_write_access: forbidden
     builder_credentials_access: forbidden
     confirmatory_outcomes_access: forbidden
@@ -48,7 +49,8 @@ agent_rules:
 - require externally signed Trust Topology lock at P01; Builder must never access operator private key
 - verify Trust Topology lock before and after every phase from P02
 - create Scientific lock only after runtime/model manifests and Trust Topology lock exist
-- after G06 never implement or modify parser, resolver, prototype builder, control-certification, sealer, evaluator or analysis code
+- after G06 never implement or modify parser, resolver, prototype builder, control-certification, sealer, evaluator or analysis
+  code
 status_states:
 - NOT_STARTED
 - RUNNING

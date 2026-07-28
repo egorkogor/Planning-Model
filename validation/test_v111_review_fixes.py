@@ -47,7 +47,7 @@ def test_g06_implementation_audit_is_trusted_core_check() -> None:
     assert contract["core_checks"]["P06_pre_07"] == "implementation_audit"
     phase = next(p for p in y("docs/operator/phase_registry_v1.yaml")["phases"] if p["phase_id"] == "P06")
     assert "reports/independent-implementation-audit.json" in phase["pre_gate_required_outputs"]
-    assert len(IMPLEMENTATION_CHECKS) == 15
+    assert len(IMPLEMENTATION_CHECKS) == 16
 
 
 def test_phase_runner_no_longer_has_divergent_script_copy() -> None:

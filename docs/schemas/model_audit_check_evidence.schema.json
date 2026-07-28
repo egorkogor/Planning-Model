@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/model_audit_check_evidence.schema.json",
+  "title": "Bound evidence for one model audit check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "check_id",
+    "status",
+    "recomputed_value",
+    "expected_value",
+    "bindings",
+    "evidence_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-model-audit-evidence/1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "check_id": {
+      "enum": [
+        "PARAMETER_TOLERANCE",
+        "SAME_INFORMATION",
+        "RAW_ROLLOUT",
+        "DORMANT_GRADIENT",
+        "MODEL_ARCHITECTURE_INITIALIZATION_AND_DORMANT_PARAMETERS"
+      ]
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "recomputed_value": {},
+    "expected_value": {},
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "$ref": "common.schema.json#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "evidence_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

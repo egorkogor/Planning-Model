@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.18/episode_plan_manifest.schema.json",
-  "title": "EpisodePlanManifest v1.18",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/episode_plan_manifest.schema.json",
+  "title": "EpisodePlanManifest v1.19",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -16,6 +16,7 @@
     "split",
     "arm",
     "planner_seed",
+    "planner_checkpoint_sha256",
     "generator_type",
     "plan_status",
     "planner_call_count",
@@ -196,6 +197,9 @@
     },
     "control_artifact_hash": {
       "$ref": "common.schema.json#/$defs/nullable_sha256"
+    },
+    "planner_checkpoint_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
     }
   },
   "$defs": {

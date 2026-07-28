@@ -1,4 +1,4 @@
-schema_version: work-planner/1.18
+schema_version: work-planner/1.19
 contract_id: recovery/1.0
 idempotency:
   every_phase_has_run_id: true

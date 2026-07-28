@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/parameter_inventory_manifest.schema.json",
+  "title": "Actual Planner state_dict inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "contract_path",
+    "contract_sha256",
+    "tensors",
+    "inventory_hash",
+    "manifest_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-parameter-inventory/1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contract_path": {
+      "const": "docs/architecture/planner_module_inventory_v1.yaml"
+    },
+    "contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "tensors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "shape",
+          "dtype",
+          "parameter_type",
+          "active_arms"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.]+$"
+          },
+          "shape": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "dtype": {
+            "const": "F32"
+          },
+          "parameter_type": {
+            "enum": [
+              "embedding_weight",
+              "linear_weight",
+              "linear_bias",
+              "layer_norm_weight",
+              "layer_norm_bias",
+              "bilinear_weight",
+              "standalone_parameter"
+            ]
+          },
+          "active_arms": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "A1",
+                "A2",
+                "A2b",
+                "A2c",
+                "A3",
+                "A3r"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "inventory_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

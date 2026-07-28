@@ -1,4 +1,4 @@
-schema_version: work-planner/1.18
+schema_version: work-planner/1.19
 contract_id: independent-audit/1.3
 auditor:
   separate_process_or_machine: required
@@ -101,6 +101,7 @@ implementation_audit:
   - FULL_PLAN_SHUFFLE_AND_LINEAGE
   - A3R_RANDOM_CODEBOOK_TRAINING
   - PER_EPISODE_FLOPS_ACCOUNTING
+  - MODEL_ARCHITECTURE_INITIALIZATION_AND_DORMANT_PARAMETERS
   required_artifact_classes:
   - src/domain
   - src/validation
@@ -114,5 +115,6 @@ implementation_audit:
   - model/runtime locks
   - dataset manifests
   - persistence and hashing code
+  - exact model inventory, deterministic initialization and dormant-gradient evidence
   builder_generated_machine_check_results_are_sufficient: false
   fail_action: REJECT_G06_AUDITS

@@ -1,4 +1,4 @@
-"""Fail-closed validation of frozen full-plan execution lineage (v1.18).
+"""Fail-closed validation of frozen full-plan execution lineage (v1.19).
 
 This module verifies relations that local JSON Schemas cannot express:
 one plan-generation call before execution, immutable WorkPlan reuse, sequential
@@ -28,6 +28,8 @@ PLANNER_ARMS = {
     "PLANNER_A3R_RAW",
     "PLANNER_A4_RAW",
     "PLANNER_A5_RAW",
+    "PLANNER_A2C_FLOPS_RAW",
+    "PLANNER_A3_FLOPS_RAW",
     "P_FULL_PLAN_REPLAY_RAW",
 }
 
@@ -50,12 +52,27 @@ GENERATING_ARMS = {
     "PLANNER_A3R_RAW": "MICRO_PLANNER_A3R",
     "PLANNER_A4_RAW": "MICRO_PLANNER_A4",
     "PLANNER_A5_RAW": "MICRO_PLANNER_A5",
+    "PLANNER_A2C_FLOPS_RAW": "MICRO_PLANNER_A2C",
+    "PLANNER_A3_FLOPS_RAW": "MICRO_PLANNER_A3",
     "E1_A3_FULL_PLAN_RAW": "MICRO_PLANNER_A3",
     "E3_A3R_RANDOM_CODE_FULL_PLAN_RAW": "MICRO_PLANNER_A3R",
     "E4_A2C_STRUCTURED_FULL_PLAN_RAW": "MICRO_PLANNER_A2C",
     "E5_SELF_PLAN_RAW": "SELF_PLAN_LLM",
 }
 REUSED_ARMS = {"E2_SHUFFLED_A3_FULL_PLAN_RAW", "P_FULL_PLAN_REPLAY_RAW"}
+PLANNER_CHECKPOINT_BINDINGS = {
+    "PLANNER_A1_RAW": ("A1", "FINAL_EQUAL_DATA"),
+    "PLANNER_A2_RAW": ("A2", "FINAL_EQUAL_DATA"),
+    "PLANNER_A2B_RAW": ("A2b", "FINAL_EQUAL_DATA"),
+    "PLANNER_A2C_RAW": ("A2c", "FINAL_EQUAL_DATA"),
+    "PLANNER_A3_RAW": ("A3", "FINAL_EQUAL_DATA"),
+    "PLANNER_A3R_RAW": ("A3r", "FINAL_EQUAL_DATA"),
+    "PLANNER_A4_RAW": ("A3", "FINAL_EQUAL_DATA"),
+    "PLANNER_A5_RAW": ("A3", "FINAL_EQUAL_DATA"),
+    "PLANNER_A2C_FLOPS_RAW": ("A2c", "FLOPS_SENSITIVITY"),
+    "PLANNER_A3_FLOPS_RAW": ("A3", "FLOPS_SENSITIVITY"),
+    "P_FULL_PLAN_REPLAY_RAW": ("A3", "FINAL_EQUAL_DATA"),
+}
 ROOT = Path(__file__).resolve().parents[1]
 SHUFFLE_CONTRACT = ROOT / "docs/controls/full_plan_shuffle_contract_v1.yaml"
 
@@ -356,6 +373,9 @@ def validate_episode_plan_manifest(
     elif signature_bank is not None or manifest.get("semantic_signature_bank_hash") is not None:
         errors.append(_err("semantic_signature_bank", "only A2c may bind the structured signature bank"))
 
+    if work_plan is not None and manifest.get("planner_checkpoint_sha256") != work_plan.get("planner_checkpoint_sha256"):
+        errors.append(_err("planner_checkpoint_sha256", "EpisodePlanManifest differs from WorkPlan checkpoint"))
+
     expected_plan = {
         "E1_A3_FULL_PLAN_RAW": ("A3", "CONTINUOUS_LATENT"),
         "E2_SHUFFLED_A3_FULL_PLAN_RAW": ("A3", "CONTINUOUS_LATENT"),
@@ -371,6 +391,8 @@ def validate_episode_plan_manifest(
         "PLANNER_A3R_RAW": ("A3r", "CONTINUOUS_LATENT"),
         "PLANNER_A4_RAW": ("A4", "CONTINUOUS_LATENT"),
         "PLANNER_A5_RAW": ("A5", "CONTINUOUS_LATENT"),
+        "PLANNER_A2C_FLOPS_RAW": ("A2c", "STRUCTURED_DISCRETE"),
+        "PLANNER_A3_FLOPS_RAW": ("A3", "CONTINUOUS_LATENT"),
     }.get(arm)
     if expected_plan and (work_plan.get("planner_variant"), work_plan.get("representation")) != expected_plan:
         errors.append(_err("work_plan.variant", f"expected {expected_plan}"))
@@ -623,6 +645,34 @@ def validate_lineage_index(root: Path, index: Mapping[str, Any], *, expected_sta
             for j, attempt in enumerate(attempts):
                 if attempt.get("planner_seed") != row_seed:
                     errors.append(_err(f"records[{i}].attempts[{j}].planner_seed", "differs from lineage planner_seed"))
+            expected_checkpoint = PLANNER_CHECKPOINT_BINDINGS.get(arm)
+            try:
+                checkpoint_rel = row.get("checkpoint_manifest")
+                if not isinstance(checkpoint_rel, str):
+                    raise ValueError("Planner record requires checkpoint_manifest")
+                checkpoint_path = _safe_path(root, checkpoint_rel)
+                if row.get("checkpoint_manifest_sha256") != _file_digest(checkpoint_path):
+                    errors.append(_err(f"records[{i}].checkpoint_manifest_sha256", "does not match checkpoint manifest artifact"))
+                checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+                if checkpoint.get("manifest_hash") != hash_json(_without(checkpoint, "manifest_hash")):
+                    errors.append(_err(f"records[{i}].checkpoint_manifest", "self-hash mismatch"))
+                if expected_checkpoint is None:
+                    errors.append(_err(f"records[{i}].checkpoint_manifest", "arm has no locked checkpoint binding"))
+                else:
+                    expected_variant, expected_kind = expected_checkpoint
+                    if checkpoint.get("run_id") != run_id or checkpoint.get("seed") != row_seed:
+                        errors.append(_err(f"records[{i}].checkpoint_manifest", "run_id/seed differs from lineage"))
+                    if checkpoint.get("variant") != expected_variant or checkpoint.get("checkpoint_kind") != expected_kind:
+                        errors.append(_err(f"records[{i}].checkpoint_manifest", f"expected {expected_variant}/{expected_kind}"))
+                    logged_checkpoint_sha = manifest.get("planner_checkpoint_sha256") if manifest is not None else None
+                    if checkpoint.get("model_file_sha256") != logged_checkpoint_sha:
+                        errors.append(_err(f"records[{i}].checkpoint_manifest", "model SHA differs from EpisodePlanManifest"))
+                    if plan is not None and checkpoint.get("model_file_sha256") != plan.get("planner_checkpoint_sha256"):
+                        errors.append(_err(f"records[{i}].checkpoint_manifest", "model SHA differs from WorkPlan"))
+            except Exception as exc:
+                errors.append(_err(f"records[{i}].checkpoint_manifest", str(exc)))
+        if expected_stage != "PLANNER" and (row.get("checkpoint_manifest") is not None or row.get("checkpoint_manifest_sha256") is not None):
+            errors.append(_err(f"records[{i}].checkpoint_manifest", "only Planner confirmatory records bind Planner checkpoint manifests"))
         for j, attempt in enumerate(attempts):
             if attempt.get("run_id") != run_id or attempt.get("stage") != nested_stage:
                 errors.append(_err(f"records[{i}].attempts[{j}]", "run_id/stage differs from lineage index"))

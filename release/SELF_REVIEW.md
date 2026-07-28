@@ -1,8 +1,8 @@
-# Release self-review v1.18 / v2.18
+# Release self-review v1.19 / v2.19
 
 ## Scope
 
-Проверены документы, 71 JSON Schema, machine-readable YAML contracts, validators, state machine, generated phase prompts, lock policies и packaging. Реальное обучение, Qwen inference, pilot и confirmatory run не выполнялись.
+Проверены документы, 78 JSON Schema, 48 machine-readable YAML contracts, validators, state machine, generated phase prompts, lock policies и packaging. Полный regression suite: 213 tests PASS. Реальное обучение, Qwen inference, pilot и confirmatory run не выполнялись.
 
 ## Целевая гипотеза
 
@@ -12,7 +12,7 @@ Stage 1B проверяет **один полный frozen plan**, создан�
 
 - шесть обучаемых parameter-matched вариантов: A1, A2, A2b, A2c, A3 и A3r;
 - A3r использует frozen train-only random codebook, а не несуществующий бесплатный control;
-- Stage 1B требует ровно семь arms E0–E5/P для каждой выбранной задачи;
+- Stage 1B требует ровно семь arms E0–E5/P для каждой выбранной задачи; Planner confirmatory P08 отдельно требует exact 11-arm matrix, включая A2c/A3 FLOPs-sensitivity и replay;
 - E2 использует детерминированную перестановку позиций frozen E1 plan;
 - P08 и P17 имеют разные precomputed replay-contexts и не могут подменять друг друга.
 
@@ -37,11 +37,11 @@ Preflight пересчитывает 24 development, 30 primary-final и 10 A3/A
 - P02 фиксирует Scientific lock.
 - P03 реализует весь outcome-relevant executable code.
 - G06 требует statistical audit и implementation audit одного commit.
-- Implementation audit содержит ровно 15 обязательных checks, включая full-plan lineage, A3r, task-only selection и FLOPs accounting.
+- Implementation audit содержит ровно 16 обязательных checks, включая full-plan lineage, A3r, task-only selection и FLOPs accounting.
 - После G06 Implementation lock запрещает позднее добавление outcome-relevant кода.
 
 
-## Минимальные launch-инварианты v1.18
+## Минимальные launch-инварианты v1.19
 
 - selected task list фиксируется до outcomes и подписанно связывается через SealerManifest;
 - lineage exact-cover запрещает удаление целых задач после исполнения;
@@ -54,14 +54,14 @@ Preflight пересчитывает 24 development, 30 primary-final и 10 A3/A
 
 Release является исполняемым протоколом, но не результатом эксперимента. Организационная независимость Sealer, Evaluator, reviewers и оператора должна обеспечиваться реальными отдельными principals/environments. Корректность будущей реализации Planner будет доказана только P03–P09 checks и sealed runs.
 
-## Launch-fixes v1.18
+## Launch-fixes v1.19
 
 - exact Planner task × five seeds × all frozen arms matrix;
 - duplicate/missing Planner outcomes are fail-closed;
 - identical Stage 1A snapshot sets across comparisons;
 - canonical Stage 1B replay metric name.
 
-## Architecture freeze fixes v1.18
+## Architecture freeze fixes v1.19
 
 - A1 and step-level variants share one 85-position decoder parameter inventory; only their active position range and input/head mask differ.
 - Training loss masks, reductions, active heads and no-positive contrastive batches are fully specified.
@@ -69,9 +69,13 @@ Release является исполняемым протоколом, но не 
 - Training/development cannot contain n=7–8 states.
 - The only compute-matched retraining sensitivity is measured train FLOPs for A3 versus A2c; inference FLOPs are guardrails.
 
-## Architecture evidence fixes v1.18
+## Architecture evidence fixes v1.19
 
-- deterministic initialization is independent of module construction order and identical across trainable arms for each seed;
-- A3r uses raw predicted z for autoregressive feedback and nearest-codebook resolution only for the external signature;
-- A1 has reporting guardrails, not an undefined equal-compute retraining schedule;
-- final training evidence is an exact six-variant by five-seed matrix, with only step-12000 checkpoints.
+- exact machine-readable inventory фиксирует 177 PyTorch `state_dict` tensors, shapes, parameter types и active-arm masks;
+- deterministic initialization независима от module construction order и одинакова для trainable arms одного seed;
+- P06 PASS требует content-validated seed-17 initialization checkpoint и dormant-gradient audits A1/A2/A2b/A2c/A3/A3r;
+- A3r использует raw predicted z для autoregressive feedback и nearest-codebook resolution только для external signature;
+- A1 имеет compute reporting guardrails, но не undefined equal-compute retraining schedule;
+- P07 training evidence — exact 30 final + 10 FLOPs-sensitivity reports с safetensors headers, optimizer states, config, corpus, ordering и environment binding;
+- P08 lineage содержит отдельные A2c/A3 FLOPs-sensitivity arms на том же sealed task set.
+- P08 каждый Planner lineage record связывает с точным P07 checkpoint manifest; variant, regime, seed и model SHA пересчитываются.

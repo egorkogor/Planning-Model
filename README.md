@@ -1,6 +1,6 @@
 # Planner → LLM MVP Stage 1
 
-Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.18 и Stage 1 runbook v2.18.
+Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.19 и Stage 1 runbook v2.19.
 
 ## Запуск агентом
 
@@ -30,14 +30,15 @@ Builder LLM исполняет плейбук и пишет реализацию
 
 Это BlocksWorld Work Planner experiment, не основная Cognitive Planner architecture ML Brain.
 
-## Изменения v1.18/v2.18
+## Изменения v1.19/v2.19
 
-- единый 85-position decoder inventory: A1 использует все позиции и grammar head, step-level arms — первые 17 позиций через ConceptPacker;
-- зафиксирована точная active-loss matrix и action-conditional masking без двойного END-loss;
-- contrastive loss имеет детерминированное поведение при отсутствии positive pair в batch;
-- `planner_seed` связан с EpisodePlanManifest и EpisodeLog даже при FAILED plan generation;
-- n=7–8 запрещены в training/development и остаются только sealed size-OOD evaluation;
-- sensitivity run унифицирован как train-FLOPs-matched A3↔A2c; inference FLOPs — только guardrail;
-- сохранены launch-инварианты v1.16: exact task/seed/arm matrix, одинаковые Stage 1A snapshots и единое имя replay-метрики.
-
-- v1.18 фиксирует tensor-name-derived initialization, однозначный A3r inference, убирает несуществующий A1 equal-compute schedule и требует точные step-12000 training evidence для 6×5 final runs.
+- exact PyTorch module inventory фиксирует 177 `state_dict` tensors, их shapes, parameter types и active-arm masks;
+- tensor-name-derived initialization делает начальные веса независимыми от порядка создания модулей;
+- A3r inference однозначно разделяет raw-latent autoregressive feedback и nearest-codebook external resolution;
+- A1 использует общий 85-position decoder без несуществующего equal-compute retraining;
+- active-loss matrix, action-conditional masks и contrastive empty-positive behavior определены машинно;
+- P06 model audit обязан проверить inventory, seed-17 initialization checkpoint и dormant gradients всех шести trainable variants;
+- P07 принимает ровно 30 final и 10 FLOPs-sensitivity training reports с проверяемыми safetensors/checkpoint sidecars;
+- P08 требует exact sealed matrix с отдельными `PLANNER_A2C_FLOPS_RAW` и `PLANNER_A3_FLOPS_RAW` arms;
+- `planner_seed` связан с lineage даже при FAILED plan generation;
+- n=7–8 запрещены в training/development и остаются только sealed size-OOD evaluation.

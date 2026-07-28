@@ -1,27 +1,36 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.18/model_training_report.schema.json",
-  "title": "Final Planner model training report",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/model_training_report.schema.json",
+  "title": "Planner training report with verified sidecars",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "run_id",
+    "training_regime",
     "variant",
     "config_id",
     "seed",
+    "selected_config_path",
+    "selected_config_sha256",
+    "dataset_manifest_path",
     "dataset_manifest_sha256",
+    "environment_lock_path",
     "environment_lock_sha256",
     "architecture_contract_sha256",
+    "module_inventory_contract_sha256",
     "initialization_contract_sha256",
-    "initialization_checkpoint_sha256",
+    "parameter_inventory_manifest_path",
+    "parameter_inventory_manifest_sha256",
     "parameter_inventory_sha256",
+    "initialization_manifest_path",
+    "initialization_manifest_sha256",
     "ordered_training_examples_path",
     "ordered_training_examples_sha256",
     "dormant_gradient_audit_path",
     "dormant_gradient_audit_sha256",
-    "final_checkpoint_path",
-    "final_checkpoint_sha256",
+    "checkpoint_manifest_path",
+    "checkpoint_manifest_sha256",
     "optimizer_step",
     "checkpoint_selection",
     "history",
@@ -30,11 +39,17 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "work-planner-training/1.1"
+      "const": "work-planner-training/1.2"
     },
     "run_id": {
       "type": "string",
       "minLength": 1
+    },
+    "training_regime": {
+      "enum": [
+        "FINAL_EQUAL_DATA",
+        "FLOPS_SENSITIVITY"
+      ]
     },
     "variant": {
       "enum": [
@@ -48,7 +63,7 @@
     },
     "config_id": {
       "type": "string",
-      "minLength": 1
+      "pattern": "^cfg-[0-9a-f]{16}$"
     },
     "seed": {
       "enum": [
@@ -59,8 +74,22 @@
         505
       ]
     },
+    "selected_config_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "selected_config_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "dataset_manifest_path": {
+      "type": "string",
+      "minLength": 1
+    },
     "dataset_manifest_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "environment_lock_path": {
+      "const": "locks/environment.lock.json"
     },
     "environment_lock_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
@@ -68,13 +97,27 @@
     "architecture_contract_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
     },
+    "module_inventory_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
     "initialization_contract_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
     },
-    "initialization_checkpoint_sha256": {
+    "parameter_inventory_manifest_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parameter_inventory_manifest_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
     },
     "parameter_inventory_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "initialization_manifest_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "initialization_manifest_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
     },
     "ordered_training_examples_path": {
@@ -91,18 +134,23 @@
     "dormant_gradient_audit_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
     },
-    "final_checkpoint_path": {
+    "checkpoint_manifest_path": {
       "type": "string",
       "minLength": 1
     },
-    "final_checkpoint_sha256": {
+    "checkpoint_manifest_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
     },
     "optimizer_step": {
-      "const": 12000
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 12000
     },
     "checkpoint_selection": {
-      "const": "FINAL_STEP_ONLY"
+      "enum": [
+        "FINAL_STEP_ONLY",
+        "FLOPS_CAP_STEP"
+      ]
     },
     "history": {
       "type": "array",
@@ -114,5 +162,54 @@
     "report_hash": {
       "$ref": "common.schema.json#/$defs/sha256"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "training_regime": {
+            "const": "FINAL_EQUAL_DATA"
+          }
+        },
+        "required": [
+          "training_regime"
+        ]
+      },
+      "then": {
+        "properties": {
+          "optimizer_step": {
+            "const": 12000
+          },
+          "checkpoint_selection": {
+            "const": "FINAL_STEP_ONLY"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "training_regime": {
+            "const": "FLOPS_SENSITIVITY"
+          }
+        },
+        "required": [
+          "training_regime"
+        ]
+      },
+      "then": {
+        "properties": {
+          "variant": {
+            "enum": [
+              "A2c",
+              "A3"
+            ]
+          },
+          "checkpoint_selection": {
+            "const": "FLOPS_CAP_STEP"
+          }
+        }
+      }
+    }
+  ]
 }

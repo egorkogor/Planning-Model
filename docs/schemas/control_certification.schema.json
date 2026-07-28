@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.18/control_certification.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/control_certification.schema.json",
   "title": "Pre-outcome certification manifest",
   "type": "object",
   "additionalProperties": false,

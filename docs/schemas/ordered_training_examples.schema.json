@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/ordered_training_examples.schema.json",
+  "title": "Deterministic ordered training examples",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "seed",
+    "dataset_manifest_sha256",
+    "ordering_algorithm",
+    "example_ids",
+    "examples_sha256",
+    "manifest_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-ordered-examples/1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seed": {
+      "enum": [
+        101,
+        202,
+        303,
+        404,
+        505
+      ]
+    },
+    "dataset_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "ordering_algorithm": {
+      "const": "SHA256(seed || example_id), ascending digest then example_id"
+    },
+    "example_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "examples_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

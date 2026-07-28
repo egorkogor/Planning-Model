@@ -18,6 +18,7 @@ REQUIRED = {
     "FULL_PLAN_SHUFFLE_AND_LINEAGE",
     "A3R_RANDOM_CODEBOOK_TRAINING",
     "PER_EPISODE_FLOPS_ACCOUNTING",
+    "MODEL_ARCHITECTURE_INITIALIZATION_AND_DORMANT_PARAMETERS",
 }
 
 def validate_implementation_audit(obj: dict, resource_plan: dict) -> list[str]:

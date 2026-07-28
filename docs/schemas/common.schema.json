@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.18/common.schema.json",
-  "title": "Work Planner Common Definitions v1.18",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/common.schema.json",
+  "title": "Work Planner Common Definitions v1.19",
   "$defs": {
     "schema_version": {
-      "const": "work-planner/1.18"
+      "const": "work-planner/1.19"
     },
     "sha256": {
       "type": "string",
@@ -139,6 +139,8 @@
         "PLANNER_A3R_RAW",
         "PLANNER_A4_RAW",
         "PLANNER_A5_RAW",
+        "PLANNER_A2C_FLOPS_RAW",
+        "PLANNER_A3_FLOPS_RAW",
         "I0_EQUAL_TOKENS_RAW",
         "I1_ORACLE_CURRENT_RAW",
         "I2_SHUFFLED_RAW",

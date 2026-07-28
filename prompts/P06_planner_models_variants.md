@@ -25,20 +25,23 @@
 - `docs/schemas/compute_profile.schema.json`
 - `docs/training/hyperparameter_search_v1.yaml`
 - `docs/training/planner_initialization_contract_v1.yaml`
+- `docs/architecture/planner_module_inventory_v1.yaml`
 
 ## Действия
 1. finish six trainable Planner variants A1/A2/A2b/A2c/A3/A3r, A4/A5 inference interventions and all outcome-relevant runtime modules required through P17
-2. prove P10 prototype-bank/parser path and P15 graph/control-certification path execute on toy/public fixtures
-3. run full toy preflight from clean checkout
-4. create implementation commit containing every protected executable path
-5. obtain signed independent statistical audit and signed independent implementation audit of the same commit
-6. create implementation-lock candidate binding both audits, Scientific lock, Trust Topology lock and reviewed commit
-7. after G06 approval create and verify active Implementation lock; no later source implementation is permitted
+2. materialize exact state_dict inventory, seed-17 initialization checkpoint and six variant-specific dormant-gradient audits under reports/model-evidence before issuing model-audit PASS
+3. prove P10 prototype-bank/parser path and P15 graph/control-certification path execute on toy/public fixtures
+4. run full toy preflight from clean checkout
+5. create implementation commit containing every protected executable path
+6. obtain signed independent statistical audit and signed independent implementation audit of the same commit
+7. create implementation-lock candidate binding both audits, Scientific lock, Trust Topology lock and reviewed commit
+8. after G06 approval create and verify active Implementation lock; no later source implementation is permitted
 
 ## Обязательные результаты фазы
 - `src/models/`
 - `semantic_bank/bootstrap/`
 - `reports/model-audit.json`
+- `reports/model-evidence/`
 - `reports/compute-profile.json`
 - `reports/preflight-final.json`
 - `reports/self-review-P06.json`
@@ -70,7 +73,7 @@
 - `P06_pre_06` — signed implementation audit is independent from Builder; verifier: `python validation/phase_check_runner.py --phase P06 --check P06_pre_06 --report reports/phase-P06.json`
 - `P06_pre_07` — implementation audit covers oracle, generator, runtime checks, analysis builders, semantic resolver, deterministic full-plan shuffle/lineage, A3r random-codebook training, per-episode FLOPs accounting, data isolation, sealer, evaluator, model loading and persistence; verifier: `python validation/phase_check_runner.py --phase P06 --check P06_pre_07 --report reports/phase-P06.json`
 - `P06_pre_08` — pre-gate evidence sealed; verifier: `python validation/phase_check_runner.py --phase P06 --check P06_pre_08 --report reports/phase-P06.json`
-- `P06_pre_09` — model audit binds architecture and initialization contracts, exact eight variants and dormant-gradient evidence; verifier: `python validation/phase_check_runner.py --phase P06 --check P06_pre_09 --report reports/phase-P06.json`
+- `P06_pre_09` — model audit validates the exact locked state_dict inventory, deterministic initialization, active/dormant masks and evidence-bound checks; verifier: `python validation/phase_check_runner.py --phase P06 --check P06_pre_09 --report reports/phase-P06.json`
 
 ## Проверки исполнения
 - нет

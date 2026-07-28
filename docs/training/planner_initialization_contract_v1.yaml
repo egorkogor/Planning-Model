@@ -1,4 +1,4 @@
-schema_version: work-planner/1.18
+schema_version: work-planner/1.19
 contract_id: planner-initialization/1.0
 purpose: Deterministic, arm-comparable initialization independent of module construction
   order.
@@ -42,3 +42,8 @@ evidence:
   initialization_checkpoint_sha256_required_per_seed: true
   parameter_inventory_sha256_required: true
   same_seed_initialization_checkpoint_hash_must_match_across_trainable_arms: true
+  implementation_audit_seed: 17
+  implementation_audit_required_files:
+  - reports/model-evidence/parameter-inventory.json
+  - reports/model-evidence/initialization/seed-17.json
+  - reports/model-evidence/dormant-gradients/{A1,A2,A2b,A2c,A3,A3r}-seed-17.json

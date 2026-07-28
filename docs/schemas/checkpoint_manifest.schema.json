@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/checkpoint_manifest.schema.json",
+  "title": "Planner checkpoint and optimizer-state binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "checkpoint_kind",
+    "variant",
+    "seed",
+    "optimizer_step",
+    "architecture_contract_sha256",
+    "module_inventory_contract_sha256",
+    "initialization_contract_sha256",
+    "parameter_inventory_manifest_path",
+    "parameter_inventory_manifest_sha256",
+    "parameter_inventory_sha256",
+    "initialization_manifest_path",
+    "initialization_manifest_sha256",
+    "selected_config_path",
+    "selected_config_sha256",
+    "dataset_manifest_path",
+    "dataset_manifest_sha256",
+    "ordered_training_examples_path",
+    "ordered_training_examples_sha256",
+    "environment_lock_path",
+    "environment_lock_sha256",
+    "model_file_path",
+    "model_file_sha256",
+    "model_format",
+    "model_tensor_table_sha256",
+    "optimizer_state_path",
+    "optimizer_state_sha256",
+    "optimizer_state_format",
+    "optimizer_state_tensor_table_sha256",
+    "manifest_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-checkpoint-manifest/1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checkpoint_kind": {
+      "enum": [
+        "INITIALIZATION",
+        "FINAL_EQUAL_DATA",
+        "FLOPS_SENSITIVITY"
+      ]
+    },
+    "variant": {
+      "enum": [
+        "COMMON",
+        "A1",
+        "A2",
+        "A2b",
+        "A2c",
+        "A3",
+        "A3r"
+      ]
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "optimizer_step": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 12000
+    },
+    "architecture_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "module_inventory_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "initialization_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "parameter_inventory_manifest_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parameter_inventory_manifest_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "parameter_inventory_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "initialization_manifest_path": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "initialization_manifest_sha256": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "selected_config_path": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "selected_config_sha256": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "dataset_manifest_path": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "dataset_manifest_sha256": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ordered_training_examples_path": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ordered_training_examples_sha256": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "environment_lock_path": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "environment_lock_sha256": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "model_file_path": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._/-]+\\.safetensors$"
+    },
+    "model_file_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "model_format": {
+      "const": "SAFETENSORS"
+    },
+    "model_tensor_table_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "optimizer_state_path": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "optimizer_state_sha256": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "optimizer_state_format": {
+      "enum": [
+        "SAFETENSORS_ADAMW",
+        null
+      ]
+    },
+    "optimizer_state_tensor_table_sha256": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/sha256"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "manifest_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

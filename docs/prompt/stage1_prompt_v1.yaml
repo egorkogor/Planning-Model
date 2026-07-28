@@ -1,4 +1,4 @@
-schema_version: work-planner/1.18
+schema_version: work-planner/1.19
 prompt_contract_id: stage1-prompt/1.8
 language: en
 selection:
@@ -99,7 +99,7 @@ parser:
   - schema_version
   - action
   - args
-  schema_version_const: work-planner/1.18
+  schema_version_const: work-planner/1.19
   markdown_fences_forbidden: true
   prefix_suffix_text_forbidden: true
   extra_keys_forbidden: true

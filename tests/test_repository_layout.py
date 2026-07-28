@@ -29,8 +29,8 @@ def test_phase_registry_has_exact_order_and_gates() -> None:
 
 
 def test_current_markdown_specs_and_contracts_exist() -> None:
-    assert (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.18.md").is_file()
-    assert (ROOT / "docs/Planner_LLM_Stage1_Operator_Runbook_v2.18_RU.md").is_file()
+    assert (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.19.md").is_file()
+    assert (ROOT / "docs/Planner_LLM_Stage1_Operator_Runbook_v2.19_RU.md").is_file()
     assert (ROOT / "docs/operator/AUTONOMOUS_EXECUTION_PLAYBOOK_RU.md").is_file()
     assert (ROOT / "docs/prompt/stage1_prompt_v1.yaml").is_file()
     assert (ROOT / "docs/semantic/semantic_target_v1.yaml").is_file()

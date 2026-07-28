@@ -46,7 +46,7 @@ def _plan(variant: str = "A3") -> dict:
 
 def _signature_bank(plan: dict) -> dict:
     return {
-        "schema_version": "work-planner/1.18",
+        "schema_version": "work-planner/1.19",
         "bank_id": "structured-signatures-v1",
         "signatures": [
             {"semantic_signature": deepcopy(step["semantic_signature"])}
@@ -202,11 +202,12 @@ def _bundle(arm: str, *, source: dict | None = None, failed: bool = False):
     attributed = deepcopy(source[0]["actual_cost"]) if source is not None else deepcopy(actual)
     replay = "STAGE1B_E1" if arm == "P_FULL_PLAN_REPLAY_RAW" else None
     manifest = {
-        "schema_version": "work-planner/1.18",
+        "schema_version": "work-planner/1.19",
         "run_id": a["run_id"], "episode_id": a["episode_id"], "trajectory_id": a["trajectory_id"],
         "stage": a["stage"], "task_id": a["task_id"], "base_task_id": a["base_task_id"],
         "canonical_task_hash": a["canonical_task_hash"], "split": a["split"], "arm": arm,
         "planner_seed": plan.get("planner_seed") if plan is not None else a.get("planner_seed"),
+        "planner_checkpoint_sha256": plan.get("planner_checkpoint_sha256") if plan is not None else H1,
         "generator_type": generator, "plan_status": "FAILED" if failed else "READY",
         "planner_call_count": 0 if arm in {"E2_SHUFFLED_A3_FULL_PLAN_RAW", "P_FULL_PLAN_REPLAY_RAW"} else 1,
         "generated_before_execution": True,
@@ -397,8 +398,43 @@ def _write_bundle(root: Path, arm: str, bundle, source_hash=None, *, identity_su
             ap.write_text("".join(json.dumps(x)+"\n" for x in attempts))
             (root/paths["episode_log"]).write_text(json.dumps(e))
         cp.write_text(json.dumps(control))
-    planner_seed = p.get("planner_seed") if p is not None else (attempts[0].get("planner_seed") if attempts else None)
-    return {"task_id": e["task_id"], "arm": arm, "planner_seed": planner_seed, **paths}
+    planner_seed = p.get("planner_seed") if p is not None else (attempts[0].get("planner_seed") if attempts else m.get("planner_seed") if m else None)
+    checkpoint_manifest = None
+    checkpoint_manifest_sha256 = None
+    if e.get("stage") == "PLANNER_ONLY":
+        expected = {
+            "PLANNER_A1_RAW": ("A1", "FINAL_EQUAL_DATA"),
+            "PLANNER_A2_RAW": ("A2", "FINAL_EQUAL_DATA"),
+            "PLANNER_A2B_RAW": ("A2b", "FINAL_EQUAL_DATA"),
+            "PLANNER_A2C_RAW": ("A2c", "FINAL_EQUAL_DATA"),
+            "PLANNER_A3_RAW": ("A3", "FINAL_EQUAL_DATA"),
+            "PLANNER_A3R_RAW": ("A3r", "FINAL_EQUAL_DATA"),
+            "PLANNER_A4_RAW": ("A3", "FINAL_EQUAL_DATA"),
+            "PLANNER_A5_RAW": ("A3", "FINAL_EQUAL_DATA"),
+            "PLANNER_A2C_FLOPS_RAW": ("A2c", "FLOPS_SENSITIVITY"),
+            "PLANNER_A3_FLOPS_RAW": ("A3", "FLOPS_SENSITIVITY"),
+            "P_FULL_PLAN_REPLAY_RAW": ("A3", "FINAL_EQUAL_DATA"),
+        }[arm]
+        checkpoint_manifest = f"reports/training/checkpoints/link-{safe}.json"
+        checkpoint = {
+            "schema_version": "work-planner-checkpoint-link/1.0",
+            "run_id": e["run_id"],
+            "checkpoint_kind": expected[1],
+            "variant": expected[0],
+            "seed": planner_seed,
+            "model_file_sha256": m["planner_checkpoint_sha256"],
+        }
+        checkpoint["manifest_hash"] = hash_json(checkpoint)
+        cp_path = root / checkpoint_manifest
+        cp_path.parent.mkdir(parents=True, exist_ok=True)
+        cp_path.write_text(json.dumps(checkpoint))
+        checkpoint_manifest_sha256 = "sha256:" + hashlib.sha256(cp_path.read_bytes()).hexdigest()
+    return {
+        "task_id": e["task_id"], "arm": arm, "planner_seed": planner_seed,
+        "checkpoint_manifest": checkpoint_manifest,
+        "checkpoint_manifest_sha256": checkpoint_manifest_sha256,
+        **paths,
+    }
 
 
 def test_lineage_index_requires_all_seven_arms_even_degenerate(tmp_path: Path):
@@ -545,6 +581,8 @@ def _planner_confirmatory_bundle(arm: str, seed: int, *, source=None):
         "PLANNER_A3R_RAW": "A3r",
         "PLANNER_A4_RAW": "A4",
         "PLANNER_A5_RAW": "A5",
+        "PLANNER_A2C_FLOPS_RAW": "A2c",
+        "PLANNER_A3_FLOPS_RAW": "A3",
     }
     generator_by_arm = {
         "PLANNER_A1_RAW": "MICRO_PLANNER_A1",
@@ -555,6 +593,8 @@ def _planner_confirmatory_bundle(arm: str, seed: int, *, source=None):
         "PLANNER_A3R_RAW": "MICRO_PLANNER_A3R",
         "PLANNER_A4_RAW": "MICRO_PLANNER_A4",
         "PLANNER_A5_RAW": "MICRO_PLANNER_A5",
+        "PLANNER_A2C_FLOPS_RAW": "MICRO_PLANNER_A2C",
+        "PLANNER_A3_FLOPS_RAW": "MICRO_PLANNER_A3",
     }
     if arm == "P_FULL_PLAN_REPLAY_RAW":
         if source is None:
@@ -656,6 +696,17 @@ def test_planner_confirmatory_p08_uses_precomputed_a3_plan(tmp_path: Path):
     bad["records"] = [row for row in bad["records"] if row["arm"] != "PLANNER_A3_RAW"]
     bad["index_hash"] = hash_json({k: v for k, v in bad.items() if k != "index_hash"})
     assert any("expected exactly" in x for x in validate_lineage_index(tmp_path, bad, expected_stage="PLANNER"))
+
+    wrong = deepcopy(index)
+    target = next(row for row in wrong["records"] if row["arm"] == "PLANNER_A2C_FLOPS_RAW" and row["planner_seed"] == 101)
+    checkpoint_path = tmp_path / target["checkpoint_manifest"]
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint["checkpoint_kind"] = "FINAL_EQUAL_DATA"
+    checkpoint["manifest_hash"] = hash_json({k: v for k, v in checkpoint.items() if k != "manifest_hash"})
+    checkpoint_path.write_text(json.dumps(checkpoint))
+    target["checkpoint_manifest_sha256"] = "sha256:" + hashlib.sha256(checkpoint_path.read_bytes()).hexdigest()
+    wrong["index_hash"] = hash_json({k: v for k, v in wrong.items() if k != "index_hash"})
+    assert any("expected A2c/FLOPS_SENSITIVITY" in x for x in validate_lineage_index(tmp_path, wrong, expected_stage="PLANNER"))
 
 
 def test_episode_call_count_and_single_attempt_per_position_are_enforced():

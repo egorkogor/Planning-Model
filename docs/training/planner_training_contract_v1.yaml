@@ -1,4 +1,4 @@
-schema_version: work-planner/1.18
+schema_version: work-planner/1.19
 contract_id: planner-training/1.1
 precision:
   parameters: float32
@@ -35,7 +35,8 @@ training:
     same_gradient_accumulation_steps: 1
     checkpoint_every_optimizer_steps: 1000
     same_parameter_inventory_hash: true
-    unused_module_gradient_policy: grad must remain None; any nonzero or zero-materialized gradient is INVALID_RUN
+    unused_module_gradient_policy: grad must remain None; any nonzero or zero-materialized
+      gradient is INVALID_RUN
     final_checkpoint_optimizer_step_exact: 12000
     intermediate_checkpoint_selection: forbidden
     selected_development_config_shared_across_A1_A2_A2b_A2c_A3_A3r: true
@@ -51,9 +52,32 @@ training:
     training_report_directory: reports/training/final
     training_report_count_exact: 30
     checkpoint_selection: FINAL_STEP_ONLY
+    sidecar_evidence:
+      selected_config: reports/training/selected-config.json
+      parameter_inventory: reports/model-evidence/parameter-inventory.json
+      initialization_manifests: reports/training/initialization/seed-{seed}.json
+      ordered_examples: reports/training/ordered-examples/seed-{seed}.json
+      dormant_gradient_audits: reports/training/dormant-gradients/{variant}-seed-{seed}.json
+      checkpoint_manifests: reports/training/checkpoints/final-{variant}-seed-{seed}.json
   common:
     shuffle: deterministic_by_seed
     fail_on_nan_or_inf: true
+  flops_sensitivity_models:
+    variants_exact:
+    - A2c
+    - A3
+    seeds_exact:
+    - 101
+    - 202
+    - 303
+    - 404
+    - 505
+    report_directory: reports/training/flops-sensitivity
+    report_count_exact: 10
+    checkpoint_manifest_pattern: reports/training/checkpoints/flops-{variant}-seed-{seed}.json
+    optimizer_updates_source: reports/compute-profile.json#flops_matched_schedule.optimizer_updates_by_variant
+    checkpoint_selection: FLOPS_CAP_STEP
+    same_selected_config_dataset_order_and_initialization_as_final_models: true
 losses:
   common:
     action_ce: 1.0
@@ -83,15 +107,19 @@ losses:
     action_ce: all non-padding typed-step positions, including terminal END
     arg1_pointer_ce: PICK_UP, PUT_DOWN, UNSTACK, STACK positions only
     arg2_pointer_ce: UNSTACK and STACK positions only
-    semantic_auxiliary_losses: non-END positions only and only for the active arm-specific semantic head
-    A1_token_grammar_ce: all non-padding grammar-token positions, including ACTION_END and PLAN_END
+    semantic_auxiliary_losses: non-END positions only and only for the active arm-specific
+      semantic head
+    A1_token_grammar_ce: all non-padding grammar-token positions, including ACTION_END
+      and PLAN_END
   reduction:
     per_head: mean over valid targets for that head
     total: weighted sum of active per-head means
-    head_with_zero_valid_targets: exact zero loss with no gradient materialized for that head
+    head_with_zero_valid_targets: exact zero loss with no gradient materialized for
+      that head
     padding: excluded from every numerator and denominator
   contrastive_edge_case:
-    eligible_anchor: anchor has at least one other batch item with the exact full semantic signature
+    eligible_anchor: anchor has at least one other batch item with the exact full
+      semantic signature
     anchor_without_positive: excluded from contrastive loss
     batch_without_eligible_anchors: contrastive loss is exact zero with no gradient
   A1:
@@ -125,7 +153,8 @@ losses:
     - arg2_pointer_ce
     - cosine
     - supervised_multi_positive_contrastive
-  inactive_head_policy: not evaluated, absent from total loss, and parameters retain grad None
+  inactive_head_policy: not evaluated, absent from total loss, and parameters retain
+    grad None
 teacher_forcing:
   development_and_final_training: full_ground_truth_previous_step
   scheduled_sampling: forbidden
@@ -161,8 +190,9 @@ final_seeds:
 - 505
 development_seed: 17
 ablation_training_policy:
-  A4: no_training; exact A3 checkpoint; execute exact A3 latent projection and normalization, then replace projected 256-vector
-    with zeros before ConceptPacker sum; same FLOPs path
+  A4: no_training; exact A3 checkpoint; execute exact A3 latent projection and normalization,
+    then replace projected 256-vector with zeros before ConceptPacker sum; same FLOPs
+    path
   A5: no_training; exact A3 checkpoint; use frozen planner latent ablation manifest
   weights_sha256_must_equal_A3: true
   only_allowed_difference: semantic_feedback_intervention_manifest
@@ -200,3 +230,24 @@ initialization:
   common_superset_checkpoint_once_per_seed: true
   same_initialization_checkpoint_across_A1_A2_A2b_A2c_A3_A3r: true
   parameter_name_derived_tensor_seeds: true
+evidence_validation:
+  checkpoint_format: SAFETENSORS
+  checkpoint_header_must_exactly_match_locked_inventory: true
+  optimizer_state_format: SAFETENSORS_ADAMW
+  optimizer_state_must_cover_exact_active_parameter_set: true
+  sidecar_content_is_recomputed_not_trusted: true
+  P06_model_audit_seed: 17
+  P06_required_model_evidence: exact inventory + initialization checkpoint + six dormant-gradient
+    audits
+confirmatory_checkpoint_binding:
+  lineage_record_fields:
+  - checkpoint_manifest
+  - checkpoint_manifest_sha256
+  primary_arms: FINAL_EQUAL_DATA checkpoint of matching variant and seed
+  A4_A5: FINAL_EQUAL_DATA A3 checkpoint of matching seed
+  PLANNER_A2C_FLOPS_RAW: FLOPS_SENSITIVITY A2c checkpoint of matching seed
+  PLANNER_A3_FLOPS_RAW: FLOPS_SENSITIVITY A3 checkpoint of matching seed
+  P_FULL_PLAN_REPLAY_RAW: same FINAL_EQUAL_DATA A3 checkpoint as source PLANNER_A3_RAW
+  required_hash_chain: lineage record -> checkpoint manifest -> model_file_sha256
+    -> EpisodePlanManifest/WorkPlan
+  mismatch_action: INVALID_CONFIRMATORY

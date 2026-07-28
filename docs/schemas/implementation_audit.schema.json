@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.18/implementation_audit.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/implementation_audit.schema.json",
   "title": "Independent implementation audit before Implementation lock v1.1",
   "type": "object",
   "additionalProperties": false,
@@ -80,8 +80,8 @@
     },
     "checks": {
       "type": "array",
-      "minItems": 15,
-      "maxItems": 15,
+      "minItems": 16,
+      "maxItems": 16,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -107,7 +107,8 @@
               "SEALER_AND_DISPATCH_BOUNDARY",
               "FULL_PLAN_SHUFFLE_AND_LINEAGE",
               "A3R_RANDOM_CODEBOOK_TRAINING",
-              "PER_EPISODE_FLOPS_ACCOUNTING"
+              "PER_EPISODE_FLOPS_ACCOUNTING",
+              "MODEL_ARCHITECTURE_INITIALIZATION_AND_DORMANT_PARAMETERS"
             ]
           },
           "status": {

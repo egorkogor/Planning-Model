@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.18/full_plan_lineage_index.schema.json",
-  "title": "Full-plan lineage index v1.18",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/full_plan_lineage_index.schema.json",
+  "title": "Full-plan lineage index v1.19",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -47,7 +47,9 @@
           "episode_log",
           "attempt_log",
           "semantic_signature_bank",
-          "control_artifact"
+          "control_artifact",
+          "checkpoint_manifest",
+          "checkpoint_manifest_sha256"
         ],
         "properties": {
           "task_id": {
@@ -101,6 +103,23 @@
               404,
               505,
               null
+            ]
+          },
+          "checkpoint_manifest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^reports/training/checkpoints/[A-Za-z0-9._/-]+\\.json$"
+          },
+          "checkpoint_manifest_sha256": {
+            "oneOf": [
+              {
+                "$ref": "common.schema.json#/$defs/sha256"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }

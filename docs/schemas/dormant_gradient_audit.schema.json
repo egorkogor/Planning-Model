@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/dormant_gradient_audit.schema.json",
+  "title": "Dormant parameter gradient audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "variant",
+    "seed",
+    "parameter_inventory_sha256",
+    "batches_audited",
+    "entries",
+    "status",
+    "audit_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "work-planner-dormant-gradient-audit/1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "variant": {
+      "enum": [
+        "A1",
+        "A2",
+        "A2b",
+        "A2c",
+        "A3",
+        "A3r"
+      ]
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "parameter_inventory_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "batches_audited": {
+      "type": "integer",
+      "minimum": 2
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "expected_activity",
+          "gradient_state",
+          "nonfinite_count",
+          "materialized_zero_count"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "expected_activity": {
+            "enum": [
+              "ACTIVE",
+              "DORMANT"
+            ]
+          },
+          "gradient_state": {
+            "enum": [
+              "PRESENT_FINITE",
+              "NONE"
+            ]
+          },
+          "nonfinite_count": {
+            "const": 0
+          },
+          "materialized_zero_count": {
+            "const": 0
+          }
+        }
+      }
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "audit_hash": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    }
+  }
+}

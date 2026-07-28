@@ -1,4 +1,4 @@
-schema_version: work-planner-agent/1.16
+schema_version: work-planner-agent/1.19
 contract_id: phase-machine-checks/1.4
 canonical_phase_report_path: reports/phase-{phase_id}.json
 core_checks:

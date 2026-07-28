@@ -25,7 +25,7 @@
 
 ## Действия
 1. выполнить bounded hyperparameter grid на development
-2. train six variants × five locked final seeds from the deterministic common-superset initialization; emit exactly 30 final training reports
+2. train six variants × five final seeds plus A2c/A3 FLOPs-sensitivity × five seeds; emit 30 final and 10 sensitivity reports with verified sidecars
 3. рассчитать pilot N and freeze analysis
 4. dispatch locked contracts and public-exclusion manifest to Data Sealer; Data Sealer generates a hidden 256-bit seed, returns only seed commitment, encrypted blob hash and signed sealer manifest; create candidate freeze
 5. after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
@@ -34,6 +34,8 @@
 ## Обязательные результаты фазы
 - `reports/planner-pilot.json`
 - `reports/training/final/`
+- `reports/training/flops-sensitivity/`
+- `reports/training/checkpoints/`
 - `reports/sample-size-planner.json`
 - `checkpoints/planner-seeds/manifest.json`
 - `freezes/planner-confirmatory.candidate.json`
@@ -68,7 +70,7 @@
 - `P07_pre_06` — pre-gate evidence sealed; verifier: `python validation/phase_check_runner.py --phase P07 --check P07_pre_06 --report reports/phase-P07.json`
 - `P07_pre_07` — scientific lock VERIFIED; verifier: `python validation/phase_check_runner.py --phase P07 --check P07_pre_07 --report reports/phase-P07.json`
 - `P07_pre_08` — implementation lock VERIFIED; verifier: `python validation/phase_check_runner.py --phase P07 --check P07_pre_08 --report reports/phase-P07.json`
-- `P07_pre_09` — exact 6 variants × 5 seeds final training evidence; step-12000 checkpoints, common initialization and ordered examples verified; verifier: `python validation/phase_check_runner.py --phase P07 --check P07_pre_09 --report reports/phase-P07.json`
+- `P07_pre_09` — exact 30 final plus 10 FLOPs-sensitivity training reports; checkpoint headers, optimizer states, config, corpus, initialization, ordering and dormant gradients recomputed; verifier: `python validation/phase_check_runner.py --phase P07 --check P07_pre_09 --report reports/phase-P07.json`
 
 ## Проверки исполнения
 - нет
