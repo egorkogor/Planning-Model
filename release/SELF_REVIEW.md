@@ -1,4 +1,4 @@
-# Release self-review v1.15 / v2.15
+# Release self-review v1.16 / v2.16
 
 ## Scope
 
@@ -41,7 +41,7 @@ Preflight пересчитывает 24 development, 30 primary-final и 10 A3/A
 - После G06 Implementation lock запрещает позднее добавление outcome-relevant кода.
 
 
-## Минимальные launch-инварианты v1.15
+## Минимальные launch-инварианты v1.16
 
 - selected task list фиксируется до outcomes и подписанно связывается через SealerManifest;
 - lineage exact-cover запрещает удаление целых задач после исполнения;
@@ -53,3 +53,10 @@ Preflight пересчитывает 24 development, 30 primary-final и 10 A3/A
 ## Известные границы
 
 Release является исполняемым протоколом, но не результатом эксперимента. Организационная независимость Sealer, Evaluator, reviewers и оператора должна обеспечиваться реальными отдельными principals/environments. Корректность будущей реализации Planner будет доказана только P03–P09 checks и sealed runs.
+
+## Launch-fixes v1.16
+
+- exact Planner task × five seeds × all frozen arms matrix;
+- duplicate/missing Planner outcomes are fail-closed;
+- identical Stage 1A snapshot sets across comparisons;
+- canonical Stage 1B replay metric name.

@@ -61,29 +61,32 @@ def test_sample_size_component_cannot_use_an_unrelated_comparison() -> None:
     assert any("current_vs_shuffled_power: comparison" in error for error in errors)
 
 
-def test_replay_metric_has_one_canonical_name() -> None:
+def test_replay_metric_has_one_canonical_name_per_context() -> None:
     replay = yaml.safe_load(Path("docs/controls/p_replay_contract_v1.yaml").read_text())
     stats = yaml.safe_load(Path("docs/statistics/statistics_contract_v1.yaml").read_text())
-    assert replay["contexts"]["PLANNER_CONFIRMATORY_A3"]["metric_name"] == "P_REPLAY_GOAL_SUCCESS"
-    comparisons = {
+    planner_metric = replay["contexts"]["PLANNER_CONFIRMATORY_A3"]["metric_name"]
+    stage1b_metric = replay["contexts"]["STAGE1B_E1"]["metric_name"]
+    planner_comparisons = {
         gate["comparison"]
         for gate in stats["stage_gates"]["PLANNER"]["stage1b_eligibility_gates"]
     }
-    assert "P_REPLAY_GOAL_SUCCESS" in comparisons
+    stage1b_comparisons = {
+        gate["comparison"]
+        for gate in stats["stage_gates"]["STAGE1B"]["diagnostic_gates"]
+    }
+    assert planner_metric == "P_REPLAY_GOAL_SUCCESS"
+    assert stage1b_metric == "STAGE1B_E1_FULL_PLAN_REPLAY_GOAL_SUCCESS"
+    assert planner_metric in planner_comparisons
+    assert stage1b_metric in stage1b_comparisons
 
 
 def _planner_lineage_fixture(tmp_path: Path) -> dict:
     from validation.fixtures import H1
     from validation.test_v114_full_plan_lineage import (
-        _planner_confirmatory_bundle_pair,
+        _planner_confirmatory_matrix_rows,
         _selection_fields,
-        _write_bundle,
     )
-    source, replay = _planner_confirmatory_bundle_pair()
-    rows = [
-        _write_bundle(tmp_path, "PLANNER_A3_RAW", source),
-        _write_bundle(tmp_path, "P_FULL_PLAN_REPLAY_RAW", replay),
-    ]
+    rows = _planner_confirmatory_matrix_rows(tmp_path)
     index = {
         "schema_version": "work-planner-lineage/1.0",
         "run_id": "run-1",

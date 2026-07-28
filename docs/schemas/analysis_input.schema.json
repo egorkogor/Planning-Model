@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.15/analysis_input.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.16/analysis_input.schema.json",
   "title": "Canonical paired analysis input v1.2",
   "type": "object",
   "additionalProperties": false,
@@ -152,13 +152,23 @@
             },
             "seed_groups": {
               "type": "object",
-              "minProperties": 2,
+              "minProperties": 5,
               "additionalProperties": {
                 "type": "array",
                 "minItems": 2,
                 "items": {
                   "$ref": "#/$defs/pair"
                 }
+              },
+              "maxProperties": 5,
+              "propertyNames": {
+                "enum": [
+                  "101",
+                  "202",
+                  "303",
+                  "404",
+                  "505"
+                ]
               }
             }
           }

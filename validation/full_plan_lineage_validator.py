@@ -1,9 +1,9 @@
-"""Fail-closed validation of frozen full-plan execution lineage (v1.15).
+"""Fail-closed validation of frozen full-plan execution lineage (v1.16).
 
 This module verifies relations that local JSON Schemas cannot express:
 one plan-generation call before execution, immutable WorkPlan reuse, sequential
 position consumption, no replanning, phase-specific replay provenance, and
-separate actual/attributed planning cost.
+separate actual/attributed planning cost, and exact Planner task × seed × arm coverage.
 """
 from __future__ import annotations
 
@@ -18,6 +18,19 @@ from validation.hashing import hash_json, plan_artifact_hash, plan_content_hash
 from validation.capacity_validator import validate_compute_profile
 from validation.random_codebook_validator import validate_random_codebook
 
+PLANNER_SEEDS = (101, 202, 303, 404, 505)
+PLANNER_ARMS = {
+    "PLANNER_A1_RAW",
+    "PLANNER_A2_RAW",
+    "PLANNER_A2B_RAW",
+    "PLANNER_A2C_RAW",
+    "PLANNER_A3_RAW",
+    "PLANNER_A3R_RAW",
+    "PLANNER_A4_RAW",
+    "PLANNER_A5_RAW",
+    "P_FULL_PLAN_REPLAY_RAW",
+}
+
 STAGE1B_ARMS = {
     "E0_EQUAL_TOKENS_RAW",
     "E1_A3_FULL_PLAN_RAW",
@@ -29,7 +42,14 @@ STAGE1B_ARMS = {
 }
 PLAN_ARMS = STAGE1B_ARMS - {"E0_EQUAL_TOKENS_RAW"}
 GENERATING_ARMS = {
+    "PLANNER_A1_RAW": "MICRO_PLANNER_A1",
+    "PLANNER_A2_RAW": "MICRO_PLANNER_A2",
+    "PLANNER_A2B_RAW": "MICRO_PLANNER_A2B",
+    "PLANNER_A2C_RAW": "MICRO_PLANNER_A2C",
     "PLANNER_A3_RAW": "MICRO_PLANNER_A3",
+    "PLANNER_A3R_RAW": "MICRO_PLANNER_A3R",
+    "PLANNER_A4_RAW": "MICRO_PLANNER_A4",
+    "PLANNER_A5_RAW": "MICRO_PLANNER_A5",
     "E1_A3_FULL_PLAN_RAW": "MICRO_PLANNER_A3",
     "E3_A3R_RANDOM_CODE_FULL_PLAN_RAW": "MICRO_PLANNER_A3R",
     "E4_A2C_STRUCTURED_FULL_PLAN_RAW": "MICRO_PLANNER_A2C",
@@ -343,7 +363,14 @@ def validate_episode_plan_manifest(
         "E4_A2C_STRUCTURED_FULL_PLAN_RAW": ("A2c", "STRUCTURED_DISCRETE"),
         "E5_SELF_PLAN_RAW": ("SELF_PLAN", "DISCRETE_INTENT"),
         "P_FULL_PLAN_REPLAY_RAW": ("A3", "CONTINUOUS_LATENT"),
+        "PLANNER_A1_RAW": ("A1", "TOKEN_GRAMMAR"),
+        "PLANNER_A2_RAW": ("A2", "TYPED_ONLY"),
+        "PLANNER_A2B_RAW": ("A2b", "DISCRETE_INTENT"),
+        "PLANNER_A2C_RAW": ("A2c", "STRUCTURED_DISCRETE"),
         "PLANNER_A3_RAW": ("A3", "CONTINUOUS_LATENT"),
+        "PLANNER_A3R_RAW": ("A3r", "CONTINUOUS_LATENT"),
+        "PLANNER_A4_RAW": ("A4", "CONTINUOUS_LATENT"),
+        "PLANNER_A5_RAW": ("A5", "CONTINUOUS_LATENT"),
     }.get(arm)
     if expected_plan and (work_plan.get("planner_variant"), work_plan.get("representation")) != expected_plan:
         errors.append(_err("work_plan.variant", f"expected {expected_plan}"))
@@ -553,13 +580,30 @@ def validate_lineage_index(root: Path, index: Mapping[str, Any], *, expected_sta
                 errors.append(_err(f"task[{task_id}].arms", f"expected exactly {sorted(STAGE1B_ARMS)}; post-treatment exclusion is forbidden"))
 
     if expected_stage == "PLANNER":
-        by_task: dict[str, list[tuple[Any, ...]]] = {}
-        for item in loaded:
-            by_task.setdefault(str(item[0].get("task_id")), []).append(item)
-        for task_id, rows in by_task.items():
-            arms = {str(row[0].get("arm")) for row in rows}
-            if not {"PLANNER_A3_RAW", "P_FULL_PLAN_REPLAY_RAW"}.issubset(arms):
-                errors.append(_err(f"task[{task_id}].arms", "Planner confirmatory replay requires precomputed A3 plan and P replay"))
+        seen_keys: set[tuple[str, int, str]] = set()
+        matrix: dict[tuple[str, int], list[str]] = {}
+        for row, *_ in loaded:
+            task_id = str(row.get("task_id"))
+            arm = str(row.get("arm"))
+            seed = row.get("planner_seed")
+            if seed not in PLANNER_SEEDS:
+                errors.append(_err(f"task[{task_id}].planner_seed", f"must be one of {list(PLANNER_SEEDS)}"))
+                continue
+            key = (task_id, int(seed), arm)
+            if key in seen_keys:
+                errors.append(_err(f"task[{task_id}].seed[{seed}].arm[{arm}]", "duplicate Planner result"))
+            seen_keys.add(key)
+            matrix.setdefault((task_id, int(seed)), []).append(arm)
+        for task_id in sorted(selected_task_ids):
+            for seed in PLANNER_SEEDS:
+                arms = matrix.get((task_id, seed), [])
+                if set(arms) != PLANNER_ARMS or len(arms) != len(PLANNER_ARMS):
+                    missing = sorted(PLANNER_ARMS - set(arms))
+                    extra = sorted(set(arms) - PLANNER_ARMS)
+                    errors.append(_err(
+                        f"task[{task_id}].seed[{seed}].arms",
+                        f"expected exactly {sorted(PLANNER_ARMS)}; missing={missing}, extra={extra}",
+                    ))
 
     nested_stage = {"PLANNER": "PLANNER_ONLY", "STAGE1B": "STAGE1B_END_TO_END"}.get(expected_stage)
     for i, (row, manifest, episode, attempts, plan, signature_bank, control_artifact) in enumerate(loaded):
@@ -568,6 +612,13 @@ def validate_lineage_index(root: Path, index: Mapping[str, Any], *, expected_sta
             errors.append(_err(f"records[{i}]", "index identity differs from EpisodeLog"))
         if episode.get("run_id") != run_id or episode.get("stage") != nested_stage:
             errors.append(_err(f"records[{i}].episode", "run_id/stage differs from lineage index"))
+        row_seed = row.get("planner_seed")
+        if expected_stage == "PLANNER":
+            if plan is not None and plan.get("planner_seed") != row_seed:
+                errors.append(_err(f"records[{i}].planner_seed", "differs from WorkPlan planner_seed"))
+            for j, attempt in enumerate(attempts):
+                if attempt.get("planner_seed") != row_seed:
+                    errors.append(_err(f"records[{i}].attempts[{j}].planner_seed", "differs from lineage planner_seed"))
         for j, attempt in enumerate(attempts):
             if attempt.get("run_id") != run_id or attempt.get("stage") != nested_stage:
                 errors.append(_err(f"records[{i}].attempts[{j}]", "run_id/stage differs from lineage index"))

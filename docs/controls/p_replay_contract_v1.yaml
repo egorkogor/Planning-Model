@@ -1,4 +1,4 @@
-schema_version: work-planner/1.15
+schema_version: work-planner/1.16
 contract_id: full-plan-replay/1.1
 purpose: Measure exact deterministic execution of one precomputed frozen WorkPlan without LLM mediation or replanning.
 shared_invariants:

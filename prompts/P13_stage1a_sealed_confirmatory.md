@@ -16,10 +16,11 @@
 - `docs/schemas/approved_freeze_pointer.schema.json`
 
 ## Действия
-1. dispatch approved freeze to evaluator
-2. run I0/I1/I2/I3 once per snapshot
-3. save raw bytes before parsing
-4. collect signed evaluator manifest
+1. execute every frozen Stage 1A arm on the identical frozen snapshot set for each selected task; missing or comparison-specific snapshots invalidate the run
+2. dispatch approved freeze to evaluator
+3. run I0/I1/I2/I3 once per snapshot
+4. save raw bytes before parsing
+5. collect signed evaluator manifest
 
 ## Обязательные результаты фазы
 - `results/stage1a-confirmatory/`

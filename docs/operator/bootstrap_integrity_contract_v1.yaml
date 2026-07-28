@@ -1,4 +1,4 @@
-schema_version: work-planner/1.15
+schema_version: work-planner/1.16
 contract_id: bootstrap-integrity/1.1
 manifest_path: release/BOOTSTRAP_MANIFEST.json
 schema: docs/schemas/bootstrap_manifest.schema.json

@@ -15,7 +15,7 @@
 - `docs/schemas/scientific_decision.schema.json`
 
 ## Действия
-1. build AnalysisInput from the signed Stage 1A selected-task manifest; no comparison-specific filtering is allowed
+1. build AnalysisInput from the signed Stage 1A selected-task manifest; no comparison-specific filtering is allowed, and every comparison must use the identical snapshot pair_id set for each task
 2. recompute Stage 1A interface decision from sealed raw logs
 3. combine interface result with immutable Planner Stage 1B eligibility lineage
 4. permit Stage 1B only for GO_INTERFACE_STAGE1B_ELIGIBLE

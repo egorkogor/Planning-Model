@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.15/common.schema.json",
-  "title": "Work Planner Common Definitions v1.15",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.16/common.schema.json",
+  "title": "Work Planner Common Definitions v1.16",
   "$defs": {
     "schema_version": {
-      "const": "work-planner/1.15"
+      "const": "work-planner/1.16"
     },
     "sha256": {
       "type": "string",
@@ -309,7 +309,12 @@
         "REUSED_E1_A3",
         "MICRO_PLANNER_A3R",
         "MICRO_PLANNER_A2C",
-        "SELF_PLAN_LLM"
+        "SELF_PLAN_LLM",
+        "MICRO_PLANNER_A1",
+        "MICRO_PLANNER_A2",
+        "MICRO_PLANNER_A2B",
+        "MICRO_PLANNER_A4",
+        "MICRO_PLANNER_A5"
       ]
     }
   }

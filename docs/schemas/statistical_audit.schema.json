@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.15/statistical_audit.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.16/statistical_audit.schema.json",
   "title": "Independent statistical implementation audit",
   "type": "object",
   "additionalProperties": false,

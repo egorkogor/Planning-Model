@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.15/artifact_manifest.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.16/artifact_manifest.schema.json",
   "title": "Generic immutable artifact manifest",
   "type": "object",
   "additionalProperties": false,

@@ -1,4 +1,4 @@
-schema_version: work-planner/1.15
+schema_version: work-planner/1.16
 registry_id: report-registry/1.5
 matching: first_rule_wins
 rules:

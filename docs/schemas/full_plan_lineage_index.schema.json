@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.15/full_plan_lineage_index.schema.json",
-  "title": "Full-plan lineage index v1.15",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.16/full_plan_lineage_index.schema.json",
+  "title": "Full-plan lineage index v1.16",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -41,6 +41,7 @@
         "required": [
           "task_id",
           "arm",
+          "planner_seed",
           "episode_plan_manifest",
           "work_plan",
           "episode_log",
@@ -87,6 +88,20 @@
               "null"
             ],
             "pattern": "^(?:controls/stage1b/shuffled-plan|semantic_bank/random-codebook)/[A-Za-z0-9._/-]+\\.json$"
+          },
+          "planner_seed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "enum": [
+              101,
+              202,
+              303,
+              404,
+              505,
+              null
+            ]
           }
         }
       }

@@ -1,4 +1,4 @@
-schema_version: work-planner/1.15
+schema_version: work-planner/1.16
 contract_id: runtime-dependencies/1.1
 validation_environment:
   python_matrix:

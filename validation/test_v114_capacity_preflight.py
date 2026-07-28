@@ -102,9 +102,9 @@ def _tree(tmp_path: Path) -> tuple[Path, dict]:
     root = tmp_path
     training = yaml.safe_load((ROOT / "docs/training/planner_training_contract_v1.yaml").read_text())
     hyper = yaml.safe_load((ROOT / "docs/training/hyperparameter_search_v1.yaml").read_text())
-    hyper["schema_version"] = "work-planner/1.15"
+    hyper["schema_version"] = "work-planner/1.16"
     dataset = yaml.safe_load((ROOT / "docs/data/dataset_split_contract_v1.yaml").read_text())
-    dataset["schema_version"] = "work-planner/1.15"
+    dataset["schema_version"] = "work-planner/1.16"
     compute = _compute()
     measurement = root / compute["measurement_code_path"]
     measurement.parent.mkdir(parents=True, exist_ok=True)

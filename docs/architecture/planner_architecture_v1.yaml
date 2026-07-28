@@ -1,4 +1,4 @@
-schema_version: work-planner/1.15
+schema_version: work-planner/1.16
 contract_id: planner-architecture/1.0
 task_encoder:
   layers: 4

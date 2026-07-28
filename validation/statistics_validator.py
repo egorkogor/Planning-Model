@@ -118,10 +118,14 @@ def validate_analysis_input(obj: dict, selected_task_manifest: dict | None = Non
                 errors.append("AnalysisInput expected_task_ids differ from selected task manifest")
         except Exception as exc:
             errors.append(f"selected task manifest validation failed: {exc}")
+    stage1a_snapshot_sets: dict[str, dict[str, frozenset[str]]] = {}
     for name,comp in obj.get("comparisons",{}).items():
         kind=comp.get("analysis_type"); count=comp.get("complete_pair_count")
         if kind=="PLANNER_HIERARCHICAL":
             groups=comp.get("seed_groups",{})
+            expected_seeds={"101", "202", "303", "404", "505"}
+            if set(str(seed) for seed in groups) != expected_seeds:
+                errors.append(f"{name}: exactly the five locked final seed groups are required")
             lengths={len(v) for v in groups.values()}
             if len(lengths)!=1: errors.append(f"{name}: planner seed groups must contain the same paired task count")
             elif lengths and count!=next(iter(lengths)): errors.append(f"{name}: complete_pair_count mismatch")
@@ -133,7 +137,11 @@ def validate_analysis_input(obj: dict, selected_task_manifest: dict | None = Non
         elif kind=="STAGE1A_CLUSTERED":
             clusters=comp.get("task_clusters",{})
             if count!=len(clusters): errors.append(f"{name}: complete_pair_count mismatch")
-            for task,rows in clusters.items(): errors.extend(_validate_pair_rows(f"{name}/{task}",rows))
+            snapshot_sets: dict[str, frozenset[str]] = {}
+            for task,rows in clusters.items():
+                errors.extend(_validate_pair_rows(f"{name}/{task}",rows))
+                snapshot_sets[str(task)] = frozenset(str(row.get("pair_id")) for row in rows)
+            stage1a_snapshot_sets[name] = snapshot_sets
             if set(clusters) != expected_set: errors.append(f"{name}: task set differs from expected_task_ids")
         elif kind=="TASK_PAIRED":
             rows=comp.get("pairs",[])
@@ -148,6 +156,14 @@ def validate_analysis_input(obj: dict, selected_task_manifest: dict | None = Non
             if set(ids) != expected_set: errors.append(f"{name}: task set differs from expected_task_ids")
             if any(float(r.get("value",-1)) not in (0.0,1.0) for r in rows): errors.append(f"{name}: SCALAR_RATE requires unit-level binary values")
         else: errors.append(f"{name}: unknown analysis_type")
+    if obj.get("stage") == "STAGE1A" and stage1a_snapshot_sets:
+        reference_name = sorted(stage1a_snapshot_sets)[0]
+        reference = stage1a_snapshot_sets[reference_name]
+        for name, snapshot_sets in sorted(stage1a_snapshot_sets.items()):
+            if snapshot_sets != reference:
+                errors.append(
+                    f"{name}: Stage 1A snapshot pair_id sets must exactly match {reference_name} for every task"
+                )
     return errors
 
 

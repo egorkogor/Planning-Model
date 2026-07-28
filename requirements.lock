@@ -1,4 +1,4 @@
-# Validation/runtime lock used by CI and clean reproduction for protocol v1.15/v2.15.
+# Validation/runtime lock used by CI and clean reproduction for protocol v1.16/v2.16.
 httpx==0.28.1
 pydantic==2.13.4
 numpy==2.3.5

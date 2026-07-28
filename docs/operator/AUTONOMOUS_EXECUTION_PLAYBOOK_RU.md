@@ -1,7 +1,7 @@
 # Автономный плейбук Work Planner / BlocksWorld
 
 **Версия плейбука:** 1.3
-**Протокол:** Implementation Spec v1.15, Stage 1 Runbook v2.15.
+**Протокол:** Implementation Spec v1.16, Stage 1 Runbook v2.16.
 
 ## Что получает оператор
 

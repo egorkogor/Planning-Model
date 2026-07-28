@@ -1,6 +1,6 @@
 # Planner → LLM MVP Stage 1
 
-Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.15 и Stage 1 runbook v2.15.
+Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.16 и Stage 1 runbook v2.16.
 
 ## Запуск агентом
 
@@ -30,7 +30,7 @@ Builder LLM исполняет плейбук и пишет реализацию
 
 Это BlocksWorld Work Planner experiment, не основная Cognitive Planner architecture ML Brain.
 
-## Изменения v1.15/v2.15
+## Изменения v1.16/v2.16
 
 - confirmatory task IDs фиксируются до outcomes в `SelectedTaskManifest`;
 - signed SealerManifest связывает точный task set, его SHA-256 и task count;

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.15/public_key_registry.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.16/public_key_registry.schema.json",
   "title": "Execution-role Ed25519 public key registry with challenge attestation",
   "type": "object",
   "additionalProperties": false,

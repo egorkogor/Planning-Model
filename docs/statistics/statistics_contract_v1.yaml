@@ -1,4 +1,4 @@
-schema_version: work-planner/1.15
+schema_version: work-planner/1.16
 contract_id: statistics/1.4
 alpha_familywise: 0.05
 random_seeds:
@@ -338,7 +338,7 @@ stage_gates:
       rule: estimate_lte
       threshold: 0.02
     - gate_id: PLAN_REPLAY_FLOOR_DIAGNOSTIC
-      comparison: P_GOAL_SUCCESS
+      comparison: STAGE1B_E1_FULL_PLAN_REPLAY_GOAL_SUCCESS
       rule: estimate_gte
       threshold: 0.7
     - gate_id: STRUCTURED_SUPERIORITY_DIAGNOSTIC

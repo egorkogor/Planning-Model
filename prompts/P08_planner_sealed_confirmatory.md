@@ -19,10 +19,10 @@
 
 ## Действия
 1. dispatch approved freeze to separate evaluator
-2. run all frozen arms once
+2. run the exact matrix `selected task × seeds 101/202/303/404/505 × A1/A2/A2b/A2c/A3/A3r/A4/A5/P_FULL_PLAN_REPLAY_RAW` once per cell; duplicates and omissions are invalid
 3. collect signed raw result manifest
 4. validate no source mutation
-5. verify lineage covers the exact selected-task set and every nested artifact has the same run_id and PLANNER stage
+5. verify lineage covers the exact selected-task set, exact seed/arm matrix, and every nested artifact has the same run_id, PLANNER stage and planner_seed
 
 ## Обязательные результаты фазы
 - `results/planner-confirmatory/`
@@ -55,7 +55,7 @@
 - `P08_exec_03` — contract/hash violations zero; verifier: `python validation/phase_check_runner.py --phase P08 --check P08_exec_03 --report reports/phase-P08.json`
 - `P08_exec_04` — implementation lock VERIFIED; verifier: `python validation/phase_check_runner.py --phase P08 --check P08_exec_04 --report reports/phase-P08.json`
 - `P08_exec_05` — scientific lock VERIFIED; verifier: `python validation/phase_check_runner.py --phase P08 --check P08_exec_05 --report reports/phase-P08.json`
-- `P08_exec_06` — A3 WorkPlan generated once and replayed without replanning; verifier: `python validation/phase_check_runner.py --phase P08 --check P08_exec_06 --report reports/phase-P08.json`
+- `P08_exec_06` — exact task × five-seed × all-arm matrix is complete; A3 WorkPlan is generated once per task/seed and replayed without replanning; verifier: `python validation/phase_check_runner.py --phase P08 --check P08_exec_06 --report reports/phase-P08.json`
 
 ## Проверки после approval
 - нет
