@@ -28,7 +28,7 @@ def test_bootstrap_manifest_rejects_added_protected_file(tmp_path):
  workspace=tmp_path/'repo'
  shutil.copytree(ROOT,workspace,ignore=shutil.ignore_patterns('__pycache__','.pytest_cache','.ruff_cache','.mypy_cache'))
  path=workspace/'docs/prompt/candidates/UNDECLARED.yaml'
- path.write_text('schema_version: work-planner/1.17\n')
+ path.write_text('schema_version: work-planner/1.18\n')
  r=subprocess.run([sys.executable,str(workspace/'validation/verify_release_manifest.py')],cwd=workspace,text=True,capture_output=True)
  assert r.returncode!=0
  assert 'protected path set mismatch' in r.stdout

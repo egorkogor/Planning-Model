@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.17/phase_report.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.18/phase_report.schema.json",
   "title": "AgentPhaseReport v1.1",
   "type": "object",
   "additionalProperties": false,

@@ -1,7 +1,7 @@
-schema_version: work-planner/1.17
+schema_version: work-planner/1.18
 contract_id: random-codebook/1.0
-purpose: Parameter-matched A3r control that preserves exact semantic-signature identity
-  while destroying pretrained semantic geometry.
+purpose: Parameter-matched A3r control that preserves exact semantic-signature identity while destroying pretrained semantic
+  geometry.
 source_signature_bank:
   path: semantic_bank/signatures/manifest.json
   split: train_only
@@ -27,8 +27,7 @@ training:
   variant: A3r
   architecture: exactly_A3
   examples_order_updates_optimizer_hyperparameters: exactly_A3
-  only_allowed_difference: latent target from this random codebook instead of semantic
-    target embedding
+  only_allowed_difference: latent target from this random codebook instead of semantic target embedding
   separate_checkpoint: required
   A3_checkpoint_reuse: forbidden
 freeze:
@@ -36,3 +35,12 @@ freeze:
   required_before_any_A3r_training: true
   manifest: semantic_bank/random-codebook/manifest.json
   scientific_change_after_P02: forbidden
+inference_resolution:
+  query_vector: raw l2-normalized predicted A3r z
+  metric: cosine_similarity
+  candidate_set: every entry in frozen manifest
+  threshold: none
+  tie_break: ascending signature_sha256
+  selected_code_usage: external semantic signature resolution only
+  autoregressive_feedback: raw normalized predicted z
+  selected_code_as_feedback: forbidden

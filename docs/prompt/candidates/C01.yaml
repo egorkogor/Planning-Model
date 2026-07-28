@@ -1,4 +1,4 @@
-schema_version: work-planner/1.17
+schema_version: work-planner/1.18
 candidate_id: C01
 language: en
 system_message_exact: You select exactly one next valid BlocksWorld action. Return exactly one JSON object and no other text.
@@ -9,7 +9,7 @@ action_signatures_exact:
 - STACK args=[moving_block, support_block] — valid only when the hand holds moving block and support block is clear.
 - END args=[] — valid only when every goal relation already holds.
 few_shot_examples_exact: []
-output_format_exact: '{"schema_version":"work-planner/1.17","action":"<PICK_UP|PUT_DOWN|UNSTACK|STACK|END>","args":["<aliases
+output_format_exact: '{"schema_version":"work-planner/1.18","action":"<PICK_UP|PUT_DOWN|UNSTACK|STACK|END>","args":["<aliases
   in signature order>"]}'
 utf8_normalization: NFC
 line_ending: LF

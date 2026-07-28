@@ -1,4 +1,4 @@
-schema_version: work-planner/1.17
+schema_version: work-planner/1.18
 grammar_id: a1-token-grammar/1.6
 max_non_END_actions: 16
 max_planner_steps_including_END: 17
@@ -92,7 +92,6 @@ compute_accounting:
   - A2c
   - A3
   A1_flops_not_forced_equal_due_to_token_sequence_length: true
-  A1_equal_compute_secondary_schedule_required: true
   report:
   - train_flops
   - inference_flops_per_task
@@ -101,3 +100,5 @@ compute_accounting:
   - peak_memory
   parameter_matching_rule: exact common-superset inventory hash; tolerance applies only to measured FLOPs sensitivity, never
     parameter count
+  A1_equal_compute_secondary_schedule: not_required_for_MVP
+  A1_compute_role: report train/inference FLOPs, causal positions, latency and memory as guardrails only

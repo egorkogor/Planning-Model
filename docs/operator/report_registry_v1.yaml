@@ -1,4 +1,4 @@
-schema_version: work-planner/1.17
+schema_version: work-planner/1.18
 registry_id: report-registry/1.5
 matching: first_rule_wins
 rules:
@@ -82,6 +82,8 @@ rules:
   schema: docs/schemas/scientific_decision.schema.json
 - path_pattern: reports/*eligibility.json
   schema: docs/schemas/eligibility_report.schema.json
+- path_pattern: reports/training/final/*.json
+  schema: docs/schemas/model_training_report.schema.json
 - path_pattern: reports/*-training.json
   schema: docs/schemas/model_training_report.schema.json
 - path_pattern: reports/*-pilot.json

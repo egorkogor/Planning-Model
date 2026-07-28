@@ -1,4 +1,4 @@
-schema_version: work-planner/1.17
+schema_version: work-planner/1.18
 contract_id: full-plan-shuffle/1.0
 purpose: Deterministic E2 control that reuses the exact E1 WorkPlan but permutes guidance positions without task exclusion.
 source_arm: E1_A3_FULL_PLAN_RAW

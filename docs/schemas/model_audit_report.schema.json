@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.17/model_audit_report.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.18/model_audit_report.schema.json",
   "title": "Planner model audit",
   "type": "object",
   "additionalProperties": false,
@@ -9,25 +9,107 @@
     "run_id",
     "variants",
     "architecture_contract_sha256",
+    "initialization_contract_sha256",
+    "parameter_inventory_sha256",
     "parameter_tolerance_pass",
     "same_information_pass",
     "raw_rollout_pass",
+    "dormant_gradient_pass",
     "checks",
     "status",
     "report_hash"
   ],
   "properties": {
     "schema_version": {
-      "const": "work-planner-model-audit/1.0"
+      "const": "work-planner-model-audit/1.1"
     },
     "run_id": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "variants": {
       "type": "array",
-      "minItems": 7
+      "minItems": 8,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "A1",
+          "A2",
+          "A2b",
+          "A2c",
+          "A3",
+          "A3r",
+          "A4",
+          "A5"
+        ]
+      },
+      "allOf": [
+        {
+          "contains": {
+            "const": "A1"
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "const": "A2"
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "const": "A2b"
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "const": "A2c"
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "const": "A3"
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "const": "A3r"
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "const": "A4"
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "const": "A5"
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
     },
     "architecture_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "initialization_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "parameter_inventory_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
     },
     "parameter_tolerance_pass": {
@@ -39,8 +121,12 @@
     "raw_rollout_pass": {
       "type": "boolean"
     },
+    "dormant_gradient_pass": {
+      "type": "boolean"
+    },
     "checks": {
-      "type": "array"
+      "type": "array",
+      "minItems": 1
     },
     "status": {
       "enum": [

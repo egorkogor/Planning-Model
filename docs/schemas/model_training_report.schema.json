@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.17/model_training_report.schema.json",
-  "title": "Model training report",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.18/model_training_report.schema.json",
+  "title": "Final Planner model training report",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,26 +12,52 @@
     "seed",
     "dataset_manifest_sha256",
     "environment_lock_sha256",
+    "architecture_contract_sha256",
+    "initialization_contract_sha256",
+    "initialization_checkpoint_sha256",
+    "parameter_inventory_sha256",
+    "ordered_training_examples_path",
+    "ordered_training_examples_sha256",
+    "dormant_gradient_audit_path",
+    "dormant_gradient_audit_sha256",
+    "final_checkpoint_path",
+    "final_checkpoint_sha256",
+    "optimizer_step",
+    "checkpoint_selection",
     "history",
-    "best_checkpoint_sha256",
     "resource_usage",
     "report_hash"
   ],
   "properties": {
     "schema_version": {
-      "const": "work-planner-training/1.0"
+      "const": "work-planner-training/1.1"
     },
     "run_id": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "variant": {
-      "type": "string"
+      "enum": [
+        "A1",
+        "A2",
+        "A2b",
+        "A2c",
+        "A3",
+        "A3r"
+      ]
     },
     "config_id": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "seed": {
-      "type": "integer"
+      "enum": [
+        101,
+        202,
+        303,
+        404,
+        505
+      ]
     },
     "dataset_manifest_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
@@ -39,11 +65,48 @@
     "environment_lock_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
     },
-    "history": {
-      "type": "array"
-    },
-    "best_checkpoint_sha256": {
+    "architecture_contract_sha256": {
       "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "initialization_contract_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "initialization_checkpoint_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "parameter_inventory_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "ordered_training_examples_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ordered_training_examples_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "dormant_gradient_audit_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dormant_gradient_audit_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "final_checkpoint_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "final_checkpoint_sha256": {
+      "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "optimizer_step": {
+      "const": 12000
+    },
+    "checkpoint_selection": {
+      "const": "FINAL_STEP_ONLY"
+    },
+    "history": {
+      "type": "array",
+      "minItems": 1
     },
     "resource_usage": {
       "type": "object"

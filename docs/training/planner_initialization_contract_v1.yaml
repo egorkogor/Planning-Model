@@ -1,0 +1,44 @@
+schema_version: work-planner/1.18
+contract_id: planner-initialization/1.0
+purpose: Deterministic, arm-comparable initialization independent of module construction
+  order.
+seed_domain:
+  development_seed_source: docs/training/planner_training_contract_v1.yaml#development_seed
+  final_seed_source: docs/training/planner_training_contract_v1.yaml#final_seeds
+  canonical_parameter_name: exact PyTorch state_dict key encoded as UTF-8
+  payload: UTF8("planner-init-v1\0") || uint64_be(run_seed) || UTF8("\0") || UTF8(canonical_parameter_name)
+  digest: SHA-256
+  tensor_seed: unsigned big-endian integer from digest bytes 0..7, masked to 63 bits
+  generator: torch.Generator(device="cpu").manual_seed(tensor_seed)
+  initialization_device_and_dtype: CPU float32 before any device transfer or mixed-precision
+    cast
+initializers:
+  linear_and_bilinear_weight:
+    distribution: xavier_uniform
+    gain: 1.0
+  linear_and_bilinear_bias: constant_zero
+  embedding_weight:
+    distribution: normal
+    mean: 0.0
+    std: 0.02
+  padding_embedding_row: constant_zero_after_initialization
+  layer_norm_weight: constant_one
+  layer_norm_bias: constant_zero
+  unrecognized_trainable_parameter_type: INVALID_IMPLEMENTATION
+arm_comparability:
+  common_superset_initialized_once_per_seed: true
+  same_initial_state_dict_copied_to_A1_A2_A2b_A2c_A3_A3r: true
+  arm_specific_module_construction_order_may_not_change_any_tensor: true
+  A4_A5_weight_source: exact final A3 checkpoint for the same seed
+determinism:
+  torch_use_deterministic_algorithms: true
+  cudnn_benchmark: false
+  cudnn_deterministic: true
+  allow_tf32: false
+  warn_only: false
+  nondeterministic_kernel_action: INVALID_RUN
+evidence:
+  initialization_contract_sha256_required: true
+  initialization_checkpoint_sha256_required_per_seed: true
+  parameter_inventory_sha256_required: true
+  same_seed_initialization_checkpoint_hash_must_match_across_trainable_arms: true

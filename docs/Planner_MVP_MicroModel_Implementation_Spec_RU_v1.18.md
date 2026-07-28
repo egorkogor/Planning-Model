@@ -3,7 +3,7 @@
 **Версия:** 1.16
 **Дата:** 27 июля 2026
 **Статус:** исполняемая спецификация архивного эксперимента **Work Planner / BlocksWorld**.
-**Stage 1:** `Planner_LLM_Stage1_Operator_Runbook_v2.17_RU.md`.
+**Stage 1:** `Planner_LLM_Stage1_Operator_Runbook_v2.18_RU.md`.
 **Автономное исполнение:** `docs/operator/AUTONOMOUS_EXECUTION_PLAYBOOK_RU.md`.
 
 Этот эксперимент не является основной архитектурой Cognitive Planner проекта ML Brain. Он проверяет узкий тезис: может ли одна causal position представлять один исполнимый шаг, а отдельное semantic representation — улучшать следующие шаги и работу frozen LLM.
@@ -12,7 +12,7 @@
 
 ---
 
-# 0. Что исправлено к v1.17
+# 0. Что исправлено к v1.18
 
 1. Stage 1B переведён с reactive next-intent на один полный frozen plan, созданный до исполнения.
 2. Добавлен `EpisodePlanManifest` и машинная цепочка `manifest → WorkPlan → positions → EpisodeLog → AnalysisInput`.
@@ -78,7 +78,7 @@
 6. эта спецификация;
 7. phase prompt.
 
-Runtime version: `work-planner/1.17`.
+Runtime version: `work-planner/1.18`.
 
 Ключевые контракты:
 
@@ -276,7 +276,7 @@ P00–P20 заданы registry и explicit state machine. Важные прав
 - переход берётся только по declared outcome;
 - scientific STOP помечает downstream фазы `SKIPPED_BY_CONTRACT` и идёт в обязательный audit;
 - Scientific lock проверяется до/после каждой фазы с P02; Implementation lock — с P06;
-- любое изменение Scientific-lock path блокирует run и требует v1.17/new run;
+- любое изменение Scientific-lock path блокирует run и требует v1.18/new run;
 - Builder не видит confirmatory plaintext;
 - Evaluation Runner запускает confirmatory на отдельной среде;
 - Audit Agent обязательно воспроизводит run на clean checkout.
@@ -318,7 +318,7 @@ Final acceptance требует independent audit PASS и обязательно
 # 18. Исторические нормативные уточнения v1.9
 
 ## 18.1 Финальное обучение
-Development использует early stopping. Финальные checkpoints A1/A2/A2b/A2c/A3 обучаются ровно 12 000 optimizer updates на одинаковом порядке примеров для каждого seed. A4/A5 не обучаются: это interventions над тем же A3 checkpoint, и hash весов обязан совпадать.
+Development использует early stopping. Финальные checkpoints A1/A2/A2b/A2c/A3/A3r обучаются ровно 12 000 optimizer updates на одинаковом порядке примеров для каждого seed. A4/A5 не обучаются: это interventions над тем же A3 checkpoint, и hash весов обязан совпадать.
  Единственный допустимый final checkpoint — step 12 000; выбор промежуточного best checkpoint запрещён. P06 capacity preflight пересчитывает полный development grid (24 workloads), шесть primary variants × пять final seeds (30 workloads), десять A3/A2c FLOPs-sensitivity workloads и семь Stage 1B inference arms.
 
 ## 18.2 Statistics source of truth
@@ -360,7 +360,7 @@ Preflight разделён на два уровня. P03 выполняет cont
 
 `P_FULL_PLAN_REPLAY_RAW` определяется только `docs/controls/p_replay_contract_v1.yaml`. Planner вызывается один раз до исполнения source arm; replay повторно Planner не вызывает и последовательно исполняет exact frozen TypedActions. Контекст P08 использует precomputed Planner-confirmatory A3 WorkPlan, контекст P17 — precomputed Stage 1B E1 WorkPlan. Hash source manifest, WorkPlan и каждой позиции обязателен; подмена контекстов запрещена.
 
-## Launch-инварианты v1.17
+## Launch-инварианты v1.18
 
 - Planner confirmatory output is an exact Cartesian matrix: every selected task × seeds `101,202,303,404,505` × arms `A1,A2,A2b,A2c,A3,A3r,A4,A5,P_FULL_PLAN_REPLAY_RAW`.
 - `planner_seed` is explicit in lineage, EpisodePlanManifest, EpisodeLog, WorkPlan and AttemptLog and must match even for FAILED plan generation; duplicates and omissions are `INVALID_RUN`.

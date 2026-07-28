@@ -1,4 +1,4 @@
-schema_version: work-planner/1.17
+schema_version: work-planner/1.18
 contract_id: planner-hyperparameter-search/1.1
 search_partition: development
 confirmatory_access: forbidden

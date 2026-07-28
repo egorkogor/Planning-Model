@@ -1,4 +1,4 @@
-schema_version: work-planner/1.17
+schema_version: work-planner/1.18
 contract_id: planner-training/1.1
 precision:
   parameters: float32
@@ -41,6 +41,16 @@ training:
     selected_development_config_shared_across_A1_A2_A2b_A2c_A3_A3r: true
     retained_checkpoint_count_exact: 1
     intermediate_checkpoint_retention_after_completion: forbidden
+    variants_exact:
+    - A1
+    - A2
+    - A2b
+    - A2c
+    - A3
+    - A3r
+    training_report_directory: reports/training/final
+    training_report_count_exact: 30
+    checkpoint_selection: FINAL_STEP_ONLY
   common:
     shuffle: deterministic_by_seed
     fail_on_nan_or_inf: true
@@ -185,3 +195,8 @@ random_code_control:
   same_architecture_as_A3: true
   same_training_examples_and_updates_as_A3: true
   only_target_change: frozen random code per exact semantic signature
+initialization:
+  contract: docs/training/planner_initialization_contract_v1.yaml
+  common_superset_checkpoint_once_per_seed: true
+  same_initialization_checkpoint_across_A1_A2_A2b_A2c_A3_A3r: true
+  parameter_name_derived_tensor_seeds: true

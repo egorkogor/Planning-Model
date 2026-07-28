@@ -1,4 +1,4 @@
-schema_version: work-planner/1.17
+schema_version: work-planner/1.18
 contract_id: statistics/1.4
 alpha_familywise: 0.05
 random_seeds:

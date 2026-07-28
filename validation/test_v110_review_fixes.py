@@ -113,7 +113,7 @@ def test_intent_labeler_is_scientifically_locked_and_not_patchable() -> None:
     allowed = set(load_yaml("docs/operator/implementation_lock_v1.yaml")["pre_lock_patch_window"]["allowed_path_globs"])
     assert "docs/domain/**" in scientific
     assert "docs/domain/**" not in allowed
-    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.17.md").read_text(encoding="utf-8")
+    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.18.md").read_text(encoding="utf-8")
     assert "не могут изменяться implementation-only patch" in spec
 
 

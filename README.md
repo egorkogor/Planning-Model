@@ -1,6 +1,6 @@
 # Planner → LLM MVP Stage 1
 
-Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.17 и Stage 1 runbook v2.17.
+Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.18 и Stage 1 runbook v2.18.
 
 ## Запуск агентом
 
@@ -30,7 +30,7 @@ Builder LLM исполняет плейбук и пишет реализацию
 
 Это BlocksWorld Work Planner experiment, не основная Cognitive Planner architecture ML Brain.
 
-## Изменения v1.17/v2.17
+## Изменения v1.18/v2.18
 
 - единый 85-position decoder inventory: A1 использует все позиции и grammar head, step-level arms — первые 17 позиций через ConceptPacker;
 - зафиксирована точная active-loss matrix и action-conditional masking без двойного END-loss;
@@ -39,3 +39,5 @@ Builder LLM исполняет плейбук и пишет реализацию
 - n=7–8 запрещены в training/development и остаются только sealed size-OOD evaluation;
 - sensitivity run унифицирован как train-FLOPs-matched A3↔A2c; inference FLOPs — только guardrail;
 - сохранены launch-инварианты v1.16: exact task/seed/arm matrix, одинаковые Stage 1A snapshots и единое имя replay-метрики.
+
+- v1.18 фиксирует tensor-name-derived initialization, однозначный A3r inference, убирает несуществующий A1 equal-compute schedule и требует точные step-12000 training evidence для 6×5 final runs.

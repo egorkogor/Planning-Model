@@ -1,4 +1,4 @@
-schema_version: work-planner/1.17
+schema_version: work-planner/1.18
 encoding_id: task-encoding/1.6
 max_length: 192
 surface_names_included: false

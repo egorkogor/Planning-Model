@@ -45,7 +45,7 @@ def test_loss_masks_have_no_duplicate_end_loss_and_define_empty_batch_behavior()
 def test_size_ood_blocks_are_forbidden_in_training_everywhere() -> None:
     corpus = yaml.safe_load((ROOT / "docs/domain/training_corpus_contract_v1.yaml").read_text())
     assert corpus["off_policy_expansion"]["block_count_7_8"] == "forbidden_in_training"
-    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.17.md").read_text()
+    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.18.md").read_text()
     assert "для n=7,8 — 8 walks" not in spec
     assert "deterministic deviations/walks для n=7,8" not in spec
     assert "n=7,8 полностью запрещены в training/development expansion" in spec

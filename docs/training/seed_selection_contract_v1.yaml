@@ -1,4 +1,4 @@
-schema_version: work-planner/1.17
+schema_version: work-planner/1.18
 contract_id: planner-seed-selection/1.0
 final_seeds:
 - 101

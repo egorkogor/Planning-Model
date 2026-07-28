@@ -1,4 +1,4 @@
-# JSON Schemas — work-planner/1.17
+# JSON Schemas — work-planner/1.18
 
 Основное разделение:
 

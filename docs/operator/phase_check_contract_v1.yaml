@@ -64,6 +64,8 @@ core_checks:
   P17_exec_06: stage1b_full_plan_lineage
   P06_pre_03: capacity_preflight
   P05_exec_07: random_codebook
+  P07_pre_09: model_training_evidence
+  P06_pre_09: model_audit_evidence
 runtime_checker:
   module: src.validation.phase_checks
   command_template: python -m src.validation.phase_checks --phase {phase_id} --check {check_id} --phase-report reports/phase-{phase_id}.json

@@ -27,6 +27,7 @@ from validation.trust_topology_validator import verify as verify_trust_topology
 from validation.full_plan_lineage_validator import validate_lineage_index
 from validation.capacity_validator import validate_capacity_preflight, validate_compute_profile
 from validation.random_codebook_validator import validate_random_codebook, validate_signature_bank
+from validation.model_training_report_validator import validate_final_training_matrix, validate_model_audit_report
 
 
 def sha(path: Path) -> str:
@@ -65,7 +66,7 @@ def core_check(kind: str, phase: str, check_id: str, report: dict) -> list[str]:
         if not path.is_file(): errors.append("scope artifact missing")
         else:
             text = path.read_text(encoding="utf-8")
-            if "work-planner/1.17" not in text or "runbook 2.17" not in text: errors.append("scope version markers missing")
+            if "work-planner/1.18" not in text or "runbook 2.18" not in text: errors.append("scope version markers missing")
     elif kind == "confirmatory_absent":
         forbidden = []
         for base in (ROOT / "results", ROOT / "sealed"):
@@ -208,6 +209,30 @@ def core_check(kind: str, phase: str, check_id: str, report: dict) -> list[str]:
             if obj.get("reviewed_commit") != report.get("implementation_commit"):
                 errors.append(f"{kind} reviewed_commit differs from phase implementation_commit")
         except Exception as exc: errors.append(str(exc))
+    elif kind == "model_audit_evidence":
+        try:
+            path = ROOT / "reports/model-audit.json"
+            if not path.is_file():
+                errors.append("model audit report missing")
+            else:
+                obj = load_json(path)
+                errors.extend(validate_schema(obj, "model_audit_report.schema.json"))
+                errors.extend(validate_model_audit_report(ROOT, obj))
+                if obj.get("run_id") != report.get("run_id"):
+                    errors.append("model audit run_id differs from phase report")
+        except Exception as exc:
+            errors.append(str(exc))
+    elif kind == "model_training_evidence":
+        try:
+            directory = ROOT / "reports/training/final"
+            errors.extend(validate_final_training_matrix(ROOT, directory))
+            for path in sorted(directory.glob("*.json")) if directory.is_dir() else []:
+                obj = load_json(path)
+                errors.extend(validate_schema(obj, "model_training_report.schema.json"))
+                if obj.get("run_id") != report.get("run_id"):
+                    errors.append(f"{path.name}: run_id differs from phase report")
+        except Exception as exc:
+            errors.append(str(exc))
     elif kind == "random_codebook":
         try:
             bank_path = ROOT / "semantic_bank/signatures/manifest.json"

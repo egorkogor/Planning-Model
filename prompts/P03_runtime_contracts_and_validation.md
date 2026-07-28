@@ -18,6 +18,11 @@
 - `docs/schemas/`
 - `validation/verify_gate.py`
 - `docs/operator/phase_check_contract_v1.yaml`
+- `docs/architecture/planner_architecture_v1.yaml`
+- `docs/architecture/a1_token_grammar_v1.yaml`
+- `docs/training/planner_training_contract_v1.yaml`
+- `docs/training/planner_initialization_contract_v1.yaml`
+- `docs/controls/random_codebook_contract_v1.yaml`
 
 ## Действия
 1. implement schemas, strict IO and runtime validators
@@ -29,6 +34,7 @@
 7. run toy end-to-end preflight and record exact implementation patches only when fixing implementation defects
 8. implement deterministic full-plan shuffle mapping and fail-closed frozen-plan lineage validator used in P17
 9. implement deterministic A3r random-codebook target generation and per-episode FLOPs accounting used in P06/P17
+10. implement canonical tensor-name-derived initialization and A3r nearest-code external resolver exactly as locked
 
 ## Обязательные результаты фазы
 - `src/contracts/`

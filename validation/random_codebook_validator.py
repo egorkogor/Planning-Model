@@ -57,6 +57,30 @@ def maximum_abs_pairwise_cosine(codes: list[str]) -> float:
     return maximum_dot / float(dimension)
 
 
+
+def resolve_nearest_signature(entries: list[dict[str, Any]], query: list[float]) -> str:
+    """Reference A3r inference resolver: maximum cosine, lexicographic hash tie-break."""
+    dimension = 384
+    if len(query) != dimension:
+        raise ValueError("A3r query dimension must be 384")
+    norm = math.sqrt(sum(float(x) * float(x) for x in query))
+    if not math.isfinite(norm) or norm == 0:
+        raise ValueError("A3r query must be finite and nonzero")
+    normalized = [float(x) / norm for x in query]
+    best: tuple[float, str] | None = None
+    for row in entries:
+        signature = str(row["signature_sha256"])
+        bits = np.unpackbits(np.frombuffer(bytes.fromhex(str(row["code_hex"])), dtype=np.uint8)).astype(np.float64)
+        vector = (bits * 2.0 - 1.0) / math.sqrt(dimension)
+        score = float(np.dot(np.asarray(normalized, dtype=np.float64), vector))
+        candidate = (score, signature)
+        if best is None or score > best[0] or (math.isclose(score, best[0], rel_tol=0, abs_tol=1e-15) and signature < best[1]):
+            best = candidate
+    if best is None:
+        raise ValueError("A3r codebook must be non-empty")
+    return best[1]
+
+
 def validate_signature_bank(bank: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if bank.get("bank_hash") != unsigned_hash(bank, "bank_hash"):

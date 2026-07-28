@@ -1,4 +1,4 @@
-"""Fail-closed validation of frozen full-plan execution lineage (v1.17).
+"""Fail-closed validation of frozen full-plan execution lineage (v1.18).
 
 This module verifies relations that local JSON Schemas cannot express:
 one plan-generation call before execution, immutable WorkPlan reuse, sequential

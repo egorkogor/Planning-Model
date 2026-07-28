@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.17/self_review_report.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.18/self_review_report.schema.json",
   "title": "Phase self-review report",
   "type": "object",
   "additionalProperties": false,

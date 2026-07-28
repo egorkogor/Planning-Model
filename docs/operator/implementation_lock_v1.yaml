@@ -1,4 +1,4 @@
-schema_version: work-planner/1.17
+schema_version: work-planner/1.18
 contract_id: implementation-lock/1.2
 created_phase: P06 after APPROVE_G06_AUDITS
 purpose: Freeze all executable interpretation after P03–P06 implementation and independent G06 audits; later phases may only

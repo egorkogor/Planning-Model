@@ -1,4 +1,4 @@
-# Validation contract v1.17
+# Validation contract v1.18
 
 Validation состоит из восьми обязательных уровней. Отчёт агента не является доказательством сам по себе: каждый машинный check повторно исполняется locked verifier.
 

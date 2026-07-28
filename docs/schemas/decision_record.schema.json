@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.17/decision_record.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.18/decision_record.schema.json",
   "title": "Externally signed OperatorDecisionRecord v1.3",
   "type": "object",
   "additionalProperties": false,

@@ -1,4 +1,4 @@
-schema_version: work-planner/1.17
+schema_version: work-planner/1.18
 contract_id: planner-architecture/1.0
 task_encoder:
   layers: 4
@@ -75,7 +75,7 @@ inference_feedback:
   A3: normalized_predicted_z
   A4: zero_z
   A5: manifest_selected_foreign_z
-  A3r: normalized_predicted_z_resolved_against_frozen_random_codebook
+  A3r: raw_normalized_predicted_z_through_A3_shaped_feedback_projection
 same_information_constraint:
   A2c_signature_source: intent_labeler_semantic_signature
   A3_text_source: canonical_text_of_same_signature
@@ -98,3 +98,14 @@ parameter_matching:
   shared_decoder_position_inventory: 85 learned positions in every trainable arm; step-level arms activate positions 0..16
     only
   A1_token_head_inventory: 24 logits including reserved token IDs; dormant in step-level arms with grad None
+initialization_contract: docs/training/planner_initialization_contract_v1.yaml
+A3r_external_resolution:
+  purpose: Resolve an external semantic signature for WorkPlan/evaluation without altering autoregressive latent feedback.
+  query: raw normalized predicted z before feedback projection
+  candidate_vectors: all normalized vectors in the frozen random codebook manifest
+  metric: maximum cosine similarity (equivalently maximum dot product for normalized vectors)
+  threshold: none; nearest entry is always selected
+  tie_break: lexicographically smallest signature_sha256
+  exact_tie_action: deterministic selection, not failure
+  concept_packer_feedback: raw normalized predicted z, never the selected codebook vector
+  work_plan_semantic_signature: semantic signature associated with the selected signature_sha256

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.17/decision_log_entry.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.18/decision_log_entry.schema.json",
   "title": "Decision log entry",
   "type": "object",
   "additionalProperties": false,
