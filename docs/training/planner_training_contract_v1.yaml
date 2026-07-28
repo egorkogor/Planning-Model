@@ -1,4 +1,4 @@
-schema_version: work-planner/1.19
+schema_version: work-planner/1.20
 contract_id: planner-training/1.1
 precision:
   parameters: float32
@@ -12,6 +12,12 @@ optimizer:
   eps: 1.0e-08
   weight_decay: 0.01
   gradient_clip_norm: 1.0
+  safetensors_metadata_required:
+    optimizer: AdamW
+    beta1: '0.9'
+    beta2: '0.95'
+    eps: 1e-08
+    weight_decay: '0.01'
 schedule:
   type: linear_warmup_cosine_decay
   warmup_fraction: 0.05
@@ -251,3 +257,10 @@ confirmatory_checkpoint_binding:
   required_hash_chain: lineage record -> checkpoint manifest -> model_file_sha256
     -> EpisodePlanManifest/WorkPlan
   mismatch_action: INVALID_CONFIRMATORY
+evidence:
+  initialization_values_recomputed_from_locked_PCG64_algorithm: true
+  final_checkpoint_active_tensor_change_required: true
+  dormant_tensor_byte_identity_to_initialization_required: true
+  optimizer_state_finite_nonzero_and_locked_metadata_required: true
+  P08_checkpoint_binding: canonical P07 training report and checkpoint manifest paths
+    only; arbitrary link manifests forbidden

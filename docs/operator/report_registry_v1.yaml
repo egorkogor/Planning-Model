@@ -169,3 +169,8 @@ rules:
 - path_pattern: reports/training/flops-sensitivity/*.json
   schema: docs/schemas/model_training_report.schema.json
 unregistered_json_artifact_action: BLOCKED_UNREGISTERED_ARTIFACT
+checkpoint_binding_policy:
+  P08: canonical reports/training/checkpoints/{final|flops}-{variant}-seed-{seed}.json
+    only
+  training_report_required: true
+  arbitrary_link_manifest: forbidden

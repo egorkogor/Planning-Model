@@ -307,7 +307,7 @@ def calculate_components_from_structured_requirements(
     power_confidence_level: float = 0.95,
     power_confirmation_points: int = 2,
 ) -> dict[str, int]:
-    del equivalence_margin  # legacy API argument; confirmatory TOST is forbidden in v1.19
+    del equivalence_margin  # legacy API argument; confirmatory TOST is forbidden in v1.20
     requested = set(requirements)
     if not requested or not requested.issubset(COMPONENTS):
         raise ValueError(f"unsupported requirement set: {requested}; supported={COMPONENTS}")

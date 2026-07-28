@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/model_audit_check_evidence.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.20/model_audit_check_evidence.schema.json",
   "title": "Bound evidence for one model audit check",
   "type": "object",
   "additionalProperties": false,
@@ -12,6 +12,7 @@
     "recomputed_value",
     "expected_value",
     "bindings",
+    "details",
     "evidence_hash"
   ],
   "properties": {
@@ -62,6 +63,9 @@
     },
     "evidence_hash": {
       "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "details": {
+      "type": "object"
     }
   }
 }

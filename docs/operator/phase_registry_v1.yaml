@@ -22,7 +22,7 @@ phases:
     verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_01
       --report reports/phase-P00.json
   - check_id: P00_pre_02
-    description: scope references work-planner/1.19 and runbook 2.18
+    description: scope references work-planner/1.20 and runbook 2.20
     verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_02
       --report reports/phase-P00.json
   - check_id: P00_pre_03
@@ -52,8 +52,8 @@ phases:
   required_sources:
   - release/BOOTSTRAP_MANIFEST.json
   - docs/operator/bootstrap_integrity_contract_v1.yaml
-  - docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.19.md
-  - docs/Planner_LLM_Stage1_Operator_Runbook_v2.19_RU.md
+  - docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.20.md
+  - docs/Planner_LLM_Stage1_Operator_Runbook_v2.20_RU.md
   - docs/schemas/decision_record.schema.json
   execution_role: BUILDER
   approval_target_output: artifacts/scope.md
@@ -426,6 +426,12 @@ phases:
     Topology lock and reviewed commit
   - after G06 approval create and verify active Implementation lock; no later source
     implementation is permitted
+  - 'materialize check-specific P06 evidence: exact parameter inventory counts, at
+    least three normative SAME_INFORMATION cases recomputed by intent_labeler, at
+    least three RAW_ROLLOUT cases with no mask/replanning, and six seed-17 dormant-gradient
+    audits'
+  - model-audit recomputed_value is produced by validator code; Builder-submitted
+    booleans are not authoritative
   required_outputs:
   - src/models/
   - semantic_bank/bootstrap/
@@ -542,6 +548,10 @@ phases:
     dispatch linked to the signed decision
   - Data Sealer must emit an exact selected-task manifest before outcomes and bind
     its path, SHA-256 and task_count in the signed sealer manifest
+  - validate exact initialization tensor values against the locked name-derived PCG64
+    algorithm
+  - reject final checkpoints with no changed active tensor, changed dormant tensors,
+    NaN/Inf, or all-zero AdamW state; verify locked optimizer metadata
   required_outputs:
   - reports/planner-pilot.json
   - reports/training/final/
@@ -659,6 +669,8 @@ phases:
   - verify lineage covers the exact selected-task set, primary and FLOPs-sensitivity
     seed/arm matrix, and every nested artifact has the same run_id, PLANNER stage
     and planner_seed
+  - bind every Planner result to the canonical P07 training report and canonical checkpoint
+    manifest path; arbitrary checkpoint link JSON is forbidden
   required_outputs:
   - results/planner-confirmatory/
   - reports/planner-confirmatory-run.json

@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/common.schema.json",
-  "title": "Work Planner Common Definitions v1.19",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.20/common.schema.json",
+  "title": "Work Planner Common Definitions v1.20",
   "$defs": {
     "schema_version": {
-      "const": "work-planner/1.19"
+      "const": "work-planner/1.20"
     },
     "sha256": {
       "type": "string",

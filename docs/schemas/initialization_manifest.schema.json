@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/initialization_manifest.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.20/initialization_manifest.schema.json",
   "title": "Deterministic Planner initialization manifest",
   "type": "object",
   "additionalProperties": false,

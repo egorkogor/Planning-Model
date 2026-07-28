@@ -13,6 +13,7 @@ from validation.full_plan_lineage_validator import (
 )
 from validation.hashing import hash_json, plan_artifact_hash, plan_content_hash
 from validation.random_codebook_validator import code_hex
+from validation.test_v118_architecture_evidence import _write_final_matrix, _write_flops_sensitivity_matrix
 
 
 def _plan(variant: str = "A3") -> dict:
@@ -46,7 +47,7 @@ def _plan(variant: str = "A3") -> dict:
 
 def _signature_bank(plan: dict) -> dict:
     return {
-        "schema_version": "work-planner/1.19",
+        "schema_version": "work-planner/1.20",
         "bank_id": "structured-signatures-v1",
         "signatures": [
             {"semantic_signature": deepcopy(step["semantic_signature"])}
@@ -202,7 +203,7 @@ def _bundle(arm: str, *, source: dict | None = None, failed: bool = False):
     attributed = deepcopy(source[0]["actual_cost"]) if source is not None else deepcopy(actual)
     replay = "STAGE1B_E1" if arm == "P_FULL_PLAN_REPLAY_RAW" else None
     manifest = {
-        "schema_version": "work-planner/1.19",
+        "schema_version": "work-planner/1.20",
         "run_id": a["run_id"], "episode_id": a["episode_id"], "trajectory_id": a["trajectory_id"],
         "stage": a["stage"], "task_id": a["task_id"], "base_task_id": a["base_task_id"],
         "canonical_task_hash": a["canonical_task_hash"], "split": a["split"], "arm": arm,
@@ -415,19 +416,9 @@ def _write_bundle(root: Path, arm: str, bundle, source_hash=None, *, identity_su
             "PLANNER_A3_FLOPS_RAW": ("A3", "FLOPS_SENSITIVITY"),
             "P_FULL_PLAN_REPLAY_RAW": ("A3", "FINAL_EQUAL_DATA"),
         }[arm]
-        checkpoint_manifest = f"reports/training/checkpoints/link-{safe}.json"
-        checkpoint = {
-            "schema_version": "work-planner-checkpoint-link/1.0",
-            "run_id": e["run_id"],
-            "checkpoint_kind": expected[1],
-            "variant": expected[0],
-            "seed": planner_seed,
-            "model_file_sha256": m["planner_checkpoint_sha256"],
-        }
-        checkpoint["manifest_hash"] = hash_json(checkpoint)
+        prefix = "final" if expected[1] == "FINAL_EQUAL_DATA" else "flops"
+        checkpoint_manifest = f"reports/training/checkpoints/{prefix}-{expected[0]}-seed-{planner_seed}.json"
         cp_path = root / checkpoint_manifest
-        cp_path.parent.mkdir(parents=True, exist_ok=True)
-        cp_path.write_text(json.dumps(checkpoint))
         checkpoint_manifest_sha256 = "sha256:" + hashlib.sha256(cp_path.read_bytes()).hexdigest()
     return {
         "task_id": e["task_id"], "arm": arm, "planner_seed": planner_seed,
@@ -659,6 +650,47 @@ def _planner_confirmatory_bundle(arm: str, seed: int, *, source=None):
     return m, p, e, attempts, control
 
 
+def _bind_planner_bundle_checkpoint(bundle, model_sha256: str):
+    m, p, e, attempts, control = bundle
+    if p is not None:
+        p["planner_checkpoint_sha256"] = model_sha256
+        p["plan_content_hash"] = plan_content_hash(p)
+        p["plan_artifact_hash"] = plan_artifact_hash(p)
+    if m is not None:
+        m["planner_checkpoint_sha256"] = model_sha256
+        if p is not None:
+            m["work_plan_content_hash"] = p["plan_content_hash"]
+            m["work_plan_artifact_hash"] = p["plan_artifact_hash"]
+        m["manifest_hash"] = hash_json({k: v for k, v in m.items() if k != "manifest_hash"})
+    if m is not None:
+        e["episode_plan_manifest_hash"] = m["manifest_hash"]
+    for row in attempts:
+        if m is not None:
+            row["episode_plan_manifest_hash"] = m["manifest_hash"]
+        if p is not None:
+            row["plan_content_hash"] = p["plan_content_hash"]
+            row["plan_artifact_hash"] = p["plan_artifact_hash"]
+    return m, p, e, attempts, control
+
+
+def _canonical_checkpoint_model_sha(root: Path, arm: str, seed: int) -> str:
+    expected = {
+        "PLANNER_A1_RAW": ("A1", "final"),
+        "PLANNER_A2_RAW": ("A2", "final"),
+        "PLANNER_A2B_RAW": ("A2b", "final"),
+        "PLANNER_A2C_RAW": ("A2c", "final"),
+        "PLANNER_A3_RAW": ("A3", "final"),
+        "PLANNER_A3R_RAW": ("A3r", "final"),
+        "PLANNER_A4_RAW": ("A3", "final"),
+        "PLANNER_A5_RAW": ("A3", "final"),
+        "PLANNER_A2C_FLOPS_RAW": ("A2c", "flops"),
+        "PLANNER_A3_FLOPS_RAW": ("A3", "flops"),
+        "P_FULL_PLAN_REPLAY_RAW": ("A3", "final"),
+    }[arm]
+    cp = json.loads((root / f"reports/training/checkpoints/{expected[1]}-{expected[0]}-seed-{seed}.json").read_text())
+    return cp["model_file_sha256"]
+
+
 def _planner_confirmatory_bundle_pair():
     source = _planner_confirmatory_bundle("PLANNER_A3_RAW", 202)
     replay = _planner_confirmatory_bundle("P_FULL_PLAN_REPLAY_RAW", 202, source=source)
@@ -667,14 +699,23 @@ def _planner_confirmatory_bundle_pair():
 
 def _planner_confirmatory_matrix_rows(root: Path):
     from validation.full_plan_lineage_validator import PLANNER_ARMS, PLANNER_SEEDS
+    _write_final_matrix(root)
+    _write_flops_sensitivity_matrix(root)
     rows = []
     for seed in PLANNER_SEEDS:
-        source = _planner_confirmatory_bundle("PLANNER_A3_RAW", seed)
+        source = _bind_planner_bundle_checkpoint(
+            _planner_confirmatory_bundle("PLANNER_A3_RAW", seed),
+            _canonical_checkpoint_model_sha(root, "PLANNER_A3_RAW", seed),
+        )
         bundles = {"PLANNER_A3_RAW": source}
         for arm in sorted(PLANNER_ARMS - {"PLANNER_A3_RAW", "P_FULL_PLAN_REPLAY_RAW"}):
-            bundles[arm] = _planner_confirmatory_bundle(arm, seed)
-        bundles["P_FULL_PLAN_REPLAY_RAW"] = _planner_confirmatory_bundle(
-            "P_FULL_PLAN_REPLAY_RAW", seed, source=source
+            bundles[arm] = _bind_planner_bundle_checkpoint(
+                _planner_confirmatory_bundle(arm, seed),
+                _canonical_checkpoint_model_sha(root, arm, seed),
+            )
+        replay = _planner_confirmatory_bundle("P_FULL_PLAN_REPLAY_RAW", seed, source=source)
+        bundles["P_FULL_PLAN_REPLAY_RAW"] = _bind_planner_bundle_checkpoint(
+            replay, _canonical_checkpoint_model_sha(root, "P_FULL_PLAN_REPLAY_RAW", seed)
         )
         for arm in sorted(PLANNER_ARMS):
             rows.append(_write_bundle(root, arm, bundles[arm], identity_suffix=f"-{seed}"))

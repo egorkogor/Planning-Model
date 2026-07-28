@@ -63,7 +63,7 @@ def create(kind: str, lock_path: Path, run_id: str, source_candidate: Path | Non
         "schema_version": "work-planner-lock/1.1",
         "lock_kind": kind.upper(),
         "run_id": run_id,
-        "protocol_version": "work-planner/1.19",
+        "protocol_version": "work-planner/1.20",
         "policy_sha256": digest(POLICIES[kind]),
         "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "source_candidate_sha256": None,
@@ -97,7 +97,7 @@ def verify(kind: str, lock_path: Path, expected_run_id: str | None = None) -> li
         errors.append(f"{kind} lock run_id mismatch: {obj.get('run_id')} != {expected_run_id}")
     if obj.get("lock_kind") != kind.upper():
         errors.append(f"lock_kind mismatch: {obj.get('lock_kind')} != {kind.upper()}")
-    if obj.get("protocol_version") != "work-planner/1.19":
+    if obj.get("protocol_version") != "work-planner/1.20":
         errors.append("protocol_version mismatch")
     if obj.get("policy_sha256") != digest(POLICIES[kind]):
         errors.append("policy hash mismatch")

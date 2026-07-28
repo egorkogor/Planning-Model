@@ -6,11 +6,12 @@ import struct
 from pathlib import Path
 
 import yaml
+import numpy as np
 from jsonschema import Draft202012Validator
 
 from validation.hashing import hash_json
 from validation.model_training_report_validator import VARIANTS, SEEDS, validate_final_training_matrix, validate_model_audit_report
-from validation.planner_evidence_validator import canonical_tensor_table, config_id
+from validation.planner_evidence_validator import canonical_initialized_array, canonical_tensor_table, config_id
 from validation.planner_initialization_validator import canonical_tensor_seed
 from validation.random_codebook_validator import code_hex, resolve_nearest_signature
 
@@ -21,17 +22,22 @@ def _sha(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _write_safetensors(path: Path, tensors: list[dict], metadata: dict[str, str]) -> None:
+def _write_safetensors(
+    path: Path, tensors: list[dict], metadata: dict[str, str],
+    values: dict[str, np.ndarray] | None = None,
+) -> None:
     offset = 0
     header: dict[str, object] = {"__metadata__": metadata}
     data = bytearray()
+    values = values or {}
     for row in tensors:
-        count = 1
-        for dim in row["shape"]:
-            count *= dim
-        size = count * 4
-        header[row["name"]] = {"dtype": "F32", "shape": row["shape"], "data_offsets": [offset, offset + size]}
-        data.extend(b"\0" * size)
+        shape = tuple(row["shape"])
+        arr = values.get(row["name"], np.zeros(shape, dtype="<f4"))
+        arr = np.asarray(arr, dtype="<f4").reshape(shape)
+        raw_values = arr.tobytes(order="C")
+        size = len(raw_values)
+        header[row["name"]] = {"dtype": "F32", "shape": list(shape), "data_offsets": [offset, offset + size]}
+        data.extend(raw_values)
         offset += size
     raw = json.dumps(header, separators=(",", ":")).encode("utf-8")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,7 +128,7 @@ def _prepare_contracts(root: Path) -> tuple[dict, dict]:
         "active_arms": list(VARIANTS),
     }
     inventory_contract = {
-        "schema_version": "work-planner/1.19",
+        "schema_version": "work-planner/1.20",
         "contract_id": "test-inventory/1.0",
         "implementation": {},
         "tensors": [tensor],
@@ -168,7 +174,7 @@ def _prepare_contracts(root: Path) -> tuple[dict, dict]:
     cfg_path.write_text(json.dumps(cfg))
 
     dataset = {
-        "schema_version": "work-planner/1.19",
+        "schema_version": "work-planner/1.20",
         "corpus_id": "c",
         "contract_sha256": "sha256:" + "1" * 64,
         "generator_manifest_sha256": "sha256:" + "2" * 64,
@@ -206,7 +212,7 @@ def _write_final_matrix(root: Path, corrupt_checkpoint: bool = False) -> None:
             "run_id": "run-1", "checkpoint_kind": "INITIALIZATION", "variant": "COMMON",
             "seed": str(seed), "optimizer_step": "0", "parameter_inventory_sha256": inventory_hash,
         }
-        _write_safetensors(init_model, [{"name": "weight", "shape": [1]}], init_meta)
+        _write_safetensors(init_model, [{"name": "weight", "shape": [1]}], init_meta, {"weight": canonical_initialized_array(inv["tensors"][0], seed)})
         init_cp = {
             "schema_version": "work-planner-checkpoint-manifest/1.0", "run_id": "run-1", "checkpoint_kind": "INITIALIZATION",
             "variant": "COMMON", "seed": seed, "optimizer_step": 0,
@@ -262,8 +268,21 @@ def _write_final_matrix(root: Path, corrupt_checkpoint: bool = False) -> None:
             model = root / f"checkpoints/{variant}-{seed}.safetensors"
             opt = root / f"checkpoints/{variant}-{seed}-optimizer.safetensors"
             model_meta = {"run_id": "run-1", "checkpoint_kind": "FINAL_EQUAL_DATA", "variant": variant, "seed": str(seed), "optimizer_step": "12000", "parameter_inventory_sha256": inventory_hash}
-            _write_safetensors(model, [{"name": "weight", "shape": [1]}], model_meta)
-            _write_safetensors(opt, [{"name": "weight.exp_avg", "shape": [1]}, {"name": "weight.exp_avg_sq", "shape": [1]}], {"optimizer_step": "12000", "variant": variant})
+            final_weight = canonical_initialized_array(inv["tensors"][0], seed).copy()
+            final_weight += np.asarray([0.1], dtype="<f4")
+            _write_safetensors(model, [{"name": "weight", "shape": [1]}], model_meta, {"weight": final_weight})
+            _write_safetensors(
+                opt,
+                [{"name": "weight.exp_avg", "shape": [1]}, {"name": "weight.exp_avg_sq", "shape": [1]}],
+                {
+                    "optimizer_step": "12000", "variant": variant, "optimizer": "AdamW",
+                    "beta1": "0.9", "beta2": "0.95", "eps": "1e-08", "weight_decay": "0.01",
+                },
+                {
+                    "weight.exp_avg": np.asarray([0.1], dtype="<f4"),
+                    "weight.exp_avg_sq": np.asarray([0.01], dtype="<f4"),
+                },
+            )
             if corrupt_checkpoint and variant == "A3" and seed == 101:
                 model.write_bytes(b"not a checkpoint")
             cp = {
@@ -295,6 +314,90 @@ def _write_final_matrix(root: Path, corrupt_checkpoint: bool = False) -> None:
             (out / f"{variant}-seed-{seed}.json").write_text(json.dumps(report))
 
 
+
+def _write_flops_sensitivity_matrix(root: Path) -> None:
+    inv_path = root / "reports/model-evidence/parameter-inventory.json"
+    inv = json.loads(inv_path.read_text())
+    inventory_hash = inv["inventory_hash"]
+    config_path = root / "reports/training/selected-config.json"
+    cfg = json.loads(config_path.read_text())
+    dataset_path = root / "data/manifests/training-corpus.json"
+    env_path = root / "locks/environment.lock.json"
+    out = root / "reports/training/flops-sensitivity"
+    out.mkdir(parents=True, exist_ok=True)
+    for seed in SEEDS:
+        init_path = root / f"reports/training/initialization/seed-{seed}.json"
+        ordered_path = root / f"reports/training/ordered-examples/seed-{seed}.json"
+        for variant in ("A2c", "A3"):
+            step = 6000 if variant == "A3" else 12000
+            audit_path = root / f"reports/training/dormant-gradients/{variant}-seed-{seed}.json"
+            model = root / f"checkpoints/flops-{variant}-{seed}.safetensors"
+            opt = root / f"checkpoints/flops-{variant}-{seed}-optimizer.safetensors"
+            model_meta = {
+                "run_id": "run-1", "checkpoint_kind": "FLOPS_SENSITIVITY", "variant": variant,
+                "seed": str(seed), "optimizer_step": str(step), "parameter_inventory_sha256": inventory_hash,
+            }
+            final_weight = canonical_initialized_array(inv["tensors"][0], seed).copy()
+            final_weight += np.asarray([0.2], dtype="<f4")
+            _write_safetensors(model, [{"name": "weight", "shape": [1]}], model_meta, {"weight": final_weight})
+            _write_safetensors(
+                opt,
+                [{"name": "weight.exp_avg", "shape": [1]}, {"name": "weight.exp_avg_sq", "shape": [1]}],
+                {
+                    "optimizer_step": str(step), "variant": variant, "optimizer": "AdamW",
+                    "beta1": "0.9", "beta2": "0.95", "eps": "1e-08", "weight_decay": "0.01",
+                },
+                {
+                    "weight.exp_avg": np.asarray([0.2], dtype="<f4"),
+                    "weight.exp_avg_sq": np.asarray([0.04], dtype="<f4"),
+                },
+            )
+            cp = {
+                "schema_version": "work-planner-checkpoint-manifest/1.0", "run_id": "run-1",
+                "checkpoint_kind": "FLOPS_SENSITIVITY", "variant": variant, "seed": seed, "optimizer_step": step,
+                "architecture_contract_sha256": _sha(root / "docs/architecture/planner_architecture_v1.yaml"),
+                "module_inventory_contract_sha256": _sha(root / "docs/architecture/planner_module_inventory_v1.yaml"),
+                "initialization_contract_sha256": _sha(root / "docs/training/planner_initialization_contract_v1.yaml"),
+                "parameter_inventory_manifest_path": inv_path.relative_to(root).as_posix(),
+                "parameter_inventory_manifest_sha256": _sha(inv_path), "parameter_inventory_sha256": inventory_hash,
+                "initialization_manifest_path": init_path.relative_to(root).as_posix(), "initialization_manifest_sha256": _sha(init_path),
+                "selected_config_path": config_path.relative_to(root).as_posix(), "selected_config_sha256": _sha(config_path),
+                "dataset_manifest_path": dataset_path.relative_to(root).as_posix(), "dataset_manifest_sha256": _sha(dataset_path),
+                "ordered_training_examples_path": ordered_path.relative_to(root).as_posix(), "ordered_training_examples_sha256": _sha(ordered_path),
+                "environment_lock_path": "locks/environment.lock.json", "environment_lock_sha256": _sha(env_path),
+                "model_file_path": model.relative_to(root).as_posix(), "model_file_sha256": _sha(model), "model_format": "SAFETENSORS",
+                "model_tensor_table_sha256": canonical_tensor_table([{"name": "weight", "shape": [1], "dtype": "F32"}]),
+                "optimizer_state_path": opt.relative_to(root).as_posix(), "optimizer_state_sha256": _sha(opt),
+                "optimizer_state_format": "SAFETENSORS_ADAMW",
+                "optimizer_state_tensor_table_sha256": canonical_tensor_table([
+                    {"name": "weight.exp_avg", "shape": [1], "dtype": "F32"},
+                    {"name": "weight.exp_avg_sq", "shape": [1], "dtype": "F32"},
+                ]),
+            }
+            cp["manifest_hash"] = hash_json(cp)
+            cp_path = root / f"reports/training/checkpoints/flops-{variant}-seed-{seed}.json"
+            cp_path.write_text(json.dumps(cp))
+            report = {
+                "schema_version": "work-planner-training/1.2", "run_id": "run-1",
+                "training_regime": "FLOPS_SENSITIVITY", "variant": variant, "config_id": cfg["config_id"], "seed": seed,
+                "selected_config_path": config_path.relative_to(root).as_posix(), "selected_config_sha256": _sha(config_path),
+                "dataset_manifest_path": dataset_path.relative_to(root).as_posix(), "dataset_manifest_sha256": _sha(dataset_path),
+                "environment_lock_path": "locks/environment.lock.json", "environment_lock_sha256": _sha(env_path),
+                "architecture_contract_sha256": _sha(root / "docs/architecture/planner_architecture_v1.yaml"),
+                "module_inventory_contract_sha256": _sha(root / "docs/architecture/planner_module_inventory_v1.yaml"),
+                "initialization_contract_sha256": _sha(root / "docs/training/planner_initialization_contract_v1.yaml"),
+                "parameter_inventory_manifest_path": inv_path.relative_to(root).as_posix(),
+                "parameter_inventory_manifest_sha256": _sha(inv_path), "parameter_inventory_sha256": inventory_hash,
+                "initialization_manifest_path": init_path.relative_to(root).as_posix(), "initialization_manifest_sha256": _sha(init_path),
+                "ordered_training_examples_path": ordered_path.relative_to(root).as_posix(), "ordered_training_examples_sha256": _sha(ordered_path),
+                "dormant_gradient_audit_path": audit_path.relative_to(root).as_posix(), "dormant_gradient_audit_sha256": _sha(audit_path),
+                "checkpoint_manifest_path": cp_path.relative_to(root).as_posix(), "checkpoint_manifest_sha256": _sha(cp_path),
+                "optimizer_step": step, "checkpoint_selection": "FLOPS_CAP_STEP",
+                "history": [{"optimizer_step": step}], "resource_usage": {},
+            }
+            report["report_hash"] = hash_json(report)
+            (out / f"{variant}-seed-{seed}.json").write_text(json.dumps(report))
+
 def test_training_evidence_is_exact_six_by_five_matrix(tmp_path: Path) -> None:
     _write_final_matrix(tmp_path)
     assert validate_final_training_matrix(tmp_path) == []
@@ -309,7 +412,7 @@ def test_training_evidence_rejects_opaque_checkpoint(tmp_path: Path) -> None:
 
 
 def test_implementation_spec_includes_a3r_final_training_and_inventory() -> None:
-    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.19.md").read_text()
+    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.20.md").read_text()
     assert "A1/A2/A2b/A2c/A3/A3r обучаются ровно 12 000" in spec
     assert "planner_module_inventory_v1.yaml" in spec
 

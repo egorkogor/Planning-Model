@@ -30,6 +30,8 @@
 4. dispatch locked contracts and public-exclusion manifest to Data Sealer; Data Sealer generates a hidden 256-bit seed, returns only seed commitment, encrypted blob hash and signed sealer manifest; create candidate freeze
 5. after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
 6. Data Sealer must emit an exact selected-task manifest before outcomes and bind its path, SHA-256 and task_count in the signed sealer manifest
+7. validate exact initialization tensor values against the locked name-derived PCG64 algorithm
+8. reject final checkpoints with no changed active tensor, changed dormant tensors, NaN/Inf, or all-zero AdamW state; verify locked optimizer metadata
 
 ## Обязательные результаты фазы
 - `reports/planner-pilot.json`

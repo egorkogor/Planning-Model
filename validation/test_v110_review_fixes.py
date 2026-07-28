@@ -29,7 +29,7 @@ def test_p02_bundle_check_runs_static_validation_and_pytest() -> None:
     assert contract["core_checks"]["P02_exec_02"] == "bundle_tests"
     source = inspect.getsource(phase_check_runner.core_check)
     assert '"validation/validate_bundle.py", "--skip-nested-pytest"' in source
-    assert '"-m", "pytest", "-q", "validation"' in source
+    assert '"validation/run_test_suite.py"' in source
 
 
 def test_numpy_pin_is_single_and_byte_reproducible() -> None:
@@ -113,7 +113,7 @@ def test_intent_labeler_is_scientifically_locked_and_not_patchable() -> None:
     allowed = set(load_yaml("docs/operator/implementation_lock_v1.yaml")["pre_lock_patch_window"]["allowed_path_globs"])
     assert "docs/domain/**" in scientific
     assert "docs/domain/**" not in allowed
-    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.19.md").read_text(encoding="utf-8")
+    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.20.md").read_text(encoding="utf-8")
     assert "не могут изменяться implementation-only patch" in spec
 
 

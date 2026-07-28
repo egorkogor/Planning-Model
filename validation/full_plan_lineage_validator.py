@@ -1,4 +1,4 @@
-"""Fail-closed validation of frozen full-plan execution lineage (v1.19).
+"""Fail-closed validation of frozen full-plan execution lineage (v1.20).
 
 This module verifies relations that local JSON Schemas cannot express:
 one plan-generation call before execution, immutable WorkPlan reuse, sequential
@@ -17,6 +17,8 @@ from typing import Any, Iterable, Mapping
 from validation.hashing import hash_json, plan_artifact_hash, plan_content_hash
 from validation.capacity_validator import validate_compute_profile
 from validation.random_codebook_validator import validate_random_codebook
+from validation.planner_evidence_validator import validate_checkpoint_manifest
+from validation.model_training_report_validator import validate_model_training_report
 
 PLANNER_SEEDS = (101, 202, 303, 404, 505)
 PLANNER_ARMS = {
@@ -75,6 +77,20 @@ PLANNER_CHECKPOINT_BINDINGS = {
 }
 ROOT = Path(__file__).resolve().parents[1]
 SHUFFLE_CONTRACT = ROOT / "docs/controls/full_plan_shuffle_contract_v1.yaml"
+
+
+def _canonical_training_artifacts(variant: str, kind: str, seed: int) -> tuple[str, str]:
+    if kind == "FINAL_EQUAL_DATA":
+        return (
+            f"reports/training/checkpoints/final-{variant}-seed-{seed}.json",
+            f"reports/training/final/{variant}-seed-{seed}.json",
+        )
+    if kind == "FLOPS_SENSITIVITY":
+        return (
+            f"reports/training/checkpoints/flops-{variant}-seed-{seed}.json",
+            f"reports/training/flops-sensitivity/{variant}-seed-{seed}.json",
+        )
+    raise ValueError(f"unsupported checkpoint kind: {kind}")
 
 
 def _err(path: str, message: str) -> str:
@@ -650,20 +666,38 @@ def validate_lineage_index(root: Path, index: Mapping[str, Any], *, expected_sta
                 checkpoint_rel = row.get("checkpoint_manifest")
                 if not isinstance(checkpoint_rel, str):
                     raise ValueError("Planner record requires checkpoint_manifest")
-                checkpoint_path = _safe_path(root, checkpoint_rel)
-                if row.get("checkpoint_manifest_sha256") != _file_digest(checkpoint_path):
-                    errors.append(_err(f"records[{i}].checkpoint_manifest_sha256", "does not match checkpoint manifest artifact"))
-                checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
-                if checkpoint.get("manifest_hash") != hash_json(_without(checkpoint, "manifest_hash")):
-                    errors.append(_err(f"records[{i}].checkpoint_manifest", "self-hash mismatch"))
                 if expected_checkpoint is None:
                     errors.append(_err(f"records[{i}].checkpoint_manifest", "arm has no locked checkpoint binding"))
                 else:
                     expected_variant, expected_kind = expected_checkpoint
+                    canonical_checkpoint_rel, canonical_report_rel = _canonical_training_artifacts(expected_variant, expected_kind, int(row_seed))
+                    if checkpoint_rel != canonical_checkpoint_rel:
+                        errors.append(_err(
+                            f"records[{i}].checkpoint_manifest",
+                            f"must use canonical P07 artifact {canonical_checkpoint_rel}",
+                        ))
+                    checkpoint_path = _safe_path(root, canonical_checkpoint_rel)
+                    if row.get("checkpoint_manifest_sha256") != _file_digest(checkpoint_path):
+                        errors.append(_err(f"records[{i}].checkpoint_manifest_sha256", "does not match canonical checkpoint manifest artifact"))
+                    checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+                    for issue in validate_checkpoint_manifest(root, checkpoint):
+                        errors.append(_err(f"records[{i}].checkpoint_manifest", issue))
                     if checkpoint.get("run_id") != run_id or checkpoint.get("seed") != row_seed:
                         errors.append(_err(f"records[{i}].checkpoint_manifest", "run_id/seed differs from lineage"))
                     if checkpoint.get("variant") != expected_variant or checkpoint.get("checkpoint_kind") != expected_kind:
                         errors.append(_err(f"records[{i}].checkpoint_manifest", f"expected {expected_variant}/{expected_kind}"))
+
+                    report_path = _safe_path(root, canonical_report_rel)
+                    report = json.loads(report_path.read_text(encoding="utf-8"))
+                    for issue in validate_model_training_report(root, report):
+                        errors.append(_err(f"records[{i}].training_report", issue))
+                    if report.get("checkpoint_manifest_path") != canonical_checkpoint_rel:
+                        errors.append(_err(f"records[{i}].training_report", "does not bind canonical checkpoint path"))
+                    if report.get("checkpoint_manifest_sha256") != _file_digest(checkpoint_path):
+                        errors.append(_err(f"records[{i}].training_report", "does not bind canonical checkpoint digest"))
+                    if report.get("run_id") != run_id or report.get("seed") != row_seed or report.get("variant") != expected_variant:
+                        errors.append(_err(f"records[{i}].training_report", "run_id/seed/variant differs from lineage"))
+
                     logged_checkpoint_sha = manifest.get("planner_checkpoint_sha256") if manifest is not None else None
                     if checkpoint.get("model_file_sha256") != logged_checkpoint_sha:
                         errors.append(_err(f"records[{i}].checkpoint_manifest", "model SHA differs from EpisodePlanManifest"))

@@ -1,4 +1,4 @@
-schema_version: work-planner/1.19
+schema_version: work-planner/1.20
 generator_id: blocks-generator/1.7
 numpy_requirement: numpy==2.3.5
 rng:

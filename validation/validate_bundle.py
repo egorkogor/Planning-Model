@@ -21,7 +21,7 @@ def main() -> None:
     for path in sorted(SCHEMA_DIR.glob("*.json")):
         obj = json.loads(path.read_text(encoding="utf-8"))
         Draft202012Validator.check_schema(obj)
-        assert obj["$id"].startswith("https://ml-brain.local/schemas/work-planner/v1.19/")
+        assert obj["$id"].startswith("https://ml-brain.local/schemas/work-planner/v1.20/")
         schemas.append(path)
 
     yamls = []
@@ -31,8 +31,8 @@ def main() -> None:
         yamls.append(path)
 
     required = [
-        ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.19.md",
-        ROOT / "docs/Planner_LLM_Stage1_Operator_Runbook_v2.19_RU.md",
+        ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.20.md",
+        ROOT / "docs/Planner_LLM_Stage1_Operator_Runbook_v2.20_RU.md",
         ROOT / "docs/operator/AUTONOMOUS_EXECUTION_PLAYBOOK_RU.md",
         ROOT / "docs/operator/phase_state_machine_v1.yaml",
         ROOT / "docs/operator/contract_lock_v1.yaml",
@@ -52,8 +52,8 @@ def main() -> None:
 
     if not args.skip_nested_pytest:
         env=dict(__import__("os").environ); env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"]="1"
-        subprocess.run([sys.executable, "-m", "pytest", "-q", "validation"], cwd=ROOT, check=True, env=env)
-    print(f"PASS: {len(schemas)} schemas valid; {len(yamls)} YAML contracts parsed" + ("; pytest skipped" if args.skip_nested_pytest else "; pytest passed"))
+        subprocess.run([sys.executable, "validation/run_test_suite.py"], cwd=ROOT, check=True, env=env)
+    print(f"PASS: {len(schemas)} schemas valid; {len(yamls)} YAML contracts parsed" + ("; pytest skipped" if args.skip_nested_pytest else "; full pytest passed"))
 
 
 if __name__ == "__main__":

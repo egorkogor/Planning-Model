@@ -7,12 +7,137 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import yaml
+import numpy as np
 
 from validation.hashing import hash_json
 from validation.planner_initialization_validator import canonical_tensor_seed
+from docs.domain.intent_labeler_v1 import label_intent
 
 TRAINABLE_VARIANTS = ("A1", "A2", "A2b", "A2c", "A3", "A3r")
 FINAL_SEEDS = (101, 202, 303, 404, 505)
+
+
+PADDING_EMBEDDING_NAMES = {
+    "task_encoder.token_embedding.weight",
+    "planner_decoder.a1_token_embedding.weight",
+}
+
+
+def _read_safetensors_arrays(path: Path) -> tuple[dict[str, Any], dict[str, str], dict[str, np.ndarray]]:
+    size = path.stat().st_size
+    raw = path.read_bytes()
+    if len(raw) < 8:
+        raise ValueError("safetensors file shorter than 8-byte header length")
+    header_len = struct.unpack("<Q", raw[:8])[0]
+    if header_len <= 1 or header_len > min(size - 8, 64 * 1024 * 1024):
+        raise ValueError("invalid safetensors header length")
+    header = json.loads(raw[8:8 + header_len].decode("utf-8").rstrip(" "))
+    metadata = header.pop("__metadata__", {})
+    data = memoryview(raw)[8 + header_len:]
+    table: dict[str, Any] = {}
+    arrays: dict[str, np.ndarray] = {}
+    for name, row in header.items():
+        start, end = row["data_offsets"]
+        shape = tuple(int(x) for x in row["shape"])
+        arr = np.frombuffer(data[start:end], dtype="<f4").reshape(shape).copy()
+        table[name] = {"name": name, "shape": list(shape), "dtype": row["dtype"]}
+        arrays[name] = arr
+    return table, metadata, arrays
+
+
+def canonical_initialized_array(row: Mapping[str, Any], seed: int) -> np.ndarray:
+    name = str(row["name"])
+    shape = tuple(int(x) for x in row["shape"])
+    parameter_type = str(row["parameter_type"])
+    tensor_seed = canonical_tensor_seed(seed, name)
+    rng = np.random.Generator(np.random.PCG64(tensor_seed))
+    if parameter_type in {"linear_weight", "bilinear_weight"}:
+        if len(shape) < 2:
+            raise ValueError(f"Xavier tensor must have at least 2 dimensions: {name}")
+        fan_out, fan_in = shape[0], shape[1]
+        limit = float(np.sqrt(6.0 / float(fan_in + fan_out)))
+        arr = rng.uniform(-limit, limit, size=shape).astype("<f4")
+    elif parameter_type in {"embedding_weight", "standalone_parameter"}:
+        arr = rng.normal(0.0, 0.02, size=shape).astype("<f4")
+        if name in PADDING_EMBEDDING_NAMES:
+            arr[0] = 0.0
+    elif parameter_type in {"linear_bias", "layer_norm_bias"}:
+        arr = np.zeros(shape, dtype="<f4")
+    elif parameter_type == "layer_norm_weight":
+        arr = np.ones(shape, dtype="<f4")
+    else:
+        raise ValueError(f"unsupported parameter_type for initialization: {parameter_type}")
+    return arr
+
+
+def _validate_initialization_values(path: Path, inventory: Mapping[str, Any], seed: int) -> list[str]:
+    errors: list[str] = []
+    try:
+        _, _, arrays = _read_safetensors_arrays(path)
+        for row in inventory.get("tensors", []):
+            name = str(row["name"])
+            expected = canonical_initialized_array(row, seed)
+            actual = arrays.get(name)
+            if actual is None or actual.shape != expected.shape or not np.array_equal(actual, expected):
+                errors.append(f"initialization tensor values differ from canonical initializer: {name}")
+    except Exception as exc:
+        errors.append(f"initialization value validation failed: {exc}")
+    return errors
+
+
+def _validate_trained_values(
+    model_path: Path, init_path: Path, inventory: Mapping[str, Any], variant: str,
+) -> list[str]:
+    errors: list[str] = []
+    try:
+        _, _, model_arrays = _read_safetensors_arrays(model_path)
+        _, _, init_arrays = _read_safetensors_arrays(init_path)
+        active_changed = False
+        for row in inventory.get("tensors", []):
+            name = str(row["name"])
+            actual = model_arrays[name]
+            initial = init_arrays[name]
+            if not np.isfinite(actual).all():
+                errors.append(f"model tensor contains NaN/Inf: {name}")
+            active = variant in row.get("active_arms", [])
+            if active:
+                if not np.array_equal(actual, initial):
+                    active_changed = True
+            elif not np.array_equal(actual, initial):
+                errors.append(f"dormant tensor changed from initialization: {name}")
+        if not active_changed:
+            errors.append("trained checkpoint has no changed active tensor relative to initialization")
+    except Exception as exc:
+        errors.append(f"trained tensor value validation failed: {exc}")
+    return errors
+
+
+def _validate_optimizer_values(path: Path) -> list[str]:
+    errors: list[str] = []
+    try:
+        _, metadata, arrays = _read_safetensors_arrays(path)
+        total_l1 = 0.0
+        for name, arr in arrays.items():
+            if not np.isfinite(arr).all():
+                errors.append(f"optimizer tensor contains NaN/Inf: {name}")
+            if name.endswith(".exp_avg_sq") and np.any(arr < 0):
+                errors.append(f"optimizer exp_avg_sq contains negative values: {name}")
+            total_l1 += float(np.abs(arr).sum(dtype=np.float64))
+        if total_l1 == 0.0:
+            errors.append("optimizer active-state tensors are all zero")
+        required_metadata = {
+            "optimizer": "AdamW",
+            "beta1": "0.9",
+            "beta2": "0.95",
+            "eps": "1e-08",
+            "weight_decay": "0.01",
+        }
+        for key, expected in required_metadata.items():
+            if metadata.get(key) != expected:
+                errors.append(f"optimizer safetensors metadata mismatch: {key}")
+    except Exception as exc:
+        errors.append(f"optimizer value validation failed: {exc}")
+    return errors
 
 
 def file_digest(path: Path) -> str:
@@ -225,6 +350,8 @@ def validate_checkpoint_manifest(root: Path, obj: Mapping[str, Any]) -> list[str
         except Exception as exc:
             errors.append(f"model checkpoint is not a valid bound safetensors file: {exc}")
     kind = obj.get("checkpoint_kind")
+    if kind == "INITIALIZATION" and model_path and inventory and isinstance(obj.get("seed"), int):
+        errors += _validate_initialization_values(model_path, inventory, int(obj["seed"]))
     if kind == "INITIALIZATION":
         if obj.get("variant") != "COMMON" or obj.get("optimizer_step") != 0:
             errors.append("initialization checkpoint must be COMMON at step 0")
@@ -263,8 +390,19 @@ def validate_checkpoint_manifest(root: Path, obj: Mapping[str, Any]) -> list[str
                     errors.append("optimizer tensor table hash mismatch")
                 if metadata.get("optimizer_step") != str(obj.get("optimizer_step")) or metadata.get("variant") != variant:
                     errors.append("optimizer safetensors metadata mismatch")
+                errors += _validate_optimizer_values(opt_path)
             except Exception as exc:
                 errors.append(f"optimizer state is not a valid bound safetensors file: {exc}")
+        if model_path and inventory:
+            try:
+                init_manifest_path = safe_path(root, obj.get("initialization_manifest_path"))
+                init_manifest = json.loads(init_manifest_path.read_text(encoding="utf-8"))
+                init_checkpoint_path = safe_path(root, init_manifest.get("checkpoint_manifest_path"))
+                init_checkpoint = json.loads(init_checkpoint_path.read_text(encoding="utf-8"))
+                init_model_path = safe_path(root, init_checkpoint.get("model_file_path"))
+                errors += _validate_trained_values(model_path, init_model_path, inventory, str(obj.get("variant")))
+            except Exception as exc:
+                errors.append(f"trained checkpoint initialization lineage unreadable: {exc}")
     return errors
 
 
@@ -328,13 +466,198 @@ def validate_dormant_gradient_audit(root: Path, obj: Mapping[str, Any], inventor
     return errors
 
 
+def _binding_map(obj: Mapping[str, Any]) -> dict[str, str]:
+    return {str(row.get("path")): str(row.get("sha256")) for row in obj.get("bindings", [])}
+
+
+def _validate_exact_bindings(root: Path, actual: Mapping[str, str], required: set[str], label: str) -> list[str]:
+    errors: list[str] = []
+    if set(actual) != required:
+        errors.append(f"{label} must bind exact paths: {sorted(required)}")
+    for rel in required:
+        path = root / rel
+        if not path.is_file() or actual.get(rel) != file_digest(path):
+            errors.append(f"{label} binding invalid: {rel}")
+    return errors
+
+
+def _parameter_tolerance_result(root: Path) -> tuple[dict[str, Any], list[str]]:
+    inventory_path = root / "reports/model-evidence/parameter-inventory.json"
+    errors: list[str] = []
+    try:
+        inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+        errors += validate_parameter_inventory_manifest(root, inventory)
+        total = 0
+        active: dict[str, int] = {variant: 0 for variant in TRAINABLE_VARIANTS}
+        for row in inventory.get("tensors", []):
+            count = 1
+            for dim in row.get("shape", []):
+                count *= int(dim)
+            total += count
+            for variant in row.get("active_arms", []):
+                active[str(variant)] += count
+        return {
+            "inventory_sha256": inventory.get("inventory_hash"),
+            "common_superset_parameter_count": total,
+            "active_parameter_counts": active,
+            "total_parameter_count_tolerance_fraction": 0.0,
+            "all_trainable_arms_share_exact_inventory": True,
+        }, errors
+    except Exception as exc:
+        return {}, [f"parameter tolerance evidence unreadable: {exc}"]
+
+
+def _same_information_result(details: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    errors: list[str] = []
+    cases = details.get("cases", [])
+    if not isinstance(cases, list) or len(cases) < 3:
+        return {}, ["SAME_INFORMATION requires at least three normative cases"]
+    seen: set[str] = set()
+    mismatches = 0
+    for i, case in enumerate(cases):
+        try:
+            case_id = str(case["case_id"])
+            if case_id in seen:
+                errors.append(f"duplicate SAME_INFORMATION case_id: {case_id}")
+            seen.add(case_id)
+            expected = label_intent(
+                case["state"], case["goal"], case["all_shortest_first_actions"],
+                case["selected_action"], int(case["remaining_oracle_length"]),
+            )
+            if case.get("a2c_semantic_signature") != expected["semantic_signature"]:
+                mismatches += 1
+                errors.append(f"SAME_INFORMATION A2c signature mismatch: {case_id}")
+            if case.get("a3_canonical_text") != expected["canonical_text"]:
+                mismatches += 1
+                errors.append(f"SAME_INFORMATION A3 canonical text mismatch: {case_id}")
+        except Exception as exc:
+            mismatches += 1
+            errors.append(f"SAME_INFORMATION case[{i}] invalid: {exc}")
+    return {"case_count": len(cases), "mismatch_count": mismatches}, errors
+
+
+def _raw_rollout_result(details: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    errors: list[str] = []
+    cases = details.get("cases", [])
+    if not isinstance(cases, list) or len(cases) < 3:
+        return {}, ["RAW_ROLLOUT requires at least three cases"]
+    seen: set[str] = set()
+    violations = 0
+    for i, case in enumerate(cases):
+        try:
+            case_id = str(case["case_id"])
+            if case_id in seen:
+                violations += 1
+                errors.append(f"duplicate RAW_ROLLOUT case_id: {case_id}")
+            seen.add(case_id)
+            required = {
+                "planner_calls": 1,
+                "execution_planner_calls": 0,
+                "domain_action_mask_applied": False,
+                "grammar_constrained_decoding": False,
+                "replanning": False,
+            }
+            for field, expected in required.items():
+                if case.get(field) != expected:
+                    violations += 1
+                    errors.append(f"RAW_ROLLOUT {case_id} {field} mismatch")
+            if not isinstance(case.get("raw_logits_sha256"), str) or not str(case.get("raw_logits_sha256")).startswith("sha256:"):
+                violations += 1
+                errors.append(f"RAW_ROLLOUT {case_id} missing raw logits digest")
+            if not isinstance(case.get("frozen_plan_sha256"), str) or not str(case.get("frozen_plan_sha256")).startswith("sha256:"):
+                violations += 1
+                errors.append(f"RAW_ROLLOUT {case_id} missing frozen plan digest")
+            consumed = int(case.get("plan_positions_consumed", -1))
+            if consumed < 1 or consumed > 17:
+                violations += 1
+                errors.append(f"RAW_ROLLOUT {case_id} invalid consumed positions")
+        except Exception as exc:
+            violations += 1
+            errors.append(f"RAW_ROLLOUT case[{i}] invalid: {exc}")
+    return {"case_count": len(cases), "violation_count": violations}, errors
+
+
+def _dormant_gradient_result(root: Path) -> tuple[dict[str, Any], list[str]]:
+    errors: list[str] = []
+    inventory_path = root / "reports/model-evidence/parameter-inventory.json"
+    try:
+        inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+        errors += validate_parameter_inventory_manifest(root, inventory)
+    except Exception as exc:
+        return {}, [f"DORMANT_GRADIENT inventory unreadable: {exc}"]
+    passed: list[str] = []
+    for variant in TRAINABLE_VARIANTS:
+        path = root / f"reports/model-evidence/dormant-gradients/{variant}-seed-17.json"
+        try:
+            audit = json.loads(path.read_text(encoding="utf-8"))
+            before = len(errors)
+            errors += validate_dormant_gradient_audit(root, audit, inventory)
+            if audit.get("variant") != variant or audit.get("seed") != 17 or audit.get("status") != "PASS":
+                errors.append(f"DORMANT_GRADIENT identity/status mismatch: {variant}")
+            if len(errors) == before:
+                passed.append(variant)
+        except Exception as exc:
+            errors.append(f"DORMANT_GRADIENT audit unreadable ({variant}): {exc}")
+    return {"audit_seed": 17, "variants_passed": passed, "required_variant_count": len(TRAINABLE_VARIANTS)}, errors
+
+
 def validate_model_audit_check_evidence(root: Path, obj: Mapping[str, Any]) -> list[str]:
     errors: list[str] = []
     if obj.get("evidence_hash") != hash_json(without(obj, "evidence_hash")):
         errors.append("model audit check evidence self-hash mismatch")
+    bindings = _binding_map(obj)
     for i, binding in enumerate(obj.get("bindings", [])):
         _, errs = _check_bound_file(root, binding.get("path"), binding.get("sha256"), f"model audit binding[{i}]")
         errors += errs
-    if obj.get("status") == "PASS" and obj.get("recomputed_value") != obj.get("expected_value"):
-        errors.append("model audit check cannot PASS when recomputed value differs")
+
+    check_id = obj.get("check_id")
+    details = obj.get("details", {})
+    canonical: dict[str, Any] = {}
+    check_errors: list[str] = []
+    if check_id == "PARAMETER_TOLERANCE":
+        required = {
+            "docs/architecture/planner_module_inventory_v1.yaml",
+            "reports/model-evidence/parameter-inventory.json",
+        }
+        errors += _validate_exact_bindings(root, bindings, required, "PARAMETER_TOLERANCE")
+        canonical, check_errors = _parameter_tolerance_result(root)
+    elif check_id == "SAME_INFORMATION":
+        required = {
+            "docs/domain/intent_labeler_v1.py",
+            "docs/domain/intent_catalog_v1.yaml",
+            "docs/semantic/semantic_target_v1.yaml",
+        }
+        errors += _validate_exact_bindings(root, bindings, required, "SAME_INFORMATION")
+        canonical, check_errors = _same_information_result(details)
+    elif check_id == "RAW_ROLLOUT":
+        required = {
+            "docs/architecture/a1_token_grammar_v1.yaml",
+            "docs/training/planner_training_contract_v1.yaml",
+        }
+        errors += _validate_exact_bindings(root, bindings, required, "RAW_ROLLOUT")
+        canonical, check_errors = _raw_rollout_result(details)
+    elif check_id == "DORMANT_GRADIENT":
+        required = {"reports/model-evidence/parameter-inventory.json"} | {
+            f"reports/model-evidence/dormant-gradients/{variant}-seed-17.json"
+            for variant in TRAINABLE_VARIANTS
+        }
+        errors += _validate_exact_bindings(root, bindings, required, "DORMANT_GRADIENT")
+        canonical, check_errors = _dormant_gradient_result(root)
+    elif check_id == "MODEL_ARCHITECTURE_INITIALIZATION_AND_DORMANT_PARAMETERS":
+        canonical = {
+            "inventory_exact": True,
+            "initialization_exact": True,
+            "dormant_gradients_exact": True,
+        }
+    else:
+        errors.append(f"unknown model audit check_id: {check_id}")
+
+    errors += check_errors
+    if obj.get("recomputed_value") != canonical:
+        errors.append(f"{check_id} submitted recomputed_value differs from validator recomputation")
+    if obj.get("expected_value") != canonical:
+        errors.append(f"{check_id} expected_value differs from canonical requirement")
+    expected_status = "PASS" if not check_errors else "FAIL"
+    if obj.get("status") != expected_status:
+        errors.append(f"{check_id} status differs from validator result")
     return errors

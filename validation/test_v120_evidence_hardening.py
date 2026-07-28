@@ -1,0 +1,240 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+from copy import deepcopy
+
+import numpy as np
+
+from docs.domain.intent_labeler_v1 import label_intent
+from validation.hashing import hash_json
+from validation.planner_evidence_validator import (
+    TRAINABLE_VARIANTS,
+    canonical_initialized_array,
+    validate_checkpoint_manifest,
+    validate_model_audit_check_evidence,
+)
+from validation.test_v118_architecture_evidence import (
+    _prepare_contracts,
+    _sha,
+    _write_final_matrix,
+    _write_safetensors,
+)
+
+
+def _evidence(check_id: str, bindings: list[dict], details: dict, value: dict) -> dict:
+    obj = {
+        "schema_version": "work-planner-model-audit-evidence/1.0",
+        "run_id": "run-1",
+        "check_id": check_id,
+        "status": "PASS",
+        "recomputed_value": value,
+        "expected_value": value,
+        "bindings": bindings,
+        "details": details,
+    }
+    obj["evidence_hash"] = hash_json(obj)
+    return obj
+
+
+def _binding(root: Path, rel: str) -> dict:
+    return {"path": rel, "sha256": _sha(root / rel)}
+
+
+def test_parameter_tolerance_is_recomputed_from_inventory(tmp_path: Path) -> None:
+    inventory, _ = _prepare_contracts(tmp_path)
+    value = {
+        "inventory_sha256": inventory["inventory_hash"],
+        "common_superset_parameter_count": 1,
+        "active_parameter_counts": {variant: 1 for variant in TRAINABLE_VARIANTS},
+        "total_parameter_count_tolerance_fraction": 0.0,
+        "all_trainable_arms_share_exact_inventory": True,
+    }
+    obj = _evidence(
+        "PARAMETER_TOLERANCE",
+        [
+            _binding(tmp_path, "docs/architecture/planner_module_inventory_v1.yaml"),
+            _binding(tmp_path, "reports/model-evidence/parameter-inventory.json"),
+        ],
+        {},
+        value,
+    )
+    assert validate_model_audit_check_evidence(tmp_path, obj) == []
+    bad = deepcopy(obj)
+    bad["recomputed_value"]["common_superset_parameter_count"] = 2
+    bad["evidence_hash"] = hash_json({k: v for k, v in bad.items() if k != "evidence_hash"})
+    assert any("validator recomputation" in e for e in validate_model_audit_check_evidence(tmp_path, bad))
+
+
+def test_same_information_is_recomputed_with_normative_labeler(tmp_path: Path) -> None:
+    for rel in (
+        "docs/domain/intent_labeler_v1.py",
+        "docs/domain/intent_catalog_v1.yaml",
+        "docs/semantic/semantic_target_v1.yaml",
+    ):
+        dst = tmp_path / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src = Path(__file__).resolve().parents[1] / rel
+        dst.write_bytes(src.read_bytes())
+    inputs = [
+        {
+            "case_id": "goal-end",
+            "state": [["ON_TABLE", "@B0"], ["CLEAR", "@B0"], ["HAND_EMPTY"]],
+            "goal": [["ON_TABLE", "@B0"]],
+            "all_shortest_first_actions": [{"action": "END", "args": []}],
+            "selected_action": {"action": "END", "args": []},
+            "remaining_oracle_length": 0,
+        },
+        {
+            "case_id": "stack-goal",
+            "state": [["HOLDING", "@B0"], ["ON_TABLE", "@B1"], ["CLEAR", "@B1"]],
+            "goal": [["ON", "@B0", "@B1"]],
+            "all_shortest_first_actions": [{"action": "STACK", "args": ["@B0", "@B1"]}],
+            "selected_action": {"action": "STACK", "args": ["@B0", "@B1"]},
+            "remaining_oracle_length": 1,
+        },
+        {
+            "case_id": "temporary-put",
+            "state": [["HOLDING", "@B2"], ["ON_TABLE", "@B0"], ["CLEAR", "@B0"]],
+            "goal": [["ON", "@B0", "@B2"]],
+            "all_shortest_first_actions": [{"action": "PUT_DOWN", "args": ["@B2"]}],
+            "selected_action": {"action": "PUT_DOWN", "args": ["@B2"]},
+            "remaining_oracle_length": 3,
+        },
+    ]
+    for case in inputs:
+        out = label_intent(
+            case["state"], case["goal"], case["all_shortest_first_actions"],
+            case["selected_action"], case["remaining_oracle_length"],
+        )
+        case["a2c_semantic_signature"] = out["semantic_signature"]
+        case["a3_canonical_text"] = out["canonical_text"]
+    value = {"case_count": 3, "mismatch_count": 0}
+    obj = _evidence(
+        "SAME_INFORMATION",
+        [
+            _binding(tmp_path, "docs/domain/intent_labeler_v1.py"),
+            _binding(tmp_path, "docs/domain/intent_catalog_v1.yaml"),
+            _binding(tmp_path, "docs/semantic/semantic_target_v1.yaml"),
+        ],
+        {"cases": inputs},
+        value,
+    )
+    assert validate_model_audit_check_evidence(tmp_path, obj) == []
+    bad = deepcopy(obj)
+    bad["details"]["cases"][0]["a3_canonical_text"] = "fabricated"
+    bad["evidence_hash"] = hash_json({k: v for k, v in bad.items() if k != "evidence_hash"})
+    assert any("A3 canonical text mismatch" in e for e in validate_model_audit_check_evidence(tmp_path, bad))
+
+
+def test_raw_rollout_invariants_are_recomputed(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    for rel in (
+        "docs/architecture/a1_token_grammar_v1.yaml",
+        "docs/training/planner_training_contract_v1.yaml",
+    ):
+        dst = tmp_path / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes((root / rel).read_bytes())
+    cases = [
+        {
+            "case_id": f"raw-{i}", "planner_calls": 1, "execution_planner_calls": 0,
+            "domain_action_mask_applied": False, "grammar_constrained_decoding": False,
+            "replanning": False, "plan_positions_consumed": i + 1,
+            "raw_logits_sha256": "sha256:" + str(i + 1) * 64,
+            "frozen_plan_sha256": "sha256:" + str(i + 4) * 64,
+        }
+        for i in range(3)
+    ]
+    value = {"case_count": 3, "violation_count": 0}
+    obj = _evidence(
+        "RAW_ROLLOUT",
+        [
+            _binding(tmp_path, "docs/architecture/a1_token_grammar_v1.yaml"),
+            _binding(tmp_path, "docs/training/planner_training_contract_v1.yaml"),
+        ],
+        {"cases": cases},
+        value,
+    )
+    assert validate_model_audit_check_evidence(tmp_path, obj) == []
+    bad = deepcopy(obj)
+    bad["details"]["cases"][1]["replanning"] = True
+    bad["evidence_hash"] = hash_json({k: v for k, v in bad.items() if k != "evidence_hash"})
+    assert any("replanning mismatch" in e for e in validate_model_audit_check_evidence(tmp_path, bad))
+
+
+def test_dormant_gradient_check_loads_all_six_audits(tmp_path: Path) -> None:
+    inventory, _ = _prepare_contracts(tmp_path)
+    bindings = [_binding(tmp_path, "reports/model-evidence/parameter-inventory.json")]
+    for variant in TRAINABLE_VARIANTS:
+        audit = {
+            "schema_version": "work-planner-dormant-gradient-audit/1.0", "run_id": "run-1",
+            "variant": variant, "seed": 17, "parameter_inventory_sha256": inventory["inventory_hash"],
+            "batches_audited": 2,
+            "entries": [{
+                "name": "weight", "expected_activity": "ACTIVE", "gradient_state": "PRESENT_FINITE",
+                "nonfinite_count": 0, "materialized_zero_count": 0,
+            }],
+            "status": "PASS",
+        }
+        audit["audit_hash"] = hash_json(audit)
+        rel = f"reports/model-evidence/dormant-gradients/{variant}-seed-17.json"
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(audit))
+        bindings.append(_binding(tmp_path, rel))
+    value = {"audit_seed": 17, "variants_passed": list(TRAINABLE_VARIANTS), "required_variant_count": 6}
+    obj = _evidence("DORMANT_GRADIENT", bindings, {}, value)
+    assert validate_model_audit_check_evidence(tmp_path, obj) == []
+    (tmp_path / "reports/model-evidence/dormant-gradients/A3-seed-17.json").unlink()
+    assert validate_model_audit_check_evidence(tmp_path, obj)
+
+
+def test_checkpoint_values_reject_zero_or_unchanged_artifacts(tmp_path: Path) -> None:
+    _write_final_matrix(tmp_path)
+    cp_path = tmp_path / "reports/training/checkpoints/final-A3-seed-101.json"
+    cp = json.loads(cp_path.read_text())
+    model_path = tmp_path / cp["model_file_path"]
+    inv = json.loads((tmp_path / cp["parameter_inventory_manifest_path"]).read_text())
+    initial = canonical_initialized_array(inv["tensors"][0], 101)
+    metadata = {
+        "run_id": "run-1", "checkpoint_kind": "FINAL_EQUAL_DATA", "variant": "A3",
+        "seed": "101", "optimizer_step": "12000", "parameter_inventory_sha256": inv["inventory_hash"],
+    }
+    _write_safetensors(model_path, [{"name": "weight", "shape": [1]}], metadata, {"weight": initial})
+    cp["model_file_sha256"] = _sha(model_path)
+    cp["manifest_hash"] = hash_json({k: v for k, v in cp.items() if k != "manifest_hash"})
+    assert any("no changed active tensor" in e for e in validate_checkpoint_manifest(tmp_path, cp))
+
+    opt_path = tmp_path / cp["optimizer_state_path"]
+    _write_safetensors(
+        opt_path,
+        [{"name": "weight.exp_avg", "shape": [1]}, {"name": "weight.exp_avg_sq", "shape": [1]}],
+        {"optimizer_step": "12000", "variant": "A3", "optimizer": "AdamW", "beta1": "0.9", "beta2": "0.95", "eps": "1e-08", "weight_decay": "0.01"},
+    )
+    cp["optimizer_state_sha256"] = _sha(opt_path)
+    cp["manifest_hash"] = hash_json({k: v for k, v in cp.items() if k != "manifest_hash"})
+    assert any("all zero" in e for e in validate_checkpoint_manifest(tmp_path, cp))
+
+
+def test_p08_rejects_noncanonical_checkpoint_link(tmp_path: Path) -> None:
+    from validation.full_plan_lineage_validator import validate_lineage_index
+    from validation.test_v114_full_plan_lineage import _planner_confirmatory_matrix_rows, _selection_fields
+
+    rows = _planner_confirmatory_matrix_rows(tmp_path)
+    index = {
+        "schema_version": "work-planner-lineage/1.0", "run_id": "run-1", "stage": "PLANNER",
+        "compute_profile": None, "compute_profile_sha256": None,
+        "records": rows, "index_hash": "sha256:" + "1" * 64,
+        **_selection_fields(tmp_path, "PLANNER", ["bw-00000001"]),
+    }
+    target = next(r for r in index["records"] if r["arm"] == "PLANNER_A3_RAW" and r["planner_seed"] == 101)
+    canonical = tmp_path / target["checkpoint_manifest"]
+    link = tmp_path / "reports/training/checkpoints/link-fabricated.json"
+    link.write_bytes(canonical.read_bytes())
+    target["checkpoint_manifest"] = link.relative_to(tmp_path).as_posix()
+    target["checkpoint_manifest_sha256"] = _sha(link)
+    index["index_hash"] = hash_json({k: v for k, v in index.items() if k != "index_hash"})
+    errors = validate_lineage_index(tmp_path, index, expected_stage="PLANNER")
+    assert any("must use canonical P07 artifact" in error for error in errors)

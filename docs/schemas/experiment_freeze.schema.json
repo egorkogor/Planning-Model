@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/experiment_freeze.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.20/experiment_freeze.schema.json",
   "title": "Confirmatory experiment freeze manifest v1.5",
   "type": "object",
   "additionalProperties": false,

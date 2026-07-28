@@ -66,7 +66,7 @@ def core_check(kind: str, phase: str, check_id: str, report: dict) -> list[str]:
         if not path.is_file(): errors.append("scope artifact missing")
         else:
             text = path.read_text(encoding="utf-8")
-            if "work-planner/1.19" not in text or "runbook 2.18" not in text: errors.append("scope version markers missing")
+            if "work-planner/1.20" not in text or "runbook 2.20" not in text: errors.append("scope version markers missing")
     elif kind == "confirmatory_absent":
         forbidden = []
         for base in (ROOT / "results", ROOT / "sealed"):
@@ -121,11 +121,12 @@ def core_check(kind: str, phase: str, check_id: str, report: dict) -> list[str]:
         if static.returncode:
             errors.append(f"bundle static validation failed: {static.stderr.strip() or static.stdout.strip()}")
         tests = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "validation", "--basetemp=.phase-p02-pytest"],
+            [sys.executable, "validation/run_test_suite.py"],
             cwd=ROOT,
             capture_output=True,
             text=True,
             env=env,
+            timeout=1800,
         )
         if tests.returncode:
             errors.append(f"bundle pytest failed: {tests.stderr.strip() or tests.stdout.strip()}")

@@ -25,6 +25,7 @@
 3. collect signed raw result manifest
 4. validate no source mutation
 5. verify lineage covers the exact selected-task set, primary and FLOPs-sensitivity seed/arm matrix, and every nested artifact has the same run_id, PLANNER stage and planner_seed
+6. bind every Planner result to the canonical P07 training report and canonical checkpoint manifest path; arbitrary checkpoint link JSON is forbidden
 
 ## Обязательные результаты фазы
 - `results/planner-confirmatory/`

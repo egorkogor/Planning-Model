@@ -1,4 +1,4 @@
-schema_version: work-planner/1.19
+schema_version: work-planner/1.20
 contract_id: planner-scientific-design/1.0
 purpose: Outcome-relevant architecture comparison fixed by Scientific lock; executable wiring remains in planner_architecture_v1.yaml
   until Implementation lock.

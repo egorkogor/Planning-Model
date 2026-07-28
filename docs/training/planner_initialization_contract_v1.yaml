@@ -1,4 +1,4 @@
-schema_version: work-planner/1.19
+schema_version: work-planner/1.20
 contract_id: planner-initialization/1.0
 purpose: Deterministic, arm-comparable initialization independent of module construction
   order.
@@ -9,22 +9,31 @@ seed_domain:
   payload: UTF8("planner-init-v1\0") || uint64_be(run_seed) || UTF8("\0") || UTF8(canonical_parameter_name)
   digest: SHA-256
   tensor_seed: unsigned big-endian integer from digest bytes 0..7, masked to 63 bits
-  generator: torch.Generator(device="cpu").manual_seed(tensor_seed)
-  initialization_device_and_dtype: CPU float32 before any device transfer or mixed-precision
-    cast
+  generator: numpy.random.Generator(numpy.random.PCG64(tensor_seed)); NumPy version
+    is pinned by requirements.lock
+  initialization_device_and_dtype: CPU little-endian float32 arrays copied into PyTorch
+    tensors before any device transfer or mixed-precision cast
 initializers:
   linear_and_bilinear_weight:
     distribution: xavier_uniform
     gain: 1.0
+    algorithm: PCG64 uniform in [-sqrt(6/(fan_in+fan_out)), +sqrt(6/(fan_in+fan_out))],
+      generated in float64 then cast once to little-endian float32
   linear_and_bilinear_bias: constant_zero
   embedding_weight:
     distribution: normal
     mean: 0.0
     std: 0.02
+    algorithm: PCG64 normal generated in float64 then cast once to little-endian float32
   padding_embedding_row: constant_zero_after_initialization
   layer_norm_weight: constant_one
   layer_norm_bias: constant_zero
   unrecognized_trainable_parameter_type: INVALID_IMPLEMENTATION
+  standalone_parameter:
+    distribution: normal
+    mean: 0.0
+    std: 0.02
+    algorithm: same canonical PCG64 normal algorithm as embedding_weight
 arm_comparability:
   common_superset_initialized_once_per_seed: true
   same_initial_state_dict_copied_to_A1_A2_A2b_A2c_A3_A3r: true
@@ -47,3 +56,7 @@ evidence:
   - reports/model-evidence/parameter-inventory.json
   - reports/model-evidence/initialization/seed-17.json
   - reports/model-evidence/dormant-gradients/{A1,A2,A2b,A2c,A3,A3r}-seed-17.json
+  initialization_tensor_values_recomputed_by_validator: true
+  trained_active_tensor_must_differ_from_initialization: true
+  trained_dormant_tensors_must_equal_initialization: true
+  optimizer_active_state_must_be_finite_and_nonzero: true

@@ -1,4 +1,4 @@
-schema_version: work-planner/1.19
+schema_version: work-planner/1.20
 control_id: intent-control/1.7
 intent_block_attended_tokens: 32
 compatibility:
@@ -29,7 +29,7 @@ pre_outcome_certification:
   coverage_manifest_required: true
   manifest_frozen_before_confirmatory: true
   post_outcome_exclusion_forbidden: true
-  stage1b_reachable_state_enumeration: forbidden and not part of v1.19 selection or
+  stage1b_reachable_state_enumeration: forbidden and not part of v1.20 selection or
     control semantics
 mapping_hash_payload:
 - state_hash

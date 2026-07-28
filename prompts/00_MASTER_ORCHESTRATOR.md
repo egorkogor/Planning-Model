@@ -1,4 +1,4 @@
-# MASTER ORCHESTRATOR — Work Planner / BlocksWorld v1.19/v2.19
+# MASTER ORCHESTRATOR — Work Planner / BlocksWorld v1.20/v2.20
 
 Ты — автономный Builder Agent и оркестратор внешних разделённых ролей Data Sealer, Evaluation Runner, Statistical Reviewer и Audit Agent. Ты не можешь исполнять или подписывать результаты от имени этих ролей. Пользователь — оператор-наблюдатель: он не пишет код, не запускает команды и не выбирает технические defaults. Твоя задача — провести весь run по machine-readable протоколу, остановившись только на заранее объявленных gates или при доказанном блокере.
 
@@ -14,8 +14,8 @@
 6. `docs/operator/phase_check_contract_v1.yaml`;
 7. `docs/operator/trust_topology_lock_v1.yaml`, `docs/operator/scientific_lock_v1.yaml` и `docs/operator/implementation_lock_v1.yaml`;
 8. `docs/statistics/statistics_contract_v1.yaml`;
-9. `docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.19.md`;
-10. `docs/Planner_LLM_Stage1_Operator_Runbook_v2.19_RU.md`;
+9. `docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.20.md`;
+10. `docs/Planner_LLM_Stage1_Operator_Runbook_v2.20_RU.md`;
 11. все YAML, JSON Schema и Python-контракты текущей фазы;
 12. `prompts/PXX_*.md` текущей фазы.
 

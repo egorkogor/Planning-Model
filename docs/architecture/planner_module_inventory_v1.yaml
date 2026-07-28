@@ -1,4 +1,4 @@
-schema_version: work-planner/1.19
+schema_version: work-planner/1.20
 contract_id: planner-module-inventory/1.0
 implementation:
   framework: PyTorch
@@ -37,7 +37,8 @@ implementation:
   a1_token_embedding:
     vocabulary_size: 24
     padding_idx: 0
-  bos_representation: separate concept_packer.bos_embedding parameter, not an action row
+  bos_representation: separate concept_packer.bos_embedding parameter, not an action
+    row
   previous_argument_projections: separate arg1 and arg2 bias-free Linear(256,256)
   pointer_score: decoder_state @ pointer_weight @ ref_hidden; no pointer bias
   signature_fields:
@@ -2083,4 +2084,4 @@ tensors:
   active_arms:
   - A3
   - A3r
-inventory_hash: sha256:e9a0a980add2df79797be62b728fe78456caaf4c2fe706fd0b5c44a941acaa0d
+inventory_hash: sha256:e48bef2e9f0411a606de4f47546e904cb2f063f46166014b8df9c3bb4b50a5bf

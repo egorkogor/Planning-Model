@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.19/sample_size_report.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.20/sample_size_report.schema.json",
   "title": "Estimator-matched sample-size report v1.5",
   "type": "object",
   "additionalProperties": false,
