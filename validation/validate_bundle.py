@@ -21,7 +21,7 @@ def main() -> None:
     for path in sorted(SCHEMA_DIR.glob("*.json")):
         obj = json.loads(path.read_text(encoding="utf-8"))
         Draft202012Validator.check_schema(obj)
-        assert obj["$id"].startswith("https://ml-brain.local/schemas/work-planner/v1.16/")
+        assert obj["$id"].startswith("https://ml-brain.local/schemas/work-planner/v1.17/")
         schemas.append(path)
 
     yamls = []
@@ -31,8 +31,8 @@ def main() -> None:
         yamls.append(path)
 
     required = [
-        ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.16.md",
-        ROOT / "docs/Planner_LLM_Stage1_Operator_Runbook_v2.16_RU.md",
+        ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.17.md",
+        ROOT / "docs/Planner_LLM_Stage1_Operator_Runbook_v2.17_RU.md",
         ROOT / "docs/operator/AUTONOMOUS_EXECUTION_PLAYBOOK_RU.md",
         ROOT / "docs/operator/phase_state_machine_v1.yaml",
         ROOT / "docs/operator/contract_lock_v1.yaml",

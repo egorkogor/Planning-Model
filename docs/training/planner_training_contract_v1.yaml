@@ -1,4 +1,4 @@
-schema_version: work-planner/1.16
+schema_version: work-planner/1.17
 contract_id: planner-training/1.1
 precision:
   parameters: float32
@@ -35,8 +35,7 @@ training:
     same_gradient_accumulation_steps: 1
     checkpoint_every_optimizer_steps: 1000
     same_parameter_inventory_hash: true
-    unused_module_gradient_policy: grad must remain None; any nonzero or zero-materialized
-      gradient is INVALID_RUN
+    unused_module_gradient_policy: grad must remain None; any nonzero or zero-materialized gradient is INVALID_RUN
     final_checkpoint_optimizer_step_exact: 12000
     intermediate_checkpoint_selection: forbidden
     selected_development_config_shared_across_A1_A2_A2b_A2c_A3_A3r: true
@@ -50,7 +49,6 @@ losses:
     action_ce: 1.0
     arg1_pointer_ce: 1.0
     arg2_pointer_ce: 1.0
-    end_ce: 1.0
   A2b:
     intent_ce: 0.5
   A2c:
@@ -71,6 +69,53 @@ losses:
     same_intent_different_signature_as_positive: forbidden
     target_source: semantic_bank/random-codebook/manifest.json
     codebook_frozen_before_training: true
+  masking:
+    action_ce: all non-padding typed-step positions, including terminal END
+    arg1_pointer_ce: PICK_UP, PUT_DOWN, UNSTACK, STACK positions only
+    arg2_pointer_ce: UNSTACK and STACK positions only
+    semantic_auxiliary_losses: non-END positions only and only for the active arm-specific semantic head
+    A1_token_grammar_ce: all non-padding grammar-token positions, including ACTION_END and PLAN_END
+  reduction:
+    per_head: mean over valid targets for that head
+    total: weighted sum of active per-head means
+    head_with_zero_valid_targets: exact zero loss with no gradient materialized for that head
+    padding: excluded from every numerator and denominator
+  contrastive_edge_case:
+    eligible_anchor: anchor has at least one other batch item with the exact full semantic signature
+    anchor_without_positive: excluded from contrastive loss
+    batch_without_eligible_anchors: contrastive loss is exact zero with no gradient
+  A1:
+    token_grammar_ce: 1.0
+  active_heads_by_trainable_arm:
+    A1:
+    - token_grammar_ce
+    A2:
+    - action_ce
+    - arg1_pointer_ce
+    - arg2_pointer_ce
+    A2b:
+    - action_ce
+    - arg1_pointer_ce
+    - arg2_pointer_ce
+    - intent_ce
+    A2c:
+    - action_ce
+    - arg1_pointer_ce
+    - arg2_pointer_ce
+    - signature_field_ce_total
+    A3:
+    - action_ce
+    - arg1_pointer_ce
+    - arg2_pointer_ce
+    - cosine
+    - supervised_multi_positive_contrastive
+    A3r:
+    - action_ce
+    - arg1_pointer_ce
+    - arg2_pointer_ce
+    - cosine
+    - supervised_multi_positive_contrastive
+  inactive_head_policy: not evaluated, absent from total loss, and parameters retain grad None
 teacher_forcing:
   development_and_final_training: full_ground_truth_previous_step
   scheduled_sampling: forbidden
@@ -106,9 +151,8 @@ final_seeds:
 - 505
 development_seed: 17
 ablation_training_policy:
-  A4: no_training; exact A3 checkpoint; execute exact A3 latent projection and normalization,
-    then replace projected 256-vector with zeros before ConceptPacker sum; same FLOPs
-    path
+  A4: no_training; exact A3 checkpoint; execute exact A3 latent projection and normalization, then replace projected 256-vector
+    with zeros before ConceptPacker sum; same FLOPs path
   A5: no_training; exact A3 checkpoint; use frozen planner latent ablation manifest
   weights_sha256_must_equal_A3: true
   only_allowed_difference: semantic_feedback_intervention_manifest

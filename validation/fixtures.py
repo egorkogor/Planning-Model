@@ -15,7 +15,7 @@ from .hashing import (
     state_hash,
 )
 
-V = "work-planner/1.16"
+V = "work-planner/1.17"
 H1 = "sha256:" + "1" * 64
 H2 = "sha256:" + "2" * 64
 H3 = "sha256:" + "3" * 64
@@ -210,7 +210,7 @@ def attempt(arm: str = "I1_ORACLE_CURRENT_RAW", stage: str = "STAGE1A_INTERFACE"
         "P_FULL_PLAN_REPLAY_RAW": "PLAN_REPLAY",
     }[arm]
     prompt_text = "rendered prompt"
-    raw_text = '{"schema_version":"work-planner/1.16","action":"PICK_UP","args":["block_0"]}'
+    raw_text = '{"schema_version":"work-planner/1.17","action":"PICK_UP","args":["block_0"]}'
     prompt_total = 128 if is_interface else 180
     attended = prompt_total
     candidate = typed("PICK_UP", ("@B0",))
@@ -465,6 +465,7 @@ def episode_from_attempt(a: dict[str, Any], *, goal_success: bool | None = None,
         "canonical_task_hash": a["canonical_task_hash"],
         "split": a["split"],
         "arm": a["arm"],
+        "planner_seed": a.get("planner_seed"),
         "rollout_mode": a["rollout_mode"],
         "trajectory_policy": a["trajectory_policy"],
         "experiment_freeze_hash": a["experiment_freeze_hash"],

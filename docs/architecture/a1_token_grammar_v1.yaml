@@ -1,10 +1,9 @@
-schema_version: work-planner/1.16
+schema_version: work-planner/1.17
 grammar_id: a1-token-grammar/1.6
 max_non_END_actions: 16
 max_planner_steps_including_END: 17
 max_output_positions: 85
-position_formula: BOS(1) + sixteen worst-case two-arg actions(16*5) + END step(3)
-  + PLAN_END(1) = 85
+position_formula: BOS(1) + sixteen worst-case two-arg actions(16*5) + END step(3) + PLAN_END(1) = 85
 vocabulary:
   PAD: 0
   BOS: 1
@@ -74,14 +73,18 @@ architecture:
   d_model: 256
   ffn: 1024
   causal: true
+  common_decoder_max_positions: 85
+  A1_active_positions: 85
+  step_level_active_positions: 17
+  shared_position_embedding_inventory: true
+  token_grammar_head: linear_256_to_24
 training:
   teacher_forcing: 1.0
   scheduled_sampling: false
 compute_accounting:
   profiler_required: true
   parameter_tolerance_fraction: 0.0
-  primary_data_exposure: same ordered training examples, epochs and optimizer updates;
-    padding loss excluded
+  primary_data_exposure: same ordered training examples, epochs and optimizer updates; padding loss excluded
   same_position_family_flops_tolerance_fraction: 0.02
   same_position_family:
   - A2
@@ -96,5 +99,5 @@ compute_accounting:
   - causal_positions
   - wall_clock
   - peak_memory
-  parameter_matching_rule: exact common-superset inventory hash; tolerance applies
-    only to measured FLOPs sensitivity, never parameter count
+  parameter_matching_rule: exact common-superset inventory hash; tolerance applies only to measured FLOPs sensitivity, never
+    parameter count

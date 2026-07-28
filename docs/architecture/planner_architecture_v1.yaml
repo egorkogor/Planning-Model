@@ -1,4 +1,4 @@
-schema_version: work-planner/1.16
+schema_version: work-planner/1.17
 contract_id: planner-architecture/1.0
 task_encoder:
   layers: 4
@@ -20,8 +20,15 @@ planner_decoder:
   normalization: pre_layer_norm
   causal_mask: true
   cross_attention_to_task_encoder: true
-  max_step_positions: 17
+  max_decoder_positions: 85
+  variant_position_limits:
+    A1_token_grammar: 85
+    A2_A2b_A2c_A3_A3r_A4_A5_step_level: 17
+  input_modes:
+    A1_token_grammar: token_embedding_24x256_plus_shared_learned_absolute_position
+    step_level: ConceptPacker_256_plus_shared_learned_absolute_position
 heads:
+  token_grammar: linear_256_to_24
   action: linear_256_to_5
   arg1_pointer: bilinear_decoder_to_ref_hidden
   arg2_pointer: bilinear_decoder_to_ref_hidden
@@ -88,3 +95,6 @@ parameter_matching:
   dormant_module_output_may_enter_backbone_or_logits: false
   flops_difference_handling: measured and addressed by locked FLOPs-matched sensitivity run
   checkpoint_inventory_hash_must_match_across_A1_A2_A2b_A2c_A3_A3r: true
+  shared_decoder_position_inventory: 85 learned positions in every trainable arm; step-level arms activate positions 0..16
+    only
+  A1_token_head_inventory: 24 logits including reserved token IDs; dormant in step-level arms with grad None

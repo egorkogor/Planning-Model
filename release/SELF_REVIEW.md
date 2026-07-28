@@ -1,4 +1,4 @@
-# Release self-review v1.16 / v2.16
+# Release self-review v1.17 / v2.17
 
 ## Scope
 
@@ -41,7 +41,7 @@ Preflight пересчитывает 24 development, 30 primary-final и 10 A3/A
 - После G06 Implementation lock запрещает позднее добавление outcome-relevant кода.
 
 
-## Минимальные launch-инварианты v1.16
+## Минимальные launch-инварианты v1.17
 
 - selected task list фиксируется до outcomes и подписанно связывается через SealerManifest;
 - lineage exact-cover запрещает удаление целых задач после исполнения;
@@ -54,9 +54,17 @@ Preflight пересчитывает 24 development, 30 primary-final и 10 A3/A
 
 Release является исполняемым протоколом, но не результатом эксперимента. Организационная независимость Sealer, Evaluator, reviewers и оператора должна обеспечиваться реальными отдельными principals/environments. Корректность будущей реализации Planner будет доказана только P03–P09 checks и sealed runs.
 
-## Launch-fixes v1.16
+## Launch-fixes v1.17
 
 - exact Planner task × five seeds × all frozen arms matrix;
 - duplicate/missing Planner outcomes are fail-closed;
 - identical Stage 1A snapshot sets across comparisons;
 - canonical Stage 1B replay metric name.
+
+## Architecture freeze fixes v1.17
+
+- A1 and step-level variants share one 85-position decoder parameter inventory; only their active position range and input/head mask differ.
+- Training loss masks, reductions, active heads and no-positive contrastive batches are fully specified.
+- Planner seed is persisted and checked in plan manifests and episode logs even for generation failure.
+- Training/development cannot contain n=7–8 states.
+- The only compute-matched retraining sensitivity is measured train FLOPs for A3 versus A2c; inference FLOPs are guardrails.

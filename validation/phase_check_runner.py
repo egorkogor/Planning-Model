@@ -65,7 +65,7 @@ def core_check(kind: str, phase: str, check_id: str, report: dict) -> list[str]:
         if not path.is_file(): errors.append("scope artifact missing")
         else:
             text = path.read_text(encoding="utf-8")
-            if "work-planner/1.16" not in text or "runbook 2.16" not in text: errors.append("scope version markers missing")
+            if "work-planner/1.17" not in text or "runbook 2.17" not in text: errors.append("scope version markers missing")
     elif kind == "confirmatory_absent":
         forbidden = []
         for base in (ROOT / "results", ROOT / "sealed"):

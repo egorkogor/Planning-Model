@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.16/episode_log.schema.json",
-  "title": "EpisodeLog v1.16",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.17/episode_log.schema.json",
+  "title": "EpisodeLog v1.17",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -15,6 +15,7 @@
     "canonical_task_hash",
     "split",
     "arm",
+    "planner_seed",
     "rollout_mode",
     "goal_success",
     "progress_success",
@@ -98,6 +99,21 @@
     },
     "arm": {
       "$ref": "common.schema.json#/$defs/arm"
+    },
+    "planner_seed": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "enum": [
+        101,
+        202,
+        303,
+        404,
+        505,
+        null
+      ],
+      "description": "Final Planner checkpoint seed. Required even when plan generation fails; null only when no Planner checkpoint applies."
     },
     "rollout_mode": {
       "$ref": "common.schema.json#/$defs/rollout_mode"
@@ -333,6 +349,32 @@
         "properties": {
           "retries_total": {
             "const": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "PLANNER_ONLY"
+          }
+        },
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "properties": {
+          "planner_seed": {
+            "type": "integer",
+            "enum": [
+              101,
+              202,
+              303,
+              404,
+              505
+            ]
           }
         }
       }

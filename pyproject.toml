@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "planner-llm-mvp-stage1"
-version = "0.7.0"
+version = "0.8.0"
 description = "Autonomous Work Planner/BlocksWorld experiment playbook and harness"
 readme = "README.md"
 requires-python = ">=3.11"

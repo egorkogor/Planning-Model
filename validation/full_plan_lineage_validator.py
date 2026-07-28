@@ -1,4 +1,4 @@
-"""Fail-closed validation of frozen full-plan execution lineage (v1.16).
+"""Fail-closed validation of frozen full-plan execution lineage (v1.17).
 
 This module verifies relations that local JSON Schemas cannot express:
 one plan-generation call before execution, immutable WorkPlan reuse, sequential
@@ -614,6 +614,10 @@ def validate_lineage_index(root: Path, index: Mapping[str, Any], *, expected_sta
             errors.append(_err(f"records[{i}].episode", "run_id/stage differs from lineage index"))
         row_seed = row.get("planner_seed")
         if expected_stage == "PLANNER":
+            if manifest is not None and manifest.get("planner_seed") != row_seed:
+                errors.append(_err(f"records[{i}].planner_seed", "differs from EpisodePlanManifest planner_seed"))
+            if episode.get("planner_seed") != row_seed:
+                errors.append(_err(f"records[{i}].planner_seed", "differs from EpisodeLog planner_seed"))
             if plan is not None and plan.get("planner_seed") != row_seed:
                 errors.append(_err(f"records[{i}].planner_seed", "differs from WorkPlan planner_seed"))
             for j, attempt in enumerate(attempts):

@@ -1,6 +1,6 @@
 # Planner → LLM MVP Stage 1
 
-Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.16 и Stage 1 runbook v2.16.
+Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.17 и Stage 1 runbook v2.17.
 
 ## Запуск агентом
 
@@ -30,14 +30,12 @@ Builder LLM исполняет плейбук и пишет реализацию
 
 Это BlocksWorld Work Planner experiment, не основная Cognitive Planner architecture ML Brain.
 
-## Изменения v1.16/v2.16
+## Изменения v1.17/v2.17
 
-- confirmatory task IDs фиксируются до outcomes в `SelectedTaskManifest`;
-- signed SealerManifest связывает точный task set, его SHA-256 и task count;
-- full-plan lineage обязан покрывать весь selected task set без удаления неудачных задач;
-- Stage 1B требует точное произведение selected tasks × семь arms;
-- `run_id` и stage связаны между EpisodePlanManifest, WorkPlan, EpisodeLog и AttemptLog;
-- evaluator `task_count` пересчитывается по lineage;
-- все statistical comparisons используют один signed task set;
-- sample-size components привязаны к заранее заданным comparison IDs;
-- Planner replay metric унифицирована как `P_REPLAY_GOAL_SUCCESS`.
+- единый 85-position decoder inventory: A1 использует все позиции и grammar head, step-level arms — первые 17 позиций через ConceptPacker;
+- зафиксирована точная active-loss matrix и action-conditional masking без двойного END-loss;
+- contrastive loss имеет детерминированное поведение при отсутствии positive pair в batch;
+- `planner_seed` связан с EpisodePlanManifest и EpisodeLog даже при FAILED plan generation;
+- n=7–8 запрещены в training/development и остаются только sealed size-OOD evaluation;
+- sensitivity run унифицирован как train-FLOPs-matched A3↔A2c; inference FLOPs — только guardrail;
+- сохранены launch-инварианты v1.16: exact task/seed/arm matrix, одинаковые Stage 1A snapshots и единое имя replay-метрики.

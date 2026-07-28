@@ -1,4 +1,4 @@
-schema_version: work-planner/1.16
+schema_version: work-planner/1.17
 contract_id: semantic-resolver/1.0
 representation:
   metric: cosine

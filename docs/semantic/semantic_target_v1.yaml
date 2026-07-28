@@ -1,4 +1,4 @@
-schema_version: work-planner/1.16
+schema_version: work-planner/1.17
 target_id: semantic-target/1.6
 output_dimension: 384
 encoder:

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.16/selected_task_manifest.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.17/selected_task_manifest.schema.json",
   "title": "Selected task manifest v1.0",
   "type": "object",
   "additionalProperties": false,

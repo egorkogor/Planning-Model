@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.16/model_training_report.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.17/model_training_report.schema.json",
   "title": "Model training report",
   "type": "object",
   "additionalProperties": false,

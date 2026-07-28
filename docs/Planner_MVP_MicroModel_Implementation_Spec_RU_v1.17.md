@@ -3,7 +3,7 @@
 **Версия:** 1.16
 **Дата:** 27 июля 2026
 **Статус:** исполняемая спецификация архивного эксперимента **Work Planner / BlocksWorld**.
-**Stage 1:** `Planner_LLM_Stage1_Operator_Runbook_v2.16_RU.md`.
+**Stage 1:** `Planner_LLM_Stage1_Operator_Runbook_v2.17_RU.md`.
 **Автономное исполнение:** `docs/operator/AUTONOMOUS_EXECUTION_PLAYBOOK_RU.md`.
 
 Этот эксперимент не является основной архитектурой Cognitive Planner проекта ML Brain. Он проверяет узкий тезис: может ли одна causal position представлять один исполнимый шаг, а отдельное semantic representation — улучшать следующие шаги и работу frozen LLM.
@@ -12,7 +12,7 @@
 
 ---
 
-# 0. Что исправлено к v1.16
+# 0. Что исправлено к v1.17
 
 1. Stage 1B переведён с reactive next-intent на один полный frozen plan, созданный до исполнения.
 2. Добавлен `EpisodePlanManifest` и машинная цепочка `manifest → WorkPlan → positions → EpisodeLog → AnalysisInput`.
@@ -78,7 +78,7 @@
 6. эта спецификация;
 7. phase prompt.
 
-Runtime version: `work-planner/1.16`.
+Runtime version: `work-planner/1.17`.
 
 Ключевые контракты:
 
@@ -140,8 +140,8 @@ Assignment выполняется по `base_task_id` до expansion. Outcome-ba
 
 - oracle suffix examples, включая terminal END;
 - exact local breadth-first off-policy expansion depth 2 для n≤5;
-- для n=6 — все one-step deviations и 16 deterministic walks; для n=7,8 — 8 walks;
-- deterministic deviations/walks для n=7,8;
+- для n=6 — все one-step deviations и 16 deterministic walks;
+- n=7,8 полностью запрещены в training/development expansion и появляются только в sealed size-OOD evaluation partitions;
 - original base-task split сохраняется;
 - leakage по base ID и ref-invariant canonical hash =0.
 
@@ -180,8 +180,11 @@ Token layout и golden fixtures задаёт `task_encoding_v1.yaml`.
 ## 6.2. Planner Decoder
 
 - 4 causal layers, cross-attention к Task Encoder;
-- 17 positions;
-- heads: action, arg1, arg2, A2b intent, A2c signature fields, A3 384-d latent.
+- единый learned positional inventory на 85 decoder positions во всех trainable arms;
+- A1 активирует positions 0..84 и `token_grammar_head: Linear(256,24)`;
+- step-level arms A2/A2b/A2c/A3/A3r активируют только positions 0..16 через ConceptPacker; A4/A5 используют тот же A3 decoder path;
+- dormant positions/heads не входят в outputs и сохраняют `grad=None`;
+- heads: token grammar, action, arg1, arg2, A2b intent, A2c signature fields, A3/A3r 384-d latent.
 
 ## 6.3. ConceptPacker
 
@@ -210,7 +213,7 @@ Training использует ground-truth previous semantic target; autoregress
 
 ## 6.4. A1
 
-Lossless grammar, max 85 positions. Raw parser не ремонтирует syntax. Все trainable arms используют один и тот же common-superset parameter inventory с идентичным inventory hash и нулевой допустимой разницей по числу параметров. Dormant-модули не входят в вычисление outputs и должны иметь `grad=None`; no-op projections как способ скрытого parameter matching запрещены.
+Lossless grammar, max 85 positions. A1 использует общий 85-position decoder backbone, собственный token embedding `24×256` и `Linear(256,24)` grammar head. Step-level arms используют тот же positional parameter inventory, но только первые 17 positions. Grammar tokens не проходят через ConceptPacker; typed-step arms не используют grammar-token embedding/head. Raw parser не ремонтирует syntax. Все trainable arms используют один и тот же common-superset parameter inventory с идентичным inventory hash и нулевой допустимой разницей по числу параметров. Dormant-модули не входят в вычисление outputs и должны иметь `grad=None`; no-op projections как способ скрытого parameter matching запрещены.
 
 ---
 
@@ -235,7 +238,7 @@ Selection composite:
 
 Development floor: valid action ≥0.90, goal success ≥0.50. Stage 1B eligibility оценивается отдельно и строже: A3 HORIZON goal success ≥0.65 with lower 95% CI ≥0.60; A3 SIZE_OOD goal success ≥0.60 with lower CI ≥0.55; valid action ≥0.90; Planner-confirmatory A3 full-plan replay ≥0.70. Tie-break фиксирован. После выбора final config grid не открывается повторно.
 
-Loss weights и contrastive temperature заданы `planner_training_contract_v1.yaml`.
+Loss weights и contrastive temperature заданы `planner_training_contract_v1.yaml`. `END` входит только в `action_ce`; отдельного `end_ce` нет. `arg1` обучается на PICK_UP/PUT_DOWN/UNSTACK/STACK, `arg2` — только на UNSTACK/STACK, semantic losses — только на non-END positions. Каждый head усредняется по собственным valid targets, после чего активные head means суммируются с весами. Contrastive anchor без другого exact-signature positive в batch исключается; если eligible anchors нет, contrastive loss равен нулю без gradient. Active loss matrix фиксирована: A1 использует только grammar CE; A2 — action/arg1/arg2; A2b добавляет intent; A2c добавляет signature fields; A3/A3r добавляют cosine и supervised contrastive. Все неактивные heads исключены из total loss и сохраняют `grad=None`.
 
 ---
 
@@ -261,7 +264,7 @@ Planner decision:
 - hierarchical bootstrap: seed, затем base task;
 - 10 000 resamples;
 - минимум 3/5 seeds с одинаковым направлением;
-- equal-data primary и FLOPs-matched sensitivity должны согласоваться.
+- equal-data primary и train-FLOPs-matched A3↔A2c sensitivity должны иметь одинаковое направление эффекта; inference FLOPs публикуются только как guardrail и не меняют training schedule.
 
 ---
 
@@ -273,7 +276,7 @@ P00–P20 заданы registry и explicit state machine. Важные прав
 - переход берётся только по declared outcome;
 - scientific STOP помечает downstream фазы `SKIPPED_BY_CONTRACT` и идёт в обязательный audit;
 - Scientific lock проверяется до/после каждой фазы с P02; Implementation lock — с P06;
-- любое изменение Scientific-lock path блокирует run и требует v1.16/new run;
+- любое изменение Scientific-lock path блокирует run и требует v1.17/new run;
 - Builder не видит confirmatory plaintext;
 - Evaluation Runner запускает confirmatory на отдельной среде;
 - Audit Agent обязательно воспроизводит run на clean checkout.
@@ -357,9 +360,9 @@ Preflight разделён на два уровня. P03 выполняет cont
 
 `P_FULL_PLAN_REPLAY_RAW` определяется только `docs/controls/p_replay_contract_v1.yaml`. Planner вызывается один раз до исполнения source arm; replay повторно Planner не вызывает и последовательно исполняет exact frozen TypedActions. Контекст P08 использует precomputed Planner-confirmatory A3 WorkPlan, контекст P17 — precomputed Stage 1B E1 WorkPlan. Hash source manifest, WorkPlan и каждой позиции обязателен; подмена контекстов запрещена.
 
-## Launch-инварианты v1.16
+## Launch-инварианты v1.17
 
 - Planner confirmatory output is an exact Cartesian matrix: every selected task × seeds `101,202,303,404,505` × arms `A1,A2,A2b,A2c,A3,A3r,A4,A5,P_FULL_PLAN_REPLAY_RAW`.
-- `planner_seed` is explicit in lineage and must equal WorkPlan/AttemptLog seed; duplicates and omissions are `INVALID_RUN`.
+- `planner_seed` is explicit in lineage, EpisodePlanManifest, EpisodeLog, WorkPlan and AttemptLog and must match even for FAILED plan generation; duplicates and omissions are `INVALID_RUN`.
 - Stage 1A uses the same snapshot `pair_id` set per task in all comparisons.
 - Stage 1B replay diagnostic metric is `STAGE1B_E1_FULL_PLAN_REPLAY_GOAL_SUCCESS`.

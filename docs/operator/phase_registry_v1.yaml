@@ -1,4 +1,4 @@
-schema_version: work-planner/1.16
+schema_version: work-planner/1.17
 registry_id: phase-registry/1.16
 phases:
 - phase_id: P00
@@ -21,7 +21,7 @@ phases:
     description: bootstrap release manifest VERIFIED
     verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_01 --report reports/phase-P00.json
   - check_id: P00_pre_02
-    description: scope references work-planner/1.16 and runbook 2.16
+    description: scope references work-planner/1.17 and runbook 2.17
     verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_02 --report reports/phase-P00.json
   - check_id: P00_pre_03
     description: confirmatory outcomes absent
@@ -48,8 +48,8 @@ phases:
   required_sources:
   - release/BOOTSTRAP_MANIFEST.json
   - docs/operator/bootstrap_integrity_contract_v1.yaml
-  - docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.16.md
-  - docs/Planner_LLM_Stage1_Operator_Runbook_v2.16_RU.md
+  - docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.17.md
+  - docs/Planner_LLM_Stage1_Operator_Runbook_v2.17_RU.md
   - docs/schemas/decision_record.schema.json
   execution_role: BUILDER
   approval_target_output: artifacts/scope.md

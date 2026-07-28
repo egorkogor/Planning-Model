@@ -46,7 +46,7 @@ def _plan(variant: str = "A3") -> dict:
 
 def _signature_bank(plan: dict) -> dict:
     return {
-        "schema_version": "work-planner/1.16",
+        "schema_version": "work-planner/1.17",
         "bank_id": "structured-signatures-v1",
         "signatures": [
             {"semantic_signature": deepcopy(step["semantic_signature"])}
@@ -202,10 +202,11 @@ def _bundle(arm: str, *, source: dict | None = None, failed: bool = False):
     attributed = deepcopy(source[0]["actual_cost"]) if source is not None else deepcopy(actual)
     replay = "STAGE1B_E1" if arm == "P_FULL_PLAN_REPLAY_RAW" else None
     manifest = {
-        "schema_version": "work-planner/1.16",
+        "schema_version": "work-planner/1.17",
         "run_id": a["run_id"], "episode_id": a["episode_id"], "trajectory_id": a["trajectory_id"],
         "stage": a["stage"], "task_id": a["task_id"], "base_task_id": a["base_task_id"],
         "canonical_task_hash": a["canonical_task_hash"], "split": a["split"], "arm": arm,
+        "planner_seed": plan.get("planner_seed") if plan is not None else a.get("planner_seed"),
         "generator_type": generator, "plan_status": "FAILED" if failed else "READY",
         "planner_call_count": 0 if arm in {"E2_SHUFFLED_A3_FULL_PLAN_RAW", "P_FULL_PLAN_REPLAY_RAW"} else 1,
         "generated_before_execution": True,
@@ -562,13 +563,13 @@ def _planner_confirmatory_bundle(arm: str, seed: int, *, source=None):
         unique = f"{seed}-{arm.lower()}"
         rm.update(
             run_id="run-1", episode_id=f"episode-{unique}", trajectory_id=f"trajectory-{unique}",
-            stage="PLANNER_ONLY", split="planner_confirmatory_horizon", replay_context="PLANNER_CONFIRMATORY_A3",
+            stage="PLANNER_ONLY", split="planner_confirmatory_horizon", planner_seed=seed, replay_context="PLANNER_CONFIRMATORY_A3",
             source_arm="PLANNER_A3_RAW", work_plan_path=f"results/planner-confirmatory/plans/{unique}.json",
         )
         rp = deepcopy(source[1])
         re.update(
             run_id="run-1", episode_id=f"episode-{unique}", trajectory_id=f"trajectory-{unique}",
-            stage="PLANNER_ONLY", split="planner_confirmatory_horizon", arm=arm, replay_context="PLANNER_CONFIRMATORY_A3",
+            stage="PLANNER_ONLY", split="planner_confirmatory_horizon", arm=arm, planner_seed=seed, replay_context="PLANNER_CONFIRMATORY_A3",
         )
         for row in rattempts:
             row.update(
@@ -594,7 +595,7 @@ def _planner_confirmatory_bundle(arm: str, seed: int, *, source=None):
     p["plan_artifact_hash"] = plan_artifact_hash(p)
     m.update(
         run_id="run-1", episode_id=f"episode-{unique}", trajectory_id=f"trajectory-{unique}",
-        arm=arm, stage="PLANNER_ONLY", split="planner_confirmatory_horizon", generator_type=generator_by_arm[arm],
+        arm=arm, stage="PLANNER_ONLY", split="planner_confirmatory_horizon", planner_seed=seed, generator_type=generator_by_arm[arm],
         work_plan_content_hash=p["plan_content_hash"], work_plan_artifact_hash=p["plan_artifact_hash"],
         work_plan_path=f"results/planner-confirmatory/plans/{unique}.json", source_episode_plan_manifest_hash=None,
         source_arm=None, replay_context=None, control_status="NOT_APPLICABLE", control_artifact_path=None,
@@ -603,7 +604,7 @@ def _planner_confirmatory_bundle(arm: str, seed: int, *, source=None):
     m["manifest_hash"] = hash_json({k: v for k, v in m.items() if k != "manifest_hash"})
     e.update(
         run_id="run-1", episode_id=f"episode-{unique}", trajectory_id=f"trajectory-{unique}",
-        arm=arm, stage="PLANNER_ONLY", split="planner_confirmatory_horizon",
+        arm=arm, stage="PLANNER_ONLY", split="planner_confirmatory_horizon", planner_seed=seed,
         episode_plan_manifest_hash=m["manifest_hash"], replay_context=None,
     )
     for row in attempts:
