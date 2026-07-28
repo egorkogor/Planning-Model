@@ -1,8 +1,8 @@
 # Planner → frozen LLM: Stage 1 runbook
 
-**Версия:** 2.14
+**Версия:** 2.15
 **Дата:** 27 июля 2026
-**Implementation Spec:** `Planner_MVP_MicroModel_Implementation_Spec_RU_v1.14.md`.
+**Implementation Spec:** `Planner_MVP_MicroModel_Implementation_Spec_RU_v1.15.md`.
 
 Документ задаёт исполняемый контур Stage 1A/1B. Нормативные числа, схемы и правила находятся в YAML/JSON-контрактах; этот runbook не переопределяет их.
 
@@ -174,7 +174,7 @@ Core gates:
 7. incomplete pairs ≤1%;
 8. contract/hash/determinism violations =0.
 
-`I2−I0` — diagnostic, не veto и не sample-size component. Confirmatory TOST в v1.14 запрещён.
+`I2−I0` — diagnostic, не veto и не sample-size component. Confirmatory TOST в v1.15 запрещён.
 
 N = maximum из `primary_ci`, `primary_power`, `current_vs_shuffled_power` и minimum N. Acceptance мощности использует нижнюю одностороннюю exact-binomial bound ≥0.90 на двух соседних candidate N. Design alternative 7.5 п.п. отделена от decision boundary 5 п.п.
 

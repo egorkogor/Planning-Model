@@ -1,4 +1,4 @@
-schema_version: work-planner/1.14
+schema_version: work-planner/1.15
 registry_id: report-registry/1.5
 matching: first_rule_wins
 rules:
@@ -38,6 +38,8 @@ rules:
   schema_per_line: docs/schemas/resource_usage_entry.schema.json
 - path_pattern: dispatch/*.json
   schema: docs/schemas/dispatch_record.schema.json
+- path_pattern: sealed/**/selected-task-manifest.json
+  schema: docs/schemas/selected_task_manifest.schema.json
 - path_pattern: sealed/**/sealer-manifest.json
   schema: docs/schemas/sealer_manifest.schema.json
 - path_pattern: locks/guidance-token-artifacts.json
@@ -128,6 +130,12 @@ rules:
   schema: docs/schemas/control_certification.schema.json
 - path_pattern: controls/**/*.json
   schema: docs/schemas/artifact_manifest.schema.json
+- path_pattern: results/**/plans/*.json
+  schema: docs/schemas/work_plan.schema.json
+- path_pattern: results/**/episodes/*.json
+  schema: docs/schemas/episode_log.schema.json
+- path_pattern: results/**/attempts/*.jsonl
+  schema_per_line: docs/schemas/attempt_log.schema.json
 - path_pattern: results/**/episode-plan-manifests/*.json
   schema: docs/schemas/episode_plan_manifest.schema.json
 - path_pattern: results/**/lineage-index.json

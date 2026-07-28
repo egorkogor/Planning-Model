@@ -22,6 +22,7 @@
 2. run all frozen arms once
 3. collect signed raw result manifest
 4. validate no source mutation
+5. verify lineage covers the exact selected-task set and every nested artifact has the same run_id and PLANNER stage
 
 ## Обязательные результаты фазы
 - `results/planner-confirmatory/`

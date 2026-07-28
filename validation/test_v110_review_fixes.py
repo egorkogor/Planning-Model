@@ -113,7 +113,7 @@ def test_intent_labeler_is_scientifically_locked_and_not_patchable() -> None:
     allowed = set(load_yaml("docs/operator/implementation_lock_v1.yaml")["pre_lock_patch_window"]["allowed_path_globs"])
     assert "docs/domain/**" in scientific
     assert "docs/domain/**" not in allowed
-    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.14.md").read_text(encoding="utf-8")
+    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.15.md").read_text(encoding="utf-8")
     assert "не могут изменяться implementation-only patch" in spec
 
 
@@ -122,6 +122,8 @@ def test_stage1b_sealer_semantics_fail_closed_on_counts_and_unbound_contracts() 
     h = lambda c: "sha256:" + c * 64
     obj = {
         "stage": "STAGE1B", "task_count": 100,
+        "selected_task_manifest_path": "sealed/stage1b-confirmatory/selected-task-manifest.json",
+        "selected_task_manifest_sha256": h("e"),
         "contract_hashes": {"eligibility": h("a"), "split": h("b"), "generator": h("c")},
         "control_certification": {
             "candidate_task_count": 120, "eligible_task_count": 110, "selected_task_count": 100,
@@ -134,6 +136,7 @@ def test_stage1b_sealer_semantics_fail_closed_on_counts_and_unbound_contracts() 
             "certification_completed_before_outcome_access": True,
             "eligibility_contract_sha256": h("a"), "split_contract_sha256": h("b"),
             "generator_contract_sha256": h("c"),
+            "task_only_selection_manifest_sha256": h("e"),
         },
     }
     assert not validate_sealer_manifest_semantics(obj)

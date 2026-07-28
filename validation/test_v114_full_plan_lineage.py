@@ -17,6 +17,8 @@ from validation.random_codebook_validator import code_hex
 
 def _plan(variant: str = "A3") -> dict:
     base, _ = plan_manifest()
+    base["run_id"] = "run-1"
+    base["stage"] = "STAGE1B_END_TO_END"
     if variant != "A3":
         base["planner_variant"] = variant
         rep = {"A3r": "CONTINUOUS_LATENT", "A2c": "STRUCTURED_DISCRETE", "SELF_PLAN": "DISCRETE_INTENT"}[variant]
@@ -35,7 +37,7 @@ def _plan(variant: str = "A3") -> dict:
 
 def _signature_bank(plan: dict) -> dict:
     return {
-        "schema_version": "work-planner/1.14",
+        "schema_version": "work-planner/1.15",
         "bank_id": "structured-signatures-v1",
         "signatures": [
             {"semantic_signature": deepcopy(step["semantic_signature"])}
@@ -191,7 +193,7 @@ def _bundle(arm: str, *, source: dict | None = None, failed: bool = False):
     attributed = deepcopy(source[0]["actual_cost"]) if source is not None else deepcopy(actual)
     replay = "STAGE1B_E1" if arm == "P_FULL_PLAN_REPLAY_RAW" else None
     manifest = {
-        "schema_version": "work-planner/1.14",
+        "schema_version": "work-planner/1.15",
         "run_id": a["run_id"], "episode_id": a["episode_id"], "trajectory_id": a["trajectory_id"],
         "stage": a["stage"], "task_id": a["task_id"], "base_task_id": a["base_task_id"],
         "canonical_task_hash": a["canonical_task_hash"], "split": a["split"], "arm": arm,
@@ -319,6 +321,39 @@ def test_replay_context_prevents_phase_order_substitution():
     assert any("PLANNER_A3_RAW" in x for x in validate_episode_plan_manifest(bad, work_plan=p, episode=e, attempts=attempts, source_manifest=e1[0], control_artifact=control))
 
 
+def _selection_fields(root: Path, stage: str, task_ids: list[str]) -> dict:
+    slug = stage.lower()
+    selected_rel = f"sealed/{slug}/selected-task-manifest.json"
+    selected = {
+        "schema_version": "work-planner-selected-tasks/1.0",
+        "run_id": "run-1",
+        "stage": stage,
+        "task_ids": sorted(task_ids),
+        "task_count": len(set(task_ids)),
+        "created_at": "2026-07-24T10:00:00Z",
+        "manifest_hash": H1,
+    }
+    selected["manifest_hash"] = hash_json({k: v for k, v in selected.items() if k != "manifest_hash"})
+    selected_path = root / selected_rel
+    selected_path.parent.mkdir(parents=True, exist_ok=True)
+    selected_path.write_text(json.dumps(selected))
+    selected_sha = _json_digest(selected)
+    sealer_rel = f"sealed/{slug}/sealer-manifest.json"
+    sealer = {"run_id": "run-1", "stage": stage, "task_count": len(set(task_ids)),
+              "selected_task_manifest_path": selected_rel, "selected_task_manifest_sha256": selected_sha}
+    if stage == "STAGE1B":
+        sealer["control_certification"] = {"task_only_selection_manifest_sha256": selected_sha}
+    sealer_path = root / sealer_rel
+    sealer_path.write_text(json.dumps(sealer))
+    return {
+        "selected_task_manifest": selected_rel,
+        "selected_task_manifest_sha256": selected_sha,
+        "sealer_manifest": sealer_rel,
+        "sealer_manifest_sha256": _json_digest(sealer),
+        "expected_task_count": len(set(task_ids)),
+    }
+
+
 def _write_bundle(root: Path, arm: str, bundle, source_hash=None):
     m, p, e, attempts, control = bundle
     safe = arm.lower()
@@ -368,7 +403,7 @@ def test_lineage_index_requires_all_seven_arms_even_degenerate(tmp_path: Path):
     for arm in sorted(STAGE1B_ARMS-{"E0_EQUAL_TOKENS_RAW"}):
         rows.append(_write_bundle(tmp_path,arm,_bundle(arm,source=e1 if arm in {"E2_SHUFFLED_A3_FULL_PLAN_RAW","P_FULL_PLAN_REPLAY_RAW"} else None)))
     compute_path, compute_hash = _write_compute_profile(tmp_path)
-    index={"schema_version":"work-planner-lineage/1.0","run_id":"run-1","stage":"STAGE1B","compute_profile":compute_path,"compute_profile_sha256":compute_hash,"records":rows,"index_hash":H1}
+    index={"schema_version":"work-planner-lineage/1.0","run_id":"run-1","stage":"STAGE1B","compute_profile":compute_path,"compute_profile_sha256":compute_hash,"records":rows,"index_hash":H1, **_selection_fields(tmp_path, "STAGE1B", ["bw-00000001"])}
     index["index_hash"]=hash_json({k:v for k,v in index.items() if k!="index_hash"})
     assert not validate_lineage_index(tmp_path,index,expected_stage="STAGE1B")
     bad=deepcopy(index); bad["records"]=[r for r in bad["records"] if r["arm"]!="E2_SHUFFLED_A3_FULL_PLAN_RAW"]; bad["index_hash"]=hash_json({k:v for k,v in bad.items() if k!="index_hash"})
@@ -397,7 +432,7 @@ def test_lineage_recomputes_flops_and_enforces_cap(tmp_path: Path):
     for arm in sorted(STAGE1B_ARMS-{"E0_EQUAL_TOKENS_RAW"}):
         rows.append(_write_bundle(tmp_path,arm,_bundle(arm,source=e1 if arm in {"E2_SHUFFLED_A3_FULL_PLAN_RAW","P_FULL_PLAN_REPLAY_RAW"} else None)))
     compute_path, compute_hash = _write_compute_profile(tmp_path)
-    index={"schema_version":"work-planner-lineage/1.0","run_id":"run-1","stage":"STAGE1B","compute_profile":compute_path,"compute_profile_sha256":compute_hash,"records":rows,"index_hash":H1}
+    index={"schema_version":"work-planner-lineage/1.0","run_id":"run-1","stage":"STAGE1B","compute_profile":compute_path,"compute_profile_sha256":compute_hash,"records":rows,"index_hash":H1, **_selection_fields(tmp_path, "STAGE1B", ["bw-00000001"])}
     index["index_hash"]=hash_json({k:v for k,v in index.items() if k!="index_hash"})
     assert not validate_lineage_index(tmp_path,index,expected_stage="STAGE1B")
     target=tmp_path/next(r["episode_log"] for r in rows if r["arm"]=="E5_SELF_PLAN_RAW")
@@ -492,14 +527,18 @@ def test_a3r_requires_frozen_codebook_and_known_signatures():
 def _planner_confirmatory_bundle_pair():
     source = list(_bundle("E1_A3_FULL_PLAN_RAW"))
     m, p, e, attempts, control = source
-    m = deepcopy(m); e = deepcopy(e); attempts = deepcopy(attempts)
-    m.update(arm="PLANNER_A3_RAW", stage="PLANNER_ONLY", split="planner_confirmatory_horizon")
+    m = deepcopy(m); p = deepcopy(p); e = deepcopy(e); attempts = deepcopy(attempts)
+    p.update(stage="PLANNER_ONLY")
+    p["plan_content_hash"] = plan_content_hash(p); p["plan_artifact_hash"] = plan_artifact_hash(p)
+    m.update(arm="PLANNER_A3_RAW", stage="PLANNER_ONLY", split="planner_confirmatory_horizon",
+             work_plan_content_hash=p["plan_content_hash"], work_plan_artifact_hash=p["plan_artifact_hash"])
     m["manifest_hash"] = hash_json({k: v for k, v in m.items() if k != "manifest_hash"})
     e.update(arm="PLANNER_A3_RAW", stage="PLANNER_ONLY", split="planner_confirmatory_horizon",
              episode_plan_manifest_hash=m["manifest_hash"])
     for row in attempts:
         row.update(arm="PLANNER_A3_RAW", stage="PLANNER_ONLY", split="planner_confirmatory_horizon",
-                   episode_plan_manifest_hash=m["manifest_hash"])
+                   episode_plan_manifest_hash=m["manifest_hash"], plan_content_hash=p["plan_content_hash"],
+                   plan_artifact_hash=p["plan_artifact_hash"])
     source = (m, p, e, attempts, control)
 
     replay = list(_bundle("P_FULL_PLAN_REPLAY_RAW", source=source))
@@ -526,6 +565,7 @@ def test_planner_confirmatory_p08_uses_precomputed_a3_plan(tmp_path: Path):
         "schema_version": "work-planner-lineage/1.0", "run_id": "run-1", "stage": "PLANNER",
         "compute_profile": None, "compute_profile_sha256": None,
         "records": rows, "index_hash": H1,
+        **_selection_fields(tmp_path, "PLANNER", ["bw-00000001"]),
     }
     index["index_hash"] = hash_json({k: v for k, v in index.items() if k != "index_hash"})
     assert not validate_lineage_index(tmp_path, index, expected_stage="PLANNER")

@@ -1,4 +1,4 @@
-schema_version: work-planner/1.14
+schema_version: work-planner/1.15
 domain_id: blocks_world_v1
 domain_revision: blocks-world-contract/1.6
 max_blocks: 8

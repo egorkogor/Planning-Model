@@ -15,9 +15,10 @@
 - `docs/schemas/scientific_decision.schema.json`
 
 ## Действия
-1. recompute Stage 1A interface decision from sealed raw logs
-2. combine interface result with immutable Planner Stage 1B eligibility lineage
-3. permit Stage 1B only for GO_INTERFACE_STAGE1B_ELIGIBLE
+1. build AnalysisInput from the signed Stage 1A selected-task manifest; no comparison-specific filtering is allowed
+2. recompute Stage 1A interface decision from sealed raw logs
+3. combine interface result with immutable Planner Stage 1B eligibility lineage
+4. permit Stage 1B only for GO_INTERFACE_STAGE1B_ELIGIBLE
 
 ## Обязательные результаты фазы
 - `reports/stage1a-decision.json`

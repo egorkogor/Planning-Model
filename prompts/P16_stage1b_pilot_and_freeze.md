@@ -28,12 +28,14 @@
 5. Data Sealer fixes eligibility from task/domain/split metadata only, then HMAC-ranks and encrypts the selected tasks before any Planner or LLM output exists
 6. receive only encrypted blob commitment and signed sealer manifest containing task-only selection certification; create candidate freeze
 7. after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
+8. Data Sealer must emit an exact selected-task manifest before any Planner/LLM call and bind it in the signed sealer manifest
 
 ## Обязательные результаты фазы
 - `reports/stage1b-pilot.json`
 - `reports/sample-size-stage1b.json`
 - `freezes/stage1b-confirmatory.candidate.json`
 - `dispatch/sealer-stage1b.json`
+- `sealed/stage1b-confirmatory/selected-task-manifest.json`
 - `sealed/stage1b-confirmatory/sealer-manifest.json`
 - `reports/self-review-P16.json`
 - `reports/phase-P16.json`

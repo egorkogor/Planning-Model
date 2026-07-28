@@ -1,4 +1,4 @@
-schema_version: work-planner/1.14
+schema_version: work-planner/1.15
 contract_id: statistics/1.4
 alpha_familywise: 0.05
 random_seeds:
@@ -109,6 +109,23 @@ sample_size:
       design_effect: 0.02
       decision_boundary: -0.02
       rule: estimate_gte_zero_and_ci_low_gte_boundary
+  component_comparison_by_stage:
+    PLANNER:
+      primary_ci: A3-A1_HORIZON
+      primary_power: A3-A1_HORIZON
+      current_vs_shuffled_power: A3-A4_HORIZON
+    STAGE1A:
+      primary_ci: I1-I0
+      primary_power: I1-I0
+      current_vs_shuffled_power: I1-I2
+    STAGE1B:
+      primary_ci: E1-E0
+      primary_power: E1-E0
+      current_vs_shuffled_power: E1-E2
+      random_code_power: E1-E3
+      structured_noninferiority_power: E1-E4
+      self_plan_power: E1-E5
+      flops_direction_power: E1_FLOPS-E0_FLOPS
 stage_gates:
   PLANNER:
     architecture_pass: GO_PLANNER_ARCHITECTURE

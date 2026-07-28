@@ -1,5 +1,5 @@
-schema_version: work-planner/1.14
-registry_id: phase-registry/1.14
+schema_version: work-planner/1.15
+registry_id: phase-registry/1.15
 phases:
 - phase_id: P00
   title: Scope и запуск протокола
@@ -21,7 +21,7 @@ phases:
     description: bootstrap release manifest VERIFIED
     verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_01 --report reports/phase-P00.json
   - check_id: P00_pre_02
-    description: scope references work-planner/1.14 and runbook 2.14
+    description: scope references work-planner/1.15 and runbook 2.15
     verifier: python validation/phase_check_runner.py --phase P00 --check P00_pre_02 --report reports/phase-P00.json
   - check_id: P00_pre_03
     description: confirmatory outcomes absent
@@ -48,8 +48,8 @@ phases:
   required_sources:
   - release/BOOTSTRAP_MANIFEST.json
   - docs/operator/bootstrap_integrity_contract_v1.yaml
-  - docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.14.md
-  - docs/Planner_LLM_Stage1_Operator_Runbook_v2.14_RU.md
+  - docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.15.md
+  - docs/Planner_LLM_Stage1_Operator_Runbook_v2.15_RU.md
   - docs/schemas/decision_record.schema.json
   execution_role: BUILDER
   approval_target_output: artifacts/scope.md
@@ -351,8 +351,8 @@ phases:
   approval_mode: manual
   manual_gate_id: G06_STATISTICAL_IMPLEMENTATION_AUDIT
   actions:
-  - finish six trained Planner variants A1/A2/A2b/A2c/A3/A3r, A4/A5 inference interventions and all outcome-relevant runtime
-    modules required through P17
+  - finish six trained Planner variants A1/A2/A2b/A2c/A3/A3r, A4/A5 inference interventions and all outcome-relevant runtime modules required
+    through P17
   - prove P10 prototype-bank/parser path and P15 graph/control-certification path execute on toy/public fixtures
   - run full toy preflight from clean checkout
   - create implementation commit containing every protected executable path
@@ -377,8 +377,8 @@ phases:
     description: implementation-lock candidate matches reviewed commit and policy
     verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_02 --report reports/phase-P06.json
   - check_id: P06_pre_03
-    description: 'clean-checkout full toy preflight: every arm forward/backward, two-batch overfit, serialization, fake episode
-      and statistics golden cases PASS'
+    description: 'clean-checkout full toy preflight: every arm forward/backward, two-batch overfit, serialization, fake episode and statistics
+      golden cases PASS'
     verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_03 --report reports/phase-P06.json
   - check_id: P06_pre_04
     description: signed statistical audit is independent from Builder
@@ -390,9 +390,8 @@ phases:
     description: signed implementation audit is independent from Builder
     verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_06 --report reports/phase-P06.json
   - check_id: P06_pre_07
-    description: implementation audit covers oracle, generator, runtime checks, analysis builders, semantic resolver, deterministic
-      full-plan shuffle/lineage, A3r random-codebook training, per-episode FLOPs accounting, data isolation, sealer, evaluator,
-      model loading and persistence
+    description: implementation audit covers oracle, generator, runtime checks, analysis builders, semantic resolver, deterministic full-plan
+      shuffle/lineage, A3r random-codebook training, per-episode FLOPs accounting, data isolation, sealer, evaluator, model loading and persistence
     verifier: python validation/phase_check_runner.py --phase P06 --check P06_pre_07 --report reports/phase-P06.json
   - check_id: P06_pre_08
     description: pre-gate evidence sealed
@@ -449,9 +448,10 @@ phases:
   - выполнить bounded hyperparameter grid на development
   - обучить five final seeds
   - рассчитать pilot N and freeze analysis
-  - dispatch locked contracts and public-exclusion manifest to Data Sealer; Data Sealer generates a hidden 256-bit seed, returns
-    only seed commitment, encrypted blob hash and signed sealer manifest; create candidate freeze
+  - dispatch locked contracts and public-exclusion manifest to Data Sealer; Data Sealer generates a hidden 256-bit seed, returns only seed commitment,
+    encrypted blob hash and signed sealer manifest; create candidate freeze
   - after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
+  - Data Sealer must emit an exact selected-task manifest before outcomes and bind its path, SHA-256 and task_count in the signed sealer manifest
   required_outputs:
   - reports/planner-pilot.json
   - reports/planner-final-training.json
@@ -459,6 +459,7 @@ phases:
   - checkpoints/planner-seeds/manifest.json
   - freezes/planner-confirmatory.candidate.json
   - dispatch/sealer-planner.json
+  - sealed/planner-confirmatory/selected-task-manifest.json
   - sealed/planner-confirmatory/sealer-manifest.json
   - reports/self-review-P07.json
   - reports/phase-P07.json
@@ -544,6 +545,7 @@ phases:
   - run all frozen arms once
   - collect signed raw result manifest
   - validate no source mutation
+  - verify lineage covers the exact selected-task set and every nested artifact has the same run_id and PLANNER stage
   required_outputs:
   - results/planner-confirmatory/
   - reports/planner-confirmatory-run.json
@@ -594,6 +596,7 @@ phases:
   approval_mode: auto
   manual_gate_id: null
   actions:
+  - build AnalysisInput from the signed Planner selected-task manifest; every comparison must contain the exact same task IDs
   - recompute Planner metrics from sealed raw logs through locked analysis code
   - apply architecture relative gates separately from absolute Stage 1B eligibility floor
   - record one of GO_PLANNER_STAGE1B_ELIGIBLE, GO_PLANNER_DIAGNOSTIC_ONLY or STOP_PLANNER
@@ -741,17 +744,18 @@ phases:
   actions:
   - build oracle snapshots and pre-outcome controls on pilot/development only
   - run paired dry run and pilot
-  - calculate clustered N including equivalence requirement
-  - dispatch locked Stage 1A contracts and public-exclusion manifest to Data Sealer; hidden seed is generated inside the sealer
-    environment
+  - calculate clustered N from the registered paired primary and shuffled-control components
+  - dispatch locked Stage 1A contracts and public-exclusion manifest to Data Sealer; hidden seed is generated inside the sealer environment
   - receive only encrypted blob commitment and sealer manifest; create candidate freeze
   - after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
+  - Data Sealer must emit an exact selected-task manifest before outcomes; all Stage 1A comparisons use this same set
   required_outputs:
   - controls/stage1a-certification/
   - reports/stage1a-pilot.json
   - reports/sample-size-stage1a.json
   - freezes/stage1a-confirmatory.candidate.json
   - dispatch/sealer-stage1a.json
+  - sealed/stage1a-confirmatory/selected-task-manifest.json
   - sealed/stage1a-confirmatory/sealer-manifest.json
   - reports/self-review-P12.json
   - reports/phase-P12.json
@@ -881,6 +885,7 @@ phases:
   approval_mode: auto
   manual_gate_id: null
   actions:
+  - build AnalysisInput from the signed Stage 1A selected-task manifest; no comparison-specific filtering is allowed
   - recompute Stage 1A interface decision from sealed raw logs
   - combine interface result with immutable Planner Stage 1B eligibility lineage
   - permit Stage 1B only for GO_INTERFACE_STAGE1B_ELIGIBLE
@@ -976,18 +981,18 @@ phases:
   - run independent trajectories pilot
   - measure unresolved and infrastructure rates
   - calculate final N with all registered components
-  - dispatch locked Stage 1B task-only eligibility contracts, pre-outcome artifact hashes and public-exclusion manifest to
-    Data Sealer
-  - Data Sealer fixes eligibility from task/domain/split metadata only, then HMAC-ranks and encrypts the selected tasks before
-    any Planner or LLM output exists
-  - receive only encrypted blob commitment and signed sealer manifest containing task-only selection certification; create
-    candidate freeze
+  - dispatch locked Stage 1B task-only eligibility contracts, pre-outcome artifact hashes and public-exclusion manifest to Data Sealer
+  - Data Sealer fixes eligibility from task/domain/split metadata only, then HMAC-ranks and encrypts the selected tasks before any Planner or
+    LLM output exists
+  - receive only encrypted blob commitment and signed sealer manifest containing task-only selection certification; create candidate freeze
   - after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
+  - Data Sealer must emit an exact selected-task manifest before any Planner/LLM call and bind it in the signed sealer manifest
   required_outputs:
   - reports/stage1b-pilot.json
   - reports/sample-size-stage1b.json
   - freezes/stage1b-confirmatory.candidate.json
   - dispatch/sealer-stage1b.json
+  - sealed/stage1b-confirmatory/selected-task-manifest.json
   - sealed/stage1b-confirmatory/sealer-manifest.json
   - reports/self-review-P16.json
   - reports/phase-P16.json
@@ -995,8 +1000,8 @@ phases:
   - RUN_STATUS.json
   pre_gate_checks:
   - check_id: P16_pre_01
-    description: signed Data Sealer manifest verifies plaintext deletion and task-only Stage1B selection certification; no
-      hidden task body or id visible to Builder
+    description: signed Data Sealer manifest verifies plaintext deletion and task-only Stage1B selection certification; no hidden task body or
+      id visible to Builder
     verifier: python validation/phase_check_runner.py --phase P16 --check P16_pre_01 --report reports/phase-P16.json
   - check_id: P16_pre_02
     description: no total-token equality claim across trajectories
@@ -1072,6 +1077,7 @@ phases:
   - run seven E0-E5/P full-plan trajectories once
   - validate attempts, episodes and aggregates online
   - collect signed evaluator manifest
+  - verify selected task IDs × seven arms exactly; recompute evaluator task_count from lineage and forbid task removal
   required_outputs:
   - results/stage1b-confirmatory/
   - reports/stage1b-confirmatory-run.json
@@ -1122,6 +1128,7 @@ phases:
   approval_mode: auto
   manual_gate_id: null
   actions:
+  - build AnalysisInput from the signed Stage 1B selected-task manifest; task IDs must equal lineage and evaluator task_count
   - recompute paired task-level estimates
   - apply all end-to-end gates
   - publish scientific decision and limitations

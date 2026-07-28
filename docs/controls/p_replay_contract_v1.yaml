@@ -1,4 +1,4 @@
-schema_version: work-planner/1.14
+schema_version: work-planner/1.15
 contract_id: full-plan-replay/1.1
 purpose: Measure exact deterministic execution of one precomputed frozen WorkPlan without LLM mediation or replanning.
 shared_invariants:
@@ -17,7 +17,7 @@ contexts:
     phase: P08
     source_arm: PLANNER_A3_RAW
     source_plan: precomputed A3 WorkPlan from the same Planner confirmatory task, seed and checkpoint
-    metric_name: PLANNER_A3_FULL_PLAN_REPLAY_GOAL_SUCCESS
+    metric_name: P_REPLAY_GOAL_SUCCESS
     role: Stage1B eligibility diagnostic available before P09
   STAGE1B_E1:
     phase: P17

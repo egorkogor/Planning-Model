@@ -15,9 +15,10 @@
 - `docs/schemas/scientific_decision.schema.json`
 
 ## Действия
-1. recompute Planner metrics from sealed raw logs through locked analysis code
-2. apply architecture relative gates separately from absolute Stage 1B eligibility floor
-3. record one of GO_PLANNER_STAGE1B_ELIGIBLE, GO_PLANNER_DIAGNOSTIC_ONLY or STOP_PLANNER
+1. build AnalysisInput from the signed Planner selected-task manifest; every comparison must contain the exact same task IDs
+2. recompute Planner metrics from sealed raw logs through locked analysis code
+3. apply architecture relative gates separately from absolute Stage 1B eligibility floor
+4. record one of GO_PLANNER_STAGE1B_ELIGIBLE, GO_PLANNER_DIAGNOSTIC_ONLY or STOP_PLANNER
 
 ## Обязательные результаты фазы
 - `reports/planner-decision.json`

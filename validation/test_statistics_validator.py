@@ -18,6 +18,12 @@ from validation.statistics_validator import (
 
 REQS = ("primary_ci", "primary_power", "current_vs_shuffled_power", "random_code_power", "structured_noninferiority_power", "self_plan_power", "flops_direction_power")
 
+COMPARISONS = {
+    "PLANNER": {"primary_ci":"A3-A1_HORIZON","primary_power":"A3-A1_HORIZON","current_vs_shuffled_power":"A3-A4_HORIZON"},
+    "STAGE1A": {"primary_ci":"I1-I0","primary_power":"I1-I0","current_vs_shuffled_power":"I1-I2"},
+    "STAGE1B": {"primary_ci":"E1-E0","primary_power":"E1-E0","current_vs_shuffled_power":"E1-E2","random_code_power":"E1-E3","structured_noninferiority_power":"E1-E4","self_plan_power":"E1-E5","flops_direction_power":"E1_FLOPS-E0_FLOPS"},
+}
+
 
 def _pair_rows(name: str, values: list[float]) -> list[dict]:
     rows = []
@@ -36,9 +42,9 @@ def _pair_rows(name: str, values: list[float]) -> list[dict]:
     return rows
 
 
-def _paired_requirement(name: str, values: list[float]) -> dict:
+def _paired_requirement(name: str, values: list[float], stage: str = "STAGE1B") -> dict:
     return {
-        "comparison": name,
+        "comparison": COMPARISONS.get(stage, {}).get(name, name),
         "analysis_type": "TASK_PAIRED",
         "complete_pair_count": len(values),
         "pairs": _pair_rows(name, values),
@@ -97,7 +103,7 @@ def _comparison(kind: str, values: list[float]):
         return {"analysis_type": kind, "complete_pair_count": len(values), "pairs": _pair_rows("t", values)}
     if kind == "SCALAR_RATE":
         return {"analysis_type": kind, "complete_pair_count": len(values),
-                "units": [{"unit_id": f"u{i}", "value": float(v)} for i, v in enumerate(values)]}
+                "units": [{"unit_id": f"t-{i}", "value": float(v)} for i, v in enumerate(values)]}
     raise AssertionError(kind)
 
 def test_scientific_decision_diagnostic_control_cannot_veto_core_go():
@@ -116,6 +122,9 @@ def test_scientific_decision_diagnostic_control_cannot_veto_core_go():
             "I_DETERMINISM_VIOLATION_RATE": _comparison("SCALAR_RATE", [0.0] * 40),
         },
         "raw_result_manifest_sha256": "sha256:" + "a" * 64,
+        "expected_task_ids": [f"t-{i}" for i in range(40)],
+        "expected_task_count": 40,
+        "expected_task_set_sha256": __import__("validation.hashing", fromlist=["hash_json"]).hash_json({"task_ids": sorted([f"t-{i}" for i in range(40)])}),
     }
     contract = yaml.safe_load(open("docs/statistics/statistics_contract_v1.yaml"))
     row = contract["stage_gates"]["STAGE1A"]
@@ -146,7 +155,9 @@ def test_confirmatory_contract_forbids_tost_and_separates_design_effect_from_go_
 
 def test_analysis_input_rejects_fabricated_differences_duplicate_ids_and_incomplete_seed_pairing():
     pair = lambda i, l, r, d: {"pair_id": i, "left": l, "right": r, "difference": d}
-    obj = {"comparisons": {
+    obj = {"expected_task_ids": ["t1", "t2"], "expected_task_count": 2,
+           "expected_task_set_sha256": __import__("validation.hashing", fromlist=["hash_json"]).hash_json({"task_ids": ["t1", "t2"]}),
+           "comparisons": {
         "bad-difference": {"analysis_type": "TASK_PAIRED", "complete_pair_count": 2, "pairs": [pair("t1", 1, 0, 0), pair("t2", 0, 1, -1)]},
         "duplicate": {"analysis_type": "TASK_PAIRED", "complete_pair_count": 2, "pairs": [pair("x", 1, 0, 1), pair("x", 0, 1, -1)]},
         "seed-missing": {"analysis_type": "PLANNER_HIERARCHICAL", "complete_pair_count": 2, "seed_groups": {
@@ -166,7 +177,9 @@ def test_zero_discordant_tost_and_scalar_wilson_are_deterministic():
     comp = _comparison("SCALAR_RATE", [1.0] * 20)
     estimate, lo, hi = summarize_comparison(comp)
     assert estimate == 1.0 and 0.0 < lo < 1.0 and hi == 1.0
-    bad = {"comparisons": {"rate": _comparison("SCALAR_RATE", [0.0, 0.5, 1.0])}}
+    bad = {"expected_task_ids": ["t-0", "t-1", "t-2"], "expected_task_count": 3,
+           "expected_task_set_sha256": __import__("validation.hashing", fromlist=["hash_json"]).hash_json({"task_ids": ["t-0", "t-1", "t-2"]}),
+           "comparisons": {"rate": _comparison("SCALAR_RATE", [0.0, 0.5, 1.0])}}
     assert any("binary values" in x for x in validate_analysis_input(bad))
 
 

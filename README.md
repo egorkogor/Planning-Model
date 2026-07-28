@@ -1,6 +1,6 @@
 # Planner → LLM MVP Stage 1
 
-Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.14 и Stage 1 runbook v2.14.
+Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.15 и Stage 1 runbook v2.15.
 
 ## Запуск агентом
 
@@ -30,15 +30,14 @@ Builder LLM исполняет плейбук и пишет реализацию
 
 Это BlocksWorld Work Planner experiment, не основная Cognitive Planner architecture ML Brain.
 
-## Изменения v1.14/v2.14
+## Изменения v1.15/v2.15
 
-- P01 стал обязательным trust gate: роли, среды, credential principals, public-key registry и resource plan связываются `trust-topology.lock.json`, подписанным внешним операторским Ed25519-ключом;
-- валидатор запрещает хранить operator private/public trust-root keys внутри репозитория, поэтому Builder не может выпустить собственную доверенную топологию;
-- Scientific lock больше не закрывает будущие P03 builders: нормативная статистика фиксируется в P02, а весь outcome-relevant executable code входит в Implementation lock после G06;
-- P03 обязан реализовать analysis builders, resolver/prototype builder, control-certification engine, sealer/evaluator boundaries и runtime loading до независимых аудитов;
-- P10 и P15 только запускают уже аудированный код; изменения `src/**`, `analysis/**` и validator logic после G06 запрещены;
-- Scientific lock защищает Trust Topology lock, resource/infrastructure plans, public keys и все runtime/model manifests;
-- G06 implementation candidate связывает Scientific lock, Trust Topology lock, оба независимых аудита и один reviewed commit;
-- слабый `scripts/verify_gate.py` удалён как отдельная реализация и оставлен только thin wrapper на canonical verifier;
-- phase/run status разделён на Trust Topology, Scientific и Implementation lock; verifier проверяет соответствие статусов реальной фазе;
-- добавлены adversarial-тесты на подмену trust/runtime manifests, ключи внутри репозитория, добавление P03 builders после Scientific lock и эквивалентность entrypoints.
+- confirmatory task IDs фиксируются до outcomes в `SelectedTaskManifest`;
+- signed SealerManifest связывает точный task set, его SHA-256 и task count;
+- full-plan lineage обязан покрывать весь selected task set без удаления неудачных задач;
+- Stage 1B требует точное произведение selected tasks × семь arms;
+- `run_id` и stage связаны между EpisodePlanManifest, WorkPlan, EpisodeLog и AttemptLog;
+- evaluator `task_count` пересчитывается по lineage;
+- все statistical comparisons используют один signed task set;
+- sample-size components привязаны к заранее заданным comparison IDs;
+- Planner replay metric унифицирована как `P_REPLAY_GOAL_SUCCESS`.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/shuffled_plan_mapping.schema.json",
-  "title": "Deterministic E2 full-plan guidance mapping v1.14",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.15/shuffled_plan_mapping.schema.json",
+  "title": "Deterministic E2 full-plan guidance mapping v1.15",
   "type": "object",
   "additionalProperties": false,
   "required": [

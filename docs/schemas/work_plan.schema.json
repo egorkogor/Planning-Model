@@ -1,13 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.14/work_plan.schema.json",
-  "title": "WorkPlan v1.14",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.15/work_plan.schema.json",
+  "title": "WorkPlan v1.15",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "plan_id",
     "plan_version",
+    "run_id",
+    "stage",
     "task_id",
     "canonical_task_hash",
     "planner_checkpoint_sha256",
@@ -86,6 +88,16 @@
     },
     "plan_artifact_hash": {
       "$ref": "common.schema.json#/$defs/sha256"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "enum": [
+        "PLANNER_ONLY",
+        "STAGE1B_END_TO_END"
+      ]
     }
   },
   "allOf": [

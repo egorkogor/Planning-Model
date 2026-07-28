@@ -1,4 +1,4 @@
-"""Compatibility wrapper for the v1.14 two-level lock.
+"""Compatibility wrapper for the v1.15 two-level lock.
 
 New code must import validation.verify_lock directly.
 """

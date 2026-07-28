@@ -3,6 +3,10 @@ from __future__ import annotations
 
 def validate_sealer_manifest_semantics(obj: dict) -> list[str]:
     errors: list[str] = []
+    selected_sha = obj.get("selected_task_manifest_sha256")
+    selected_path = obj.get("selected_task_manifest_path")
+    if not selected_sha or not selected_path:
+        errors.append("sealer manifest must bind selected-task manifest path and sha256")
     if obj.get("stage") != "STAGE1B":
         return errors
     cert = obj.get("control_certification")
@@ -32,4 +36,6 @@ def validate_sealer_manifest_semantics(obj: dict) -> list[str]:
     for field in ("eligibility_contract_sha256", "split_contract_sha256", "generator_contract_sha256"):
         if cert.get(field) not in contract_values:
             errors.append(f"{field} is not bound by contract_hashes")
+    if cert.get("task_only_selection_manifest_sha256") != selected_sha:
+        errors.append("control_certification is not bound to selected_task_manifest_sha256")
     return errors

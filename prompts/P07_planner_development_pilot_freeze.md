@@ -28,6 +28,7 @@
 3. рассчитать pilot N and freeze analysis
 4. dispatch locked contracts and public-exclusion manifest to Data Sealer; Data Sealer generates a hidden 256-bit seed, returns only seed commitment, encrypted blob hash and signed sealer manifest; create candidate freeze
 5. after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
+6. Data Sealer must emit an exact selected-task manifest before outcomes and bind its path, SHA-256 and task_count in the signed sealer manifest
 
 ## Обязательные результаты фазы
 - `reports/planner-pilot.json`
@@ -36,6 +37,7 @@
 - `checkpoints/planner-seeds/manifest.json`
 - `freezes/planner-confirmatory.candidate.json`
 - `dispatch/sealer-planner.json`
+- `sealed/planner-confirmatory/selected-task-manifest.json`
 - `sealed/planner-confirmatory/sealer-manifest.json`
 - `reports/self-review-P07.json`
 - `reports/phase-P07.json`

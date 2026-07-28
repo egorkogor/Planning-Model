@@ -1,8 +1,8 @@
-# Release self-review v1.14 / v2.14
+# Release self-review v1.15 / v2.15
 
 ## Scope
 
-Проверены документы, 70 JSON Schema, machine-readable YAML contracts, validators, state machine, generated phase prompts, lock policies и packaging. Реальное обучение, Qwen inference, pilot и confirmatory run не выполнялись.
+Проверены документы, 71 JSON Schema, machine-readable YAML contracts, validators, state machine, generated phase prompts, lock policies и packaging. Реальное обучение, Qwen inference, pilot и confirmatory run не выполнялись.
 
 ## Целевая гипотеза
 
@@ -39,6 +39,16 @@ Preflight пересчитывает 24 development, 30 primary-final и 10 A3/A
 - G06 требует statistical audit и implementation audit одного commit.
 - Implementation audit содержит ровно 15 обязательных checks, включая full-plan lineage, A3r, task-only selection и FLOPs accounting.
 - После G06 Implementation lock запрещает позднее добавление outcome-relevant кода.
+
+
+## Минимальные launch-инварианты v1.15
+
+- selected task list фиксируется до outcomes и подписанно связывается через SealerManifest;
+- lineage exact-cover запрещает удаление целых задач после исполнения;
+- evaluator task count пересчитывается по фактическому lineage;
+- AnalysisInput связан с тем же SelectedTaskManifest и не допускает разные task subsets между comparisons;
+- sample-size requirements используют только locked comparison mapping;
+- execution JSON/JSONL artifacts зарегистрированы и валидируются по схемам.
 
 ## Известные границы
 

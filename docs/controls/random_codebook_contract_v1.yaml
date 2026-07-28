@@ -1,4 +1,4 @@
-schema_version: work-planner/1.14
+schema_version: work-planner/1.15
 contract_id: random-codebook/1.0
 purpose: Parameter-matched A3r control that preserves exact semantic-signature identity
   while destroying pretrained semantic geometry.

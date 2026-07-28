@@ -17,6 +17,7 @@ if str(ROOT) not in __import__('sys').path:
 from validation.code_fingerprint import analysis_code_digest
 from validation.hashing import approved_freeze_pointer_hash, dispatch_record_hash, experiment_freeze_hash
 from validation.operator_decision_validator import verify_decision_history, verify_operator_decision
+from validation.full_plan_lineage_validator import validate_lineage_index
 from validation.signature_validator import verify_signed_manifest
 
 STAGES = {
@@ -352,6 +353,18 @@ def validate_evaluator_manifest(obj: dict, report: dict) -> list[str]:
             errors.append("evaluator git_commit differs from approved freeze")
         if obj.get("task_count") != freeze.get("sealed_dataset_commitment", {}).get("task_count"):
             errors.append("evaluator task_count differs from approved freeze")
+        if obj.get("stage") in {"PLANNER", "STAGE1B"}:
+            lineage_path = ROOT / stage["result_dir"] / "lineage-index.json"
+            lineage = load_json(lineage_path)
+            errors.extend(f"lineage: {e}" for e in validate_lineage_index(ROOT, lineage, expected_stage=obj.get("stage")))
+            lineage_task_ids = {str(row.get("task_id")) for row in lineage.get("records", [])}
+            if obj.get("task_count") != len(lineage_task_ids):
+                errors.append("evaluator task_count differs from exact lineage task set")
+            if lineage.get("run_id") != obj.get("run_id") or lineage.get("stage") != obj.get("stage"):
+                errors.append("evaluator manifest run_id/stage differs from lineage index")
+            canonical_sealer_path = ROOT / stage["sealer"]
+            if lineage.get("sealer_manifest") != stage["sealer"] or not canonical_sealer_path.is_file() or lineage.get("sealer_manifest_sha256") != digest(canonical_sealer_path):
+                errors.append("lineage index does not bind the canonical signed sealer manifest")
         if _timestamp(obj["completed_at"]) < _timestamp(dispatch["created_at"]):
             errors.append("evaluator manifest predates its dispatch")
         result_dir = ROOT / stage["result_dir"]

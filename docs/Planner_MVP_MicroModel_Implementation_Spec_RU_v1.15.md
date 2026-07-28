@@ -1,9 +1,9 @@
 # Planner MVP и MicroPlanner — нормативная спецификация
 
-**Версия:** 1.14
+**Версия:** 1.15
 **Дата:** 27 июля 2026
 **Статус:** исполняемая спецификация архивного эксперимента **Work Planner / BlocksWorld**.
-**Stage 1:** `Planner_LLM_Stage1_Operator_Runbook_v2.14_RU.md`.
+**Stage 1:** `Planner_LLM_Stage1_Operator_Runbook_v2.15_RU.md`.
 **Автономное исполнение:** `docs/operator/AUTONOMOUS_EXECUTION_PLAYBOOK_RU.md`.
 
 Этот эксперимент не является основной архитектурой Cognitive Planner проекта ML Brain. Он проверяет узкий тезис: может ли одна causal position представлять один исполнимый шаг, а отдельное semantic representation — улучшать следующие шаги и работу frozen LLM.
@@ -12,7 +12,7 @@
 
 ---
 
-# 0. Что исправлено к v1.14
+# 0. Что исправлено к v1.15
 
 1. Stage 1B переведён с reactive next-intent на один полный frozen plan, созданный до исполнения.
 2. Добавлен `EpisodePlanManifest` и машинная цепочка `manifest → WorkPlan → positions → EpisodeLog → AnalysisInput`.
@@ -78,7 +78,7 @@
 6. эта спецификация;
 7. phase prompt.
 
-Runtime version: `work-planner/1.14`.
+Runtime version: `work-planner/1.15`.
 
 Ключевые контракты:
 
@@ -273,7 +273,7 @@ P00–P20 заданы registry и explicit state machine. Важные прав
 - переход берётся только по declared outcome;
 - scientific STOP помечает downstream фазы `SKIPPED_BY_CONTRACT` и идёт в обязательный audit;
 - Scientific lock проверяется до/после каждой фазы с P02; Implementation lock — с P06;
-- любое изменение Scientific-lock path блокирует run и требует v1.14/new run;
+- любое изменение Scientific-lock path блокирует run и требует v1.15/new run;
 - Builder не видит confirmatory plaintext;
 - Evaluation Runner запускает confirmatory на отдельной среде;
 - Audit Agent обязательно воспроизводит run на clean checkout.

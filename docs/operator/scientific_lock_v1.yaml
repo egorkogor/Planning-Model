@@ -1,11 +1,10 @@
-schema_version: work-planner/1.14
+schema_version: work-planner/1.15
 contract_id: scientific-lock/1.0
 created_phase: P02
-purpose: Freeze every outcome-relevant choice before implementation or outcome data
-  exists.
+purpose: Freeze every outcome-relevant choice before implementation or outcome data exists.
 protected_paths:
-- docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.14.md
-- docs/Planner_LLM_Stage1_Operator_Runbook_v2.14_RU.md
+- docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.15.md
+- docs/Planner_LLM_Stage1_Operator_Runbook_v2.15_RU.md
 - docs/operator/phase_state_machine_v1.yaml
 - docs/operator/phase_registry_v1.yaml
 - docs/operator/agent_execution_contract_v1.yaml
@@ -100,6 +99,7 @@ protected_paths:
 - docs/schemas/attempt_log.schema.json
 - docs/schemas/episode_log.schema.json
 - docs/schemas/episode_plan_manifest.schema.json
+- docs/schemas/selected_task_manifest.schema.json
 - docs/schemas/full_plan_lineage_index.schema.json
 - docs/schemas/compute_profile.schema.json
 - docs/schemas/compute_measurement_entry.schema.json

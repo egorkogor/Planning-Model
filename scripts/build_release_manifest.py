@@ -37,7 +37,7 @@ def files():
 def main():
  epoch=int(os.environ.get('SOURCE_DATE_EPOCH','1785000000'))
  generated=datetime.fromtimestamp(epoch,tz=timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
- obj={'schema_version':'work-planner-release/1.1','release_id':'work-planner-v1.14-v2.14','implementation_spec':'1.14','stage1_runbook':'2.14','generated_at':generated,'scope':'SCIENTIFIC_TRUST_ROOT_ONLY','files':{p.relative_to(ROOT).as_posix():digest(p) for p in files()},'excluded_paths':EXCLUDED,'manifest_hash':''}
+ obj={'schema_version':'work-planner-release/1.1','release_id':'work-planner-v1.15-v2.15','implementation_spec':'1.15','stage1_runbook':'2.15','generated_at':generated,'scope':'SCIENTIFIC_TRUST_ROOT_ONLY','files':{p.relative_to(ROOT).as_posix():digest(p) for p in files()},'excluded_paths':EXCLUDED,'manifest_hash':''}
  obj['manifest_hash']=canonical(obj); OUT.parent.mkdir(parents=True,exist_ok=True); OUT.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+'\n')
  print(f'WROTE {OUT} files={len(obj["files"])}')
 if __name__=='__main__': main()

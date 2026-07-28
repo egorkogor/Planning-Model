@@ -22,6 +22,7 @@
 2. run seven E0-E5/P full-plan trajectories once
 3. validate attempts, episodes and aggregates online
 4. collect signed evaluator manifest
+5. verify selected task IDs × seven arms exactly; recompute evaluator task_count from lineage and forbid task removal
 
 ## Обязательные результаты фазы
 - `results/stage1b-confirmatory/`

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from pathlib import Path
 from statistics import fmean
@@ -18,6 +20,7 @@ from analysis.decision_gates import (
 )
 from analysis.sample_size import calculate_components_from_structured_requirements, paired_sd
 from validation.code_fingerprint import analysis_code_digest
+from validation.hashing import hash_json
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "docs/statistics/statistics_contract_v1.yaml"
@@ -69,8 +72,52 @@ def _validate_pair_rows(name: str, rows: list[dict]) -> list[str]:
     return errors
 
 
-def validate_analysis_input(obj: dict) -> list[str]:
+def validate_analysis_input(obj: dict, selected_task_manifest: dict | None = None) -> list[str]:
     errors=[]
+    expected_ids = [str(x) for x in obj.get("expected_task_ids", [])]
+    expected_set = set(expected_ids)
+    if len(expected_ids) != len(expected_set):
+        errors.append("expected_task_ids: duplicate task_id")
+    if obj.get("expected_task_count") != len(expected_set):
+        errors.append("expected_task_count does not equal exact expected_task_ids set")
+    if obj.get("expected_task_set_sha256") != hash_json({"task_ids": sorted(expected_set)}):
+        errors.append("expected_task_set_sha256 does not match canonical expected task set")
+    selected_path_value = obj.get("selected_task_manifest_path")
+    selected_sha = obj.get("selected_task_manifest_sha256")
+    canonical_selected_paths = {
+        "PLANNER": "sealed/planner-confirmatory/selected-task-manifest.json",
+        "STAGE1A": "sealed/stage1a-confirmatory/selected-task-manifest.json",
+        "STAGE1B": "sealed/stage1b-confirmatory/selected-task-manifest.json",
+    }
+    if selected_path_value is not None and selected_path_value != canonical_selected_paths.get(obj.get("stage")):
+        errors.append("selected task manifest path differs from canonical stage path")
+    if selected_path_value is not None or selected_sha is not None or selected_task_manifest is not None:
+        try:
+            if selected_task_manifest is None:
+                if not selected_path_value or not selected_sha:
+                    raise ValueError("selected task manifest path and sha256 are both required")
+                selected_path = (ROOT / str(selected_path_value)).resolve()
+                if selected_path != ROOT.resolve() and ROOT.resolve() not in selected_path.parents:
+                    raise ValueError("selected task manifest path escapes repository")
+                if not selected_path.is_file():
+                    raise ValueError("selected task manifest file is missing")
+                actual_sha = "sha256:" + hashlib.sha256(selected_path.read_bytes()).hexdigest()
+                if actual_sha != selected_sha:
+                    raise ValueError("selected task manifest file hash mismatch")
+                selected_task_manifest = json.loads(selected_path.read_text(encoding="utf-8"))
+            payload = dict(selected_task_manifest)
+            declared_manifest_hash = payload.pop("manifest_hash", None)
+            if declared_manifest_hash != hash_json(payload):
+                errors.append("selected task manifest canonical hash mismatch")
+            if selected_task_manifest.get("run_id") != obj.get("run_id") or selected_task_manifest.get("stage") != obj.get("stage"):
+                errors.append("selected task manifest run_id/stage differs from AnalysisInput")
+            selected_ids = {str(x) for x in selected_task_manifest.get("task_ids", [])}
+            if selected_task_manifest.get("task_count") != len(selected_ids):
+                errors.append("selected task manifest task_count mismatch")
+            if selected_ids != expected_set:
+                errors.append("AnalysisInput expected_task_ids differ from selected task manifest")
+        except Exception as exc:
+            errors.append(f"selected task manifest validation failed: {exc}")
     for name,comp in obj.get("comparisons",{}).items():
         kind=comp.get("analysis_type"); count=comp.get("complete_pair_count")
         if kind=="PLANNER_HIERARCHICAL":
@@ -82,19 +129,23 @@ def validate_analysis_input(obj: dict) -> list[str]:
             for seed,rows in groups.items():
                 errors.extend(_validate_pair_rows(f"{name}/{seed}",rows)); id_sets.append({r.get("pair_id") for r in rows})
             if id_sets and any(ids!=id_sets[0] for ids in id_sets[1:]): errors.append(f"{name}: planner seed groups must use identical base_task_id sets")
+            if id_sets and id_sets[0] != expected_set: errors.append(f"{name}: task set differs from expected_task_ids")
         elif kind=="STAGE1A_CLUSTERED":
             clusters=comp.get("task_clusters",{})
             if count!=len(clusters): errors.append(f"{name}: complete_pair_count mismatch")
             for task,rows in clusters.items(): errors.extend(_validate_pair_rows(f"{name}/{task}",rows))
+            if set(clusters) != expected_set: errors.append(f"{name}: task set differs from expected_task_ids")
         elif kind=="TASK_PAIRED":
             rows=comp.get("pairs",[])
             if count!=len(rows): errors.append(f"{name}: complete_pair_count mismatch")
             errors.extend(_validate_pair_rows(name,rows))
+            if {r.get("pair_id") for r in rows} != expected_set: errors.append(f"{name}: task set differs from expected_task_ids")
         elif kind=="SCALAR_RATE":
             rows=comp.get("units",[])
             if count!=len(rows): errors.append(f"{name}: complete_pair_count mismatch")
             ids=[r.get("unit_id") for r in rows]
             if len(ids)!=len(set(ids)): errors.append(f"{name}: duplicate unit_id")
+            if set(ids) != expected_set: errors.append(f"{name}: task set differs from expected_task_ids")
             if any(float(r.get("value",-1)) not in (0.0,1.0) for r in rows): errors.append(f"{name}: SCALAR_RATE requires unit-level binary values")
         else: errors.append(f"{name}: unknown analysis_type")
     return errors
@@ -162,6 +213,7 @@ def validate_sample_size_report(obj: dict, sample_size_input: dict | None = None
     if sample_size_input.get("stage") != stage:
         errors.append("sample_size_input stage mismatch")
     requirements = sample_size_input.get("requirements", {})
+    comparison_map = _contract().get("sample_size", {}).get("component_comparison_by_stage", {}).get(stage, {})
     expected_by_stage = {
         "PLANNER": {"primary_ci", "primary_power", "current_vs_shuffled_power"},
         "STAGE1A": {"primary_ci", "primary_power", "current_vs_shuffled_power"},
@@ -176,6 +228,9 @@ def validate_sample_size_report(obj: dict, sample_size_input: dict | None = None
     expected_sds: dict[str, float] = {}
     for name in sorted(expected_names):
         row = requirements[name]
+        expected_comparison = comparison_map.get(name)
+        if row.get("comparison") != expected_comparison:
+            errors.append(f"{name}: comparison {row.get('comparison')} != locked {expected_comparison}")
         errors.extend(_validate_sample_size_requirement(name, row, stage))
         try:
             expected_sds[name] = paired_sd(row)

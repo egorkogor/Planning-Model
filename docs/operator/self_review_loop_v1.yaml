@@ -1,4 +1,4 @@
-schema_version: work-planner/1.14
+schema_version: work-planner/1.15
 contract_id: self-review-loop/1.0
 applies_to: every_phase_and_release_build
 cycle:

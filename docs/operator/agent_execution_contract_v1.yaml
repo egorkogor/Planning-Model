@@ -1,4 +1,4 @@
-schema_version: work-planner/1.14
+schema_version: work-planner/1.15
 agent_execution_contract_id: work-planner-agent/1.5
 operator_role: observe progress, approve scope/budget/frozen packages, and accept or stop the final run
 execution_roles:

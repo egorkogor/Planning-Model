@@ -1,4 +1,4 @@
-"""Fail-closed validation of frozen full-plan execution lineage (v1.14).
+"""Fail-closed validation of frozen full-plan execution lineage (v1.15).
 
 This module verifies relations that local JSON Schemas cannot express:
 one plan-generation call before execution, immutable WorkPlan reuse, sequential
@@ -456,10 +456,51 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def validate_lineage_index(root: Path, index: Mapping[str, Any], *, expected_stage: str) -> list[str]:
     errors: list[str] = []
+    run_id = str(index.get("run_id", ""))
     if index.get("stage") != expected_stage:
         errors.append(_err("index.stage", f"expected {expected_stage}"))
     if index.get("index_hash") != hash_json(_without(index, "index_hash")):
         errors.append(_err("index_hash", "does not match canonical index payload"))
+
+    selected_task_ids: set[str] = set()
+    try:
+        selected_rel = str(index.get("selected_task_manifest"))
+        selected_path = _safe_path(root, selected_rel)
+        if index.get("selected_task_manifest_sha256") != _file_digest(selected_path):
+            errors.append(_err("selected_task_manifest_sha256", "does not match selected-task manifest artifact"))
+        selected = json.loads(selected_path.read_text(encoding="utf-8"))
+        if selected.get("manifest_hash") != hash_json(_without(selected, "manifest_hash")):
+            errors.append(_err("selected_task_manifest.manifest_hash", "canonical hash mismatch"))
+        if selected.get("run_id") != run_id or selected.get("stage") != expected_stage:
+            errors.append(_err("selected_task_manifest", "run_id/stage differs from lineage index"))
+        ids = selected.get("task_ids", [])
+        selected_task_ids = {str(x) for x in ids}
+        if len(ids) != len(selected_task_ids):
+            errors.append(_err("selected_task_manifest.task_ids", "duplicate task_id"))
+        if selected.get("task_count") != len(selected_task_ids):
+            errors.append(_err("selected_task_manifest.task_count", "does not equal exact task-id set"))
+        if index.get("expected_task_count") != len(selected_task_ids):
+            errors.append(_err("expected_task_count", "does not equal signed selected-task set"))
+    except Exception as exc:
+        errors.append(_err("selected_task_manifest", str(exc)))
+
+    try:
+        sealer_rel = str(index.get("sealer_manifest"))
+        sealer_path = _safe_path(root, sealer_rel)
+        if index.get("sealer_manifest_sha256") != _file_digest(sealer_path):
+            errors.append(_err("sealer_manifest_sha256", "does not match signed sealer manifest artifact"))
+        sealer = json.loads(sealer_path.read_text(encoding="utf-8"))
+        if sealer.get("run_id") != run_id or sealer.get("stage") != expected_stage:
+            errors.append(_err("sealer_manifest", "run_id/stage differs from lineage index"))
+        if selected_task_ids and sealer.get("task_count") != len(selected_task_ids):
+            errors.append(_err("sealer_manifest.task_count", "does not equal selected-task set"))
+        if sealer.get("selected_task_manifest_path") != index.get("selected_task_manifest") or sealer.get("selected_task_manifest_sha256") != index.get("selected_task_manifest_sha256"):
+            errors.append(_err("sealer_manifest.selected_task_manifest", "does not bind lineage selected-task manifest"))
+        cert = sealer.get("control_certification", {})
+        if expected_stage == "STAGE1B" and cert.get("task_only_selection_manifest_sha256") != index.get("selected_task_manifest_sha256"):
+            errors.append(_err("sealer_manifest.control_certification", "does not bind selected-task manifest"))
+    except Exception as exc:
+        errors.append(_err("sealer_manifest", str(exc)))
 
     arm_compute: dict[str, Mapping[str, Any]] = {}
     flops_cap: float | None = None
@@ -497,10 +538,15 @@ def validate_lineage_index(root: Path, index: Mapping[str, Any], *, expected_sta
             errors.extend(_err(f"records[{i}].control_artifact", e) for e in validate_random_codebook(root, control_artifact))
         loaded.append((row, manifest, episode, attempts, plan, signature_bank, control_artifact))
 
+    by_task: dict[str, list[tuple[Any, ...]]] = {}
+    for item in loaded:
+        by_task.setdefault(str(item[0].get("task_id")), []).append(item)
+    if selected_task_ids and set(by_task) != selected_task_ids:
+        missing = sorted(selected_task_ids - set(by_task))
+        extra = sorted(set(by_task) - selected_task_ids)
+        errors.append(_err("records.task_set", f"must exactly equal signed selected-task set; missing={missing}, extra={extra}"))
+
     if expected_stage == "STAGE1B":
-        by_task: dict[str, list[tuple[Any, ...]]] = {}
-        for item in loaded:
-            by_task.setdefault(str(item[0].get("task_id")), []).append(item)
         for task_id, rows in by_task.items():
             arms = [str(row[0].get("arm")) for row in rows]
             if set(arms) != STAGE1B_ARMS or len(arms) != len(STAGE1B_ARMS):
@@ -515,10 +561,20 @@ def validate_lineage_index(root: Path, index: Mapping[str, Any], *, expected_sta
             if not {"PLANNER_A3_RAW", "P_FULL_PLAN_REPLAY_RAW"}.issubset(arms):
                 errors.append(_err(f"task[{task_id}].arms", "Planner confirmatory replay requires precomputed A3 plan and P replay"))
 
+    nested_stage = {"PLANNER": "PLANNER_ONLY", "STAGE1B": "STAGE1B_END_TO_END"}.get(expected_stage)
     for i, (row, manifest, episode, attempts, plan, signature_bank, control_artifact) in enumerate(loaded):
         arm = str(row.get("arm"))
         if arm != episode.get("arm") or row.get("task_id") != episode.get("task_id"):
             errors.append(_err(f"records[{i}]", "index identity differs from EpisodeLog"))
+        if episode.get("run_id") != run_id or episode.get("stage") != nested_stage:
+            errors.append(_err(f"records[{i}].episode", "run_id/stage differs from lineage index"))
+        for j, attempt in enumerate(attempts):
+            if attempt.get("run_id") != run_id or attempt.get("stage") != nested_stage:
+                errors.append(_err(f"records[{i}].attempts[{j}]", "run_id/stage differs from lineage index"))
+        if manifest is not None and (manifest.get("run_id") != run_id or manifest.get("stage") != nested_stage):
+            errors.append(_err(f"records[{i}].episode_plan_manifest", "run_id/stage differs from lineage index"))
+        if plan is not None and (plan.get("run_id") != run_id or plan.get("stage") != nested_stage):
+            errors.append(_err(f"records[{i}].work_plan", "run_id/stage differs from lineage index"))
         if expected_stage == "STAGE1B" and flops_cap is not None:
             profile_row = arm_compute.get(arm)
             if profile_row is None:

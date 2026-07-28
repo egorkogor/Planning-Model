@@ -24,10 +24,11 @@
 ## Действия
 1. build oracle snapshots and pre-outcome controls on pilot/development only
 2. run paired dry run and pilot
-3. calculate clustered N including equivalence requirement
+3. calculate clustered N from the registered paired primary and shuffled-control components
 4. dispatch locked Stage 1A contracts and public-exclusion manifest to Data Sealer; hidden seed is generated inside the sealer environment
 5. receive only encrypted blob commitment and sealer manifest; create candidate freeze
 6. after external approval, create ApprovedFreezePointer and immutable evaluator dispatch linked to the signed decision
+7. Data Sealer must emit an exact selected-task manifest before outcomes; all Stage 1A comparisons use this same set
 
 ## Обязательные результаты фазы
 - `controls/stage1a-certification/`
@@ -35,6 +36,7 @@
 - `reports/sample-size-stage1a.json`
 - `freezes/stage1a-confirmatory.candidate.json`
 - `dispatch/sealer-stage1a.json`
+- `sealed/stage1a-confirmatory/selected-task-manifest.json`
 - `sealed/stage1a-confirmatory/sealer-manifest.json`
 - `reports/self-review-P12.json`
 - `reports/phase-P12.json`

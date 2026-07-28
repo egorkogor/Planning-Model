@@ -15,9 +15,10 @@
 - `docs/schemas/scientific_decision.schema.json`
 
 ## Действия
-1. recompute paired task-level estimates
-2. apply all end-to-end gates
-3. publish scientific decision and limitations
+1. build AnalysisInput from the signed Stage 1B selected-task manifest; task IDs must equal lineage and evaluator task_count
+2. recompute paired task-level estimates
+3. apply all end-to-end gates
+4. publish scientific decision and limitations
 
 ## Обязательные результаты фазы
 - `reports/stage1b-decision.json`
