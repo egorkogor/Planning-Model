@@ -1,4 +1,4 @@
-# WIP v1.21 / v2.21
+# Changelog v1.21 / v2.21
 
 - Narrowed A3↔A2c claim to an architecture-bundle comparison; active capacity is not equal and a pure representation-effect claim is forbidden.
 - Replaced ambiguous P04 “exhaustive n≤5” wording with exhaustive n≤4 plus deterministic 4,096-case n=5 coverage and explicit manifest/capacity limits.

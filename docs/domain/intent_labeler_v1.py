@@ -1,4 +1,4 @@
-"""Normative deterministic intent labeler for Work Planner / BlocksWorld v1.20.
+"""Normative deterministic intent labeler for Work Planner / BlocksWorld v1.21.
 
 The module is deliberately dependency-free. Facts are tuples such as
 ("ON", "@B0", "@B1") and actions are dictionaries with keys ``action`` and

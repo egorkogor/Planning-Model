@@ -1,12 +1,12 @@
 # Planner → LLM MVP Stage 1
 
-Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.20 и Stage 1 runbook v2.20.
+Репозиторий исполнения архивного Work Planner / BlocksWorld по спецификации v1.21 и Stage 1 runbook v2.21.
 
 
 ## Восстановление из Git bundle
 
 ```bash
-git clone -b main planner-llm-mvp-stage1-v1.20.bundle planner-llm-mvp-stage1
+git clone -b main planner-llm-mvp-stage1-v1.21.bundle planner-llm-mvp-stage1
 ```
 
 Bundle публикует `HEAD` и `refs/heads/main`; обычный clone с `-b main` сразу создаёт рабочее дерево нужного release commit.
@@ -19,7 +19,7 @@ python validation/verify_release_manifest.py
 python validation/validate_bundle.py
 ```
 
-`validate_bundle.py` запускает 32 test-файла в изолированных subprocess с жёстким timeout на каждый файл; релизный baseline — 219 tests PASS.
+`validate_bundle.py` запускает 33 test-файла в изолированных subprocess с жёстким timeout на каждый файл; релизный baseline — 224 tests PASS.
 
 Затем передать Builder Agent `prompts/00_MASTER_ORCHESTRATOR.md` и следить за `RUN_STATUS.md`/`RUN_STATUS.json`.
 
@@ -41,7 +41,7 @@ Builder LLM исполняет плейбук и пишет реализацию
 
 Это BlocksWorld Work Planner experiment, не основная Cognitive Planner architecture ML Brain.
 
-## Изменения v1.20/v2.20
+## Изменения v1.21/v2.21
 
 - exact PyTorch module inventory фиксирует 177 `state_dict` tensors, их shapes, parameter types и active-arm masks;
 - tensor-name-derived initialization делает начальные веса независимыми от порядка создания модулей;
@@ -54,7 +54,7 @@ Builder LLM исполняет плейбук и пишет реализацию
 - `planner_seed` связан с lineage даже при FAILED plan generation;
 - n=7–8 запрещены в training/development и остаются только sealed size-OOD evaluation.
 
-### Дополнительно в v1.20
+### Дополнительно в v1.21
 
 - P08 принимает только канонические P07 training/checkpoint manifests;
 - initialization tensors проверяются по значениям, а не только по заголовкам;

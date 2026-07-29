@@ -47,7 +47,7 @@ def _plan(variant: str = "A3") -> dict:
 
 def _signature_bank(plan: dict) -> dict:
     return {
-        "schema_version": "work-planner/1.20",
+        "schema_version": "work-planner/1.21",
         "bank_id": "structured-signatures-v1",
         "signatures": [
             {"semantic_signature": deepcopy(step["semantic_signature"])}
@@ -203,7 +203,7 @@ def _bundle(arm: str, *, source: dict | None = None, failed: bool = False):
     attributed = deepcopy(source[0]["actual_cost"]) if source is not None else deepcopy(actual)
     replay = "STAGE1B_E1" if arm == "P_FULL_PLAN_REPLAY_RAW" else None
     manifest = {
-        "schema_version": "work-planner/1.20",
+        "schema_version": "work-planner/1.21",
         "run_id": a["run_id"], "episode_id": a["episode_id"], "trajectory_id": a["trajectory_id"],
         "stage": a["stage"], "task_id": a["task_id"], "base_task_id": a["base_task_id"],
         "canonical_task_hash": a["canonical_task_hash"], "split": a["split"], "arm": arm,

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.20/bootstrap_manifest.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.21/bootstrap_manifest.schema.json",
   "title": "Bootstrap release manifest",
   "type": "object",
   "additionalProperties": false,
@@ -20,13 +20,13 @@
       "const": "work-planner-release/1.1"
     },
     "release_id": {
-      "const": "work-planner-v1.20-v2.20"
+      "const": "work-planner-v1.21-v2.21"
     },
     "implementation_spec": {
-      "const": "1.20"
+      "const": "1.21"
     },
     "stage1_runbook": {
-      "const": "2.20"
+      "const": "2.21"
     },
     "generated_at": {
       "$ref": "common.schema.json#/$defs/timestamp"

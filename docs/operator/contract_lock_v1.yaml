@@ -1,4 +1,4 @@
-schema_version: work-planner/1.20
+schema_version: work-planner/1.21
 contract_id: two-level-lock-index/1.0
 deprecated_single_lock: true
 scientific_lock: docs/operator/scientific_lock_v1.yaml

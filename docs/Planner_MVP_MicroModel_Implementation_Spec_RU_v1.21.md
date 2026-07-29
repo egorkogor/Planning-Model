@@ -3,7 +3,7 @@
 **Версия:** 1.16
 **Дата:** 27 июля 2026
 **Статус:** исполняемая спецификация архивного эксперимента **Work Planner / BlocksWorld**.
-**Stage 1:** `Planner_LLM_Stage1_Operator_Runbook_v2.20_RU.md`.
+**Stage 1:** `Planner_LLM_Stage1_Operator_Runbook_v2.21_RU.md`.
 **Автономное исполнение:** `docs/operator/AUTONOMOUS_EXECUTION_PLAYBOOK_RU.md`.
 
 Этот эксперимент не является основной архитектурой Cognitive Planner проекта ML Brain. Он проверяет узкий тезис: может ли одна causal position представлять один исполнимый шаг, а отдельное semantic representation — улучшать следующие шаги и работу frozen LLM.
@@ -12,7 +12,7 @@
 
 ---
 
-# 0. Что исправлено к v1.20
+# 0. Что исправлено к v1.21
 
 1. Stage 1B переведён с reactive next-intent на один полный frozen plan, созданный до исполнения.
 2. Добавлен `EpisodePlanManifest` и машинная цепочка `manifest → WorkPlan → positions → EpisodeLog → AnalysisInput`.
@@ -78,7 +78,7 @@
 6. эта спецификация;
 7. phase prompt.
 
-Runtime version: `work-planner/1.20`.
+Runtime version: `work-planner/1.21`.
 
 Ключевые контракты:
 
@@ -276,7 +276,7 @@ P00–P20 заданы registry и explicit state machine. Важные прав
 - переход берётся только по declared outcome;
 - scientific STOP помечает downstream фазы `SKIPPED_BY_CONTRACT` и идёт в обязательный audit;
 - Scientific lock проверяется до/после каждой фазы с P02; Implementation lock — с P06;
-- любое изменение Scientific-lock path блокирует run и требует v1.20/new run;
+- любое изменение Scientific-lock path блокирует run и требует v1.21/new run;
 - Builder не видит confirmatory plaintext;
 - Evaluation Runner запускает confirmatory на отдельной среде;
 - Audit Agent обязательно воспроизводит run на clean checkout.
@@ -360,7 +360,7 @@ Preflight разделён на два уровня. P03 выполняет cont
 
 `P_FULL_PLAN_REPLAY_RAW` определяется только `docs/controls/p_replay_contract_v1.yaml`. Planner вызывается один раз до исполнения source arm; replay повторно Planner не вызывает и последовательно исполняет exact frozen TypedActions. Контекст P08 использует precomputed Planner-confirmatory A3 WorkPlan, контекст P17 — precomputed Stage 1B E1 WorkPlan. Hash source manifest, WorkPlan и каждой позиции обязателен; подмена контекстов запрещена.
 
-## Launch-инварианты v1.20
+## Launch-инварианты v1.21
 
 - Planner confirmatory output is an exact Cartesian matrix: every selected task × seeds `101,202,303,404,505` × arms `A1,A2,A2b,A2c,A3,A3r,A4,A5,P_FULL_PLAN_REPLAY_RAW`.
 - `planner_seed` is explicit in lineage, EpisodePlanManifest, EpisodeLog, WorkPlan and AttemptLog and must match even for FAILED plan generation; duplicates and omissions are `INVALID_RUN`.
@@ -368,11 +368,11 @@ Preflight разделён на два уровня. P03 выполняет cont
 - Stage 1B replay diagnostic metric is `STAGE1B_E1_FULL_PLAN_REPLAY_GOAL_SUCCESS`.
 
 
-## Нормативный inventory и training evidence v1.20
+## Нормативный inventory и training evidence v1.21
 
 Точные PyTorch state_dict keys, shapes, bias policy, LayerNorm eps, GELU и attention layout заданы в `docs/architecture/planner_module_inventory_v1.yaml`. ИИ-реализация не вправе переименовывать tensors или выбирать fused QKV. P07 принимает 30 final и 10 FLOPs-sensitivity отчётов только через структурированные sidecars: parameter inventory, initialization, ordered examples, dormant-gradient audit и checkpoint manifest. Модельные и optimizer checkpoints имеют формат safetensors; валидатор сверяет header с locked inventory. P08 каждый Planner lineage record связывает с конкретным checkpoint manifest: primary arms — `FINAL_EQUAL_DATA`, `PLANNER_A2C_FLOPS_RAW`/`PLANNER_A3_FLOPS_RAW` — `FLOPS_SENSITIVITY`, A4/A5/replay — соответствующий A3 final checkpoint. Variant, seed, regime и model SHA пересчитываются машинно.
 
-## Evidence hardening v1.20
+## Evidence hardening v1.21
 
 1. Initialization checkpoint tensors are recomputed byte-for-byte from the locked name-derived NumPy PCG64 initializer.
 2. A trained checkpoint is invalid when no active tensor differs from initialization, any dormant tensor differs, or any tensor contains NaN/Inf.

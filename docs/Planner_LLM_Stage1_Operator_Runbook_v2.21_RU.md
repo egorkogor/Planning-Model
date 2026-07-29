@@ -2,7 +2,7 @@
 
 **Версия:** 2.16
 **Дата:** 27 июля 2026
-**Implementation Spec:** `Planner_MVP_MicroModel_Implementation_Spec_RU_v1.20.md`.
+**Implementation Spec:** `Planner_MVP_MicroModel_Implementation_Spec_RU_v1.21.md`.
 
 Документ задаёт исполняемый контур Stage 1A/1B. Нормативные числа, схемы и правила находятся в YAML/JSON-контрактах; этот runbook не переопределяет их.
 
@@ -174,7 +174,7 @@ Core gates:
 7. incomplete pairs ≤1%;
 8. contract/hash/determinism violations =0.
 
-`I2−I0` — diagnostic, не veto и не sample-size component. Confirmatory TOST в v1.20 запрещён.
+`I2−I0` — diagnostic, не veto и не sample-size component. Confirmatory TOST в v1.21 запрещён.
 
 N = maximum из `primary_ci`, `primary_power`, `current_vs_shuffled_power` и minimum N. Acceptance мощности использует нижнюю одностороннюю exact-binomial bound ≥0.90 на двух соседних candidate N. Design alternative 7.5 п.п. отделена от decision boundary 5 п.п.
 
@@ -446,7 +446,7 @@ Validator пересчитывает differences, estimators, CI, sample size, c
 
 P08 выполняет exact task × five final seeds × all frozen Planner arms matrix. P14 принимает Stage 1A AnalysisInput only when every comparison contains the same snapshot IDs per task. Any missing, duplicate or substituted unit is `INVALID_CONFIRMATORY`. Для каждой P08 записи обязателен hash-bound P07 checkpoint manifest. FLOPs-arms обязаны ссылаться именно на отдельные `FLOPS_SENSITIVITY` checkpoints matching variant/seed; подмена primary checkpoint или обратная подмена является `INVALID_CONFIRMATORY`.
 
-## Обязательные проверки v2.20
+## Обязательные проверки v2.21
 
 - P06: не принимать декларативный PASS. Проверить check-specific evidence и validator-recomputed results.
 - P07: проверить реальные значения initialization/final/optimizer safetensors, а не только headers и hashes.

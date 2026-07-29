@@ -1,7 +1,7 @@
 # RUN STATUS
 
 - Run ID: `<run-id>`
-- Protocol: `work-planner/1.20`, Stage 1 runbook `2.20`
+- Protocol: `work-planner/1.21`, Stage 1 runbook `2.21`
 - Current phase: `P00`
 - Status: `NOT_STARTED`
 - Progress: `0%`

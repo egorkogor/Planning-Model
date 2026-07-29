@@ -1,4 +1,4 @@
-"""Frozen arm identifiers from work-planner/1.20 and Stage 1 runbook v2.20."""
+"""Frozen arm identifiers from work-planner/1.21 and Stage 1 runbook v2.21."""
 
 from enum import StrEnum
 

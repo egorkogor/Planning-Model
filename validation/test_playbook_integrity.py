@@ -77,8 +77,8 @@ def test_manual_gates_identical_across_contracts_and_schema() -> None:
 def test_master_prompt_points_to_current_sources_and_roles() -> None:
     text = (ROOT / "prompts/00_MASTER_ORCHESTRATOR.md").read_text(encoding="utf-8")
     for needle in (
-        "Implementation_Spec_RU_v1.20.md",
-        "Operator_Runbook_v2.20_RU.md",
+        "Implementation_Spec_RU_v1.21.md",
+        "Operator_Runbook_v2.21_RU.md",
         "phase_state_machine_v1.yaml",
         "contract_lock_v1.yaml",
         "report_registry_v1.yaml",

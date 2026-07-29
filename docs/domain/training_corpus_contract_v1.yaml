@@ -1,4 +1,4 @@
-schema_version: work-planner/1.20
+schema_version: work-planner/1.21
 corpus_id: blocks-training-corpus/1.6
 source: accepted_base_tasks_from_generator_manifest
 split_grouping:

@@ -224,8 +224,8 @@ def validate_capacity_preflight(root: Path, obj: dict[str, Any]) -> list[str]:
         corpus = load_json(paths["corpus_manifest_sha256"])
         errors.extend(validate_compute_profile(compute, root))
 
-        if training.get("schema_version") != "work-planner/1.20":
-            errors.append("training contract is not v1.20")
+        if training.get("schema_version") != "work-planner/1.21":
+            errors.append("training contract is not v1.21")
         final = training.get("training", {}).get("final_confirmatory_models", {})
         if final.get("optimizer_updates_exact") != FINAL_UPDATES or final.get("same_batch_size") != BATCH_SIZE:
             errors.append("final training contract is not exactly 12000 updates x batch 128")

@@ -3,8 +3,8 @@ contract_id: scientific-lock/1.0
 created_phase: P02
 purpose: Freeze every outcome-relevant choice before implementation or outcome data exists.
 protected_paths:
-- docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.20.md
-- docs/Planner_LLM_Stage1_Operator_Runbook_v2.20_RU.md
+- docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.21.md
+- docs/Planner_LLM_Stage1_Operator_Runbook_v2.21_RU.md
 - docs/operator/phase_state_machine_v1.yaml
 - docs/operator/phase_registry_v1.yaml
 - docs/operator/agent_execution_contract_v1.yaml

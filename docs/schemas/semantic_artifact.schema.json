@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.20/semantic_artifact.schema.json",
-  "title": "SemanticArtifact v1.20",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.21/semantic_artifact.schema.json",
+  "title": "SemanticArtifact v1.21",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -1,4 +1,4 @@
-schema_version: work-planner/1.20
+schema_version: work-planner/1.21
 experiment:
   name: work_planner_stage1_v2_6
   run_id: run-YYYYMMDD-shortname

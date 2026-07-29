@@ -128,7 +128,7 @@ def _prepare_contracts(root: Path) -> tuple[dict, dict]:
         "active_arms": list(VARIANTS),
     }
     inventory_contract = {
-        "schema_version": "work-planner/1.20",
+        "schema_version": "work-planner/1.21",
         "contract_id": "test-inventory/1.0",
         "implementation": {},
         "tensors": [tensor],
@@ -174,7 +174,7 @@ def _prepare_contracts(root: Path) -> tuple[dict, dict]:
     cfg_path.write_text(json.dumps(cfg))
 
     dataset = {
-        "schema_version": "work-planner/1.20",
+        "schema_version": "work-planner/1.21",
         "corpus_id": "c",
         "contract_sha256": "sha256:" + "1" * 64,
         "generator_manifest_sha256": "sha256:" + "2" * 64,
@@ -412,7 +412,7 @@ def test_training_evidence_rejects_opaque_checkpoint(tmp_path: Path) -> None:
 
 
 def test_implementation_spec_includes_a3r_final_training_and_inventory() -> None:
-    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.20.md").read_text()
+    spec = (ROOT / "docs/Planner_MVP_MicroModel_Implementation_Spec_RU_v1.21.md").read_text()
     assert "A1/A2/A2b/A2c/A3/A3r обучаются ровно 12 000" in spec
     assert "planner_module_inventory_v1.yaml" in spec
 

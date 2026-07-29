@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ml-brain.local/schemas/work-planner/v1.20/ordered_training_examples.schema.json",
+  "$id": "https://ml-brain.local/schemas/work-planner/v1.21/ordered_training_examples.schema.json",
   "title": "Deterministic ordered training examples",
   "type": "object",
   "additionalProperties": false,
