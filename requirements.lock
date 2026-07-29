@@ -13,3 +13,4 @@ jsonschema==4.26.0
 referencing==0.37.0
 PyYAML==6.0.3
 hatchling==1.27.0
+torch==2.12.0
