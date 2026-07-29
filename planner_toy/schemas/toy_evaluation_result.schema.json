@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "arm": {
+      "const": "PLANNER_A2_RAW"
+    },
+    "attempt_log_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "canonical_task_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "checkpoint_file_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "checkpoint_manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "config_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "confirmatory": {
+      "const": false
+    },
+    "episode_plan_manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "evaluation_result_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "executed_action_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "failure_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "goal_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "replanning_count": {
+      "const": 0
+    },
+    "schema_version": {
+      "const": "toy-evaluation-result/1.0"
+    },
+    "sealed_data": {
+      "const": false
+    },
+    "seed": {
+      "const": 17
+    },
+    "split": {
+      "const": "development"
+    },
+    "stage": {
+      "const": "PLANNER_ONLY"
+    },
+    "success": {
+      "type": "boolean"
+    },
+    "task_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "task_id",
+    "canonical_task_hash",
+    "config_hash",
+    "checkpoint_manifest_hash",
+    "checkpoint_file_hash",
+    "episode_plan_manifest_hash",
+    "attempt_log_hash",
+    "success",
+    "goal_hash",
+    "executed_action_count",
+    "replanning_count",
+    "failure_code",
+    "evaluation_result_hash",
+    "seed",
+    "split",
+    "stage",
+    "arm",
+    "confirmatory",
+    "sealed_data"
+  ],
+  "title": "toy-evaluation-result/1.0",
+  "type": "object"
+}

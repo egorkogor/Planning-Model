@@ -14,11 +14,25 @@ def canonical_bytes(value: Any) -> bytes:
     def normalize(item):
         if isinstance(item, str):
             return unicodedata.normalize("NFC", item)
+        if item is None or isinstance(item, bool | int):
+            return item
+        if isinstance(item, float):
+            if item != item or item in (float("inf"), float("-inf")):
+                raise ValueError("non-finite float is forbidden")
+            return item
         if isinstance(item, list | tuple):
             return [normalize(value) for value in item]
         if isinstance(item, dict):
-            return {unicodedata.normalize("NFC", key): normalize(item[key]) for key in sorted(item)}
-        return item
+            if not all(isinstance(key, str) for key in item):
+                raise TypeError("JSON object keys must be strings")
+            result = {}
+            for key, child in item.items():
+                normalized = unicodedata.normalize("NFC", key)
+                if normalized in result:
+                    raise ValueError(f"duplicate JSON key after NFC normalization: {normalized!r}")
+                result[normalized] = normalize(child)
+            return {key: result[key] for key in sorted(result)}
+        raise TypeError(f"unsupported canonical JSON type: {type(item)!r}")
 
     return json.dumps(
         normalize(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False

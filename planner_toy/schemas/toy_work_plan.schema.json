@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "arm": {
+      "const": "PLANNER_A2_RAW"
+    },
+    "canonical_task_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "checkpoint_file_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "checkpoint_manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "config_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "plan_artifact_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "plan_content_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "toy-work-plan/1.0"
+    },
+    "seed": {
+      "const": 17
+    },
+    "split": {
+      "const": "development"
+    },
+    "stage": {
+      "const": "PLANNER_ONLY"
+    },
+    "state_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "PICK_UP",
+              "UNSTACK",
+              "PUT_DOWN",
+              "STACK",
+              "END"
+            ]
+          },
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "step_index": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "step_index",
+          "action",
+          "args"
+        ],
+        "type": "object"
+      },
+      "maxItems": 17,
+      "minItems": 1,
+      "type": "array"
+    },
+    "task_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "task_id",
+    "canonical_task_hash",
+    "state_hash",
+    "config_hash",
+    "checkpoint_manifest_hash",
+    "checkpoint_file_hash",
+    "seed",
+    "split",
+    "stage",
+    "arm",
+    "steps",
+    "plan_content_hash",
+    "plan_artifact_hash"
+  ],
+  "title": "toy-work-plan/1.0",
+  "type": "object"
+}

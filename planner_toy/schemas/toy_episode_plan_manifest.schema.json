@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "arm": {
+      "const": "PLANNER_A2_RAW"
+    },
+    "canonical_task_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "checkpoint_file_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "checkpoint_manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "config_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "confirmatory": {
+      "const": false
+    },
+    "failure_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "plan_status": {
+      "enum": [
+        "READY",
+        "FAILED"
+      ]
+    },
+    "planner_call_count": {
+      "const": 1
+    },
+    "schema_version": {
+      "const": "toy-episode-plan-manifest/1.0"
+    },
+    "sealed_data": {
+      "const": false
+    },
+    "seed": {
+      "const": 17
+    },
+    "split": {
+      "const": "development"
+    },
+    "stage": {
+      "const": "PLANNER_ONLY"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "work_plan_artifact_hash": {
+      "oneOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "work_plan_content_hash": {
+      "oneOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "work_plan_path": {
+      "pattern": "^results/development/plans/.+\\.json$",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "task_id",
+    "canonical_task_hash",
+    "config_hash",
+    "checkpoint_manifest_hash",
+    "checkpoint_file_hash",
+    "seed",
+    "split",
+    "stage",
+    "arm",
+    "confirmatory",
+    "sealed_data",
+    "plan_status",
+    "planner_call_count",
+    "work_plan_path",
+    "work_plan_content_hash",
+    "work_plan_artifact_hash",
+    "failure_code",
+    "manifest_hash"
+  ],
+  "title": "toy-episode-plan-manifest/1.0",
+  "type": "object"
+}

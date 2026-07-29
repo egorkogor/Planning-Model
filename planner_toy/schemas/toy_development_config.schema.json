@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "architecture": {
+      "type": "object"
+    },
+    "code_commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "confirmatory": {
+      "const": false
+    },
+    "dataset_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "inventory_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "runtime": {
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "toy-development-config/1.0"
+    },
+    "sealed_data": {
+      "const": false
+    },
+    "seed": {
+      "const": 17
+    },
+    "task_encoding_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "training": {
+      "type": "object"
+    },
+    "training_task_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "training_task_id": {
+      "type": "string"
+    },
+    "variant": {
+      "const": "A2"
+    }
+  },
+  "required": [
+    "schema_version",
+    "variant",
+    "seed",
+    "training",
+    "architecture",
+    "inventory_sha256",
+    "task_encoding_sha256",
+    "dataset_hash",
+    "training_task_id",
+    "training_task_hash",
+    "runtime",
+    "code_commit",
+    "confirmatory",
+    "sealed_data"
+  ],
+  "title": "toy-development-config/1.0",
+  "type": "object"
+}

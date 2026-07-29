@@ -1,44 +1,132 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
+from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator
 
-from planner_toy.e2e import parse_work_plan, validate_lineage
+from planner_toy.canonical import artifact_hash
+from planner_toy.e2e import parse_work_plan, toy_hash, validate_lineage
 
 
-def test_no_end_records_zero_execution_failure(tmp_path, replay_dirs) -> None:
-    root = tmp_path / "failed"
-    from planner_toy.e2e import run
+def validate(values):
+    validate_lineage(
+        root=values["root"],
+        task=values["task"],
+        request=values["request"],
+        config=values["config"],
+        checkpoint=values["checkpoint"],
+        work_plan=values["work_plan"],
+        manifest=values["manifest"],
+        attempts=values["attempts"],
+        episode=values["episode"],
+        evaluation=values["evaluation"],
+    )
 
-    run(root, failure_mode="NO_END", reuse_from=replay_dirs[0])
-    result = json.loads((root / "run-result.json").read_text())
-    assert result["failure_code"] == "PLAN_NO_END"
-    assert result["executed_action_count"] == 0
-    assert json.loads((root / "attempt-log.json").read_text()) == []
-    assert json.loads((root / "episode-plan-manifest.json").read_text())["plan_status"] == "FAILED"
-    assert json.loads((root / "episode-log.json").read_text())["plan_generation_status"] == "FAILED"
-    assert json.loads((root / "evaluation-result.json").read_text())["success"] is False
+
+def rehash(values):
+    plan = values["work_plan"]
+    content = {
+        k: v for k, v in plan.items() if k not in {"plan_content_hash", "plan_artifact_hash"}
+    }
+    plan["plan_content_hash"] = toy_hash("plan_content", content)
+    artifact = {k: v for k, v in plan.items() if k != "plan_artifact_hash"}
+    plan["plan_artifact_hash"] = toy_hash("plan_artifact", artifact)
+    values["manifest"]["work_plan_content_hash"] = plan["plan_content_hash"]
+    values["manifest"]["work_plan_artifact_hash"] = plan["plan_artifact_hash"]
+    values["manifest"]["manifest_hash"] = artifact_hash(values["manifest"], "manifest_hash")
+    for attempt in values["attempts"]:
+        attempt["episode_plan_manifest_hash"] = values["manifest"]["manifest_hash"]
+        attempt["plan_content_hash"] = plan["plan_content_hash"]
+        attempt["plan_artifact_hash"] = plan["plan_artifact_hash"]
+    values["episode"]["episode_plan_manifest_hash"] = values["manifest"]["manifest_hash"]
+    values["evaluation"]["episode_plan_manifest_hash"] = values["manifest"]["manifest_hash"]
+    values["evaluation"]["attempt_log_hash"] = toy_hash("attempt_jsonl", values["attempts"])
+    values["evaluation"]["evaluation_result_hash"] = artifact_hash(
+        values["evaluation"], "evaluation_result_hash"
+    )
+
+
+def test_toy_schemas_validate_emitted_artifacts(e2e_artifacts) -> None:
+    root = Path("planner_toy/schemas")
+    mapping = {
+        "request": "toy_planner_request",
+        "config": "toy_development_config",
+        "checkpoint": "toy_checkpoint_manifest",
+        "work_plan": "toy_work_plan",
+        "manifest": "toy_episode_plan_manifest",
+        "episode": "toy_episode_log",
+        "evaluation": "toy_evaluation_result",
+    }
+    for key, schema in mapping.items():
+        Draft202012Validator(json.loads((root / f"{schema}.schema.json").read_text())).validate(
+            e2e_artifacts[key]
+        )
+    schema = json.loads((root / "toy_attempt_log.schema.json").read_text())
+    for attempt in e2e_artifacts["attempts"]:
+        Draft202012Validator(schema).validate(attempt)
 
 
 def test_two_clean_replays_are_recursively_byte_identical(replay_dirs) -> None:
     one, two, result_one, result_two = replay_dirs
     assert result_one == result_two
-    relative = sorted(path.relative_to(one) for path in one.rglob("*") if path.is_file())
-    assert relative
-    assert all((one / name).read_bytes() == (two / name).read_bytes() for name in relative)
+    names = sorted(p.relative_to(one) for p in one.rglob("*") if p.is_file())
+    assert all((one / name).read_bytes() == (two / name).read_bytes() for name in names)
 
 
-def test_multistep_plan_executes_and_changes_state(e2e_artifacts) -> None:
-    plan = e2e_artifacts["plan"]
-    attempts = e2e_artifacts["attempts"]
-    assert len(plan["steps"]) == 5  # four actions plus END
-    assert len(attempts) == 4
-    assert all(item["state_before_hash"] != item["state_after_hash"] for item in attempts)
-    assert e2e_artifacts["evaluation"]["success"] is True
-    assert e2e_artifacts["manifest"]["planner_call_count"] == 1
+def test_multistep_and_bindings(e2e_artifacts) -> None:
+    assert len(e2e_artifacts["work_plan"]["steps"]) == 5
+    assert len(e2e_artifacts["attempts"]) == 4
+    assert all(a["state_before_hash"] != a["state_after_hash"] for a in e2e_artifacts["attempts"])
+    validate(e2e_artifacts)
+
+
+def test_failure_is_empty_jsonl_and_semantically_valid(tmp_path, replay_dirs) -> None:
+    from planner_toy.e2e import run
+
+    root = tmp_path / "failed"
+    result = run(root, failure_mode="NO_END", reuse_from=replay_dirs[0])
+    assert result["success"] is False
+    assert (root / "attempt-log.jsonl").read_bytes() == b""
+    assert not (root / "results/development/plans/work-plan.json").exists()
+
+    def load(path):
+        return json.loads((root / path).read_bytes())
+
+    from planner_toy.dataset import generate
+
+    task = next(
+        row
+        for row in generate()["train"]
+        if row["task_id"] == load("planner-request.json")["task_id"]
+    )
+    values = {
+        "root": root,
+        "task": task,
+        "request": load("planner-request.json"),
+        "config": load("development-config.json"),
+        "checkpoint": load("checkpoint-manifest.json"),
+        "work_plan": None,
+        "manifest": load("episode-plan-manifest.json"),
+        "attempts": [],
+        "episode": load("episode-log.json"),
+        "evaluation": load("evaluation-result.json"),
+    }
+    validate(values)
+    schema_root = Path("planner_toy/schemas")
+    for key, schema_name in (
+        ("manifest", "toy_episode_plan_manifest"),
+        ("episode", "toy_episode_log"),
+        ("evaluation", "toy_evaluation_result"),
+    ):
+        schema = json.loads((schema_root / f"{schema_name}.schema.json").read_text())
+        Draft202012Validator(schema).validate(values[key])
+    changed = copy.deepcopy(values)
+    changed["episode"]["planner_calls"] = 0
+    with pytest.raises(ValueError):
+        validate(changed)
 
 
 def test_invalid_plan_is_not_repaired() -> None:
@@ -46,52 +134,64 @@ def test_invalid_plan_is_not_repaired() -> None:
         parse_work_plan([["PICK_UP", "@UNKNOWN"], ["END"]], ["@B0"])
 
 
-def test_checkpoint_config_and_work_plan_paths_bind_real_files(replay_dirs, e2e_artifacts) -> None:
-    root = replay_dirs[0]
-
-    def digest(path):
-        return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
-
-    request = e2e_artifacts["request"]
-    assert request["planner_checkpoint_sha256"] == digest(root / "model/trained.pt")
-    assert request["planner_config_sha256"] == digest(root / "planner-config.json")
-    assert (root / e2e_artifacts["manifest"]["work_plan_path"]).is_file()
-
-
 @pytest.mark.parametrize(
     "target,field,value",
     [
-        ("plan", "steps", []),
-        ("manifest", "planner_seed", 42),
-        ("episode", "goal_success", False),
+        ("manifest", "checkpoint_file_hash", "sha256:" + "1" * 64),
+        ("episode", "planner_calls", 2),
+        ("episode", "attempts_total", 3),
+        ("episode", "plan_positions_consumed", 3),
         ("evaluation", "success", False),
+        ("evaluation", "executed_action_count", 3),
+        ("evaluation", "goal_hash", "sha256:" + "2" * 64),
+        ("evaluation", "replanning_count", 1),
     ],
 )
-def test_real_artifact_mutations_fail_closed(e2e_artifacts, target, field, value) -> None:
-    mutated = copy.deepcopy(e2e_artifacts)
-    mutated[target][field] = value
+def test_coherent_downstream_mutations_fail(e2e_artifacts, target, field, value) -> None:
+    changed = copy.deepcopy(e2e_artifacts)
+    changed[target][field] = value
+    if target == "manifest":
+        changed[target]["manifest_hash"] = artifact_hash(changed[target], "manifest_hash")
+    if target == "evaluation":
+        changed[target]["evaluation_result_hash"] = artifact_hash(
+            changed[target], "evaluation_result_hash"
+        )
     with pytest.raises(ValueError):
-        validate_lineage(
-            mutated["task"],
-            mutated["request"],
-            mutated["plan"],
-            mutated["manifest"],
-            mutated["attempts"],
-            mutated["episode"],
-            mutated["evaluation"],
-        )
+        validate(changed)
 
 
-def test_rehashed_attempt_action_mutation_is_semantically_rejected(e2e_artifacts) -> None:
-    mutated = copy.deepcopy(e2e_artifacts)
-    mutated["attempts"][0]["candidate_typed_action"]["action"] = "STACK"
-    with pytest.raises(ValueError, match="frozen action"):
-        validate_lineage(
-            mutated["task"],
-            mutated["request"],
-            mutated["plan"],
-            mutated["manifest"],
-            mutated["attempts"],
-            mutated["episode"],
-            mutated["evaluation"],
-        )
+@pytest.mark.parametrize(
+    "field", ["task_id", "config_hash", "checkpoint_file_hash", "plan_content_hash"]
+)
+def test_attempt_binding_mutations_fail(e2e_artifacts, field) -> None:
+    changed = copy.deepcopy(e2e_artifacts)
+    changed["attempts"][0][field] = "mutated"
+    changed["evaluation"]["attempt_log_hash"] = toy_hash("attempt_jsonl", changed["attempts"])
+    changed["evaluation"]["evaluation_result_hash"] = artifact_hash(
+        changed["evaluation"], "evaluation_result_hash"
+    )
+    with pytest.raises(ValueError):
+        validate(changed)
+
+
+@pytest.mark.parametrize("operation", ["reverse", "delete"])
+def test_attempt_sequence_mutations_fail(e2e_artifacts, operation) -> None:
+    changed = copy.deepcopy(e2e_artifacts)
+    changed["attempts"] = (
+        list(reversed(changed["attempts"])) if operation == "reverse" else changed["attempts"][:-1]
+    )
+    changed["evaluation"]["attempt_log_hash"] = toy_hash("attempt_jsonl", changed["attempts"])
+    changed["evaluation"]["evaluation_result_hash"] = artifact_hash(
+        changed["evaluation"], "evaluation_result_hash"
+    )
+    with pytest.raises(ValueError):
+        validate(changed)
+
+
+def test_changed_plan_action_with_coherent_hashes_fails(e2e_artifacts) -> None:
+    changed = copy.deepcopy(e2e_artifacts)
+    changed["work_plan"]["steps"][0]["action"] = "STACK"
+    changed["attempts"][0]["candidate_action"]["action"] = "STACK"
+    rehash(changed)
+    with pytest.raises(ValueError):
+        validate(changed)

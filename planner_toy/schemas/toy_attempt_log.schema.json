@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "arm": {
+      "const": "PLANNER_A2_RAW"
+    },
+    "candidate_action": {
+      "type": "object"
+    },
+    "canonical_task_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "checkpoint_file_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "checkpoint_manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "config_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "confirmatory": {
+      "const": false
+    },
+    "episode_plan_manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "plan_artifact_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "plan_content_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "plan_position_index": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "replanning_observed": {
+      "const": false
+    },
+    "schema_version": {
+      "const": "toy-attempt-log/1.0"
+    },
+    "sealed_data": {
+      "const": false
+    },
+    "seed": {
+      "const": 17
+    },
+    "split": {
+      "const": "development"
+    },
+    "stage": {
+      "const": "PLANNER_ONLY"
+    },
+    "state_after_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "state_before_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "step_index": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "task_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "task_id",
+    "canonical_task_hash",
+    "config_hash",
+    "checkpoint_manifest_hash",
+    "checkpoint_file_hash",
+    "episode_plan_manifest_hash",
+    "plan_content_hash",
+    "plan_artifact_hash",
+    "step_index",
+    "plan_position_index",
+    "candidate_action",
+    "state_before_hash",
+    "state_after_hash",
+    "replanning_observed",
+    "seed",
+    "split",
+    "stage",
+    "arm",
+    "confirmatory",
+    "sealed_data"
+  ],
+  "title": "toy-attempt-log/1.0",
+  "type": "object"
+}

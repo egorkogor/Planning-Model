@@ -1,12 +1,11 @@
-"""Fail-closed, single-call toy A2 planning and lineage pipeline."""
+"""Fail-closed, development-only toy A2 planning and lineage pipeline."""
 
 from __future__ import annotations
 
 import hashlib
 import json
-import shutil
+import subprocess
 from dataclasses import dataclass
-from importlib.resources import files
 from pathlib import Path
 
 import torch
@@ -16,17 +15,29 @@ from .canonical import (
     canonical_bytes,
     canonical_task_hash,
     goal_hash,
-    plan_artifact_hash,
-    plan_content_hash,
     sha256,
     state_hash,
 )
 from .dataset import generate, task_from_row
 from .domain import ACTION_RANK, apply_action, goal_satisfied, validate_state
 from .model import LockedA2, canonical_task_encoding
-from .training import train
+from .training import state_dict_sha256, train
 
 ACTION_NAMES = tuple(ACTION_RANK)
+ROOT = Path(__file__).parents[1]
+DEV = {"seed": 17, "split": "development", "stage": "PLANNER_ONLY", "arm": "PLANNER_A2_RAW"}
+
+
+def file_hash(path: Path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def toy_hash(kind: str, value) -> str:
+    return sha256({"schema": "toy-planner-hash/1.0", "kind": kind, "value": value})
+
+
+def jsonl_bytes(rows: list[dict]) -> bytes:
+    return b"".join(canonical_bytes(row) + b"\n" for row in rows)
 
 
 @dataclass
@@ -38,19 +49,16 @@ class A2Planner:
         if self.calls:
             raise RuntimeError("replanning is forbidden")
         self.calls += 1
-        # A complete sequence is emitted by one API invocation. Autoregressive model
-        # forwards inside it are decoder computation, never external Planner calls.
-        action_ids = [4] * 17
-        arg1_ids = [0] * 17
-        arg2_ids = [0] * 17
+        action_ids, arg1_ids, arg2_ids = [4] * 17, [0] * 17, [0] * 17
         decoded: list[list[str]] = []
+        encoded = canonical_task_encoding(row)
         for index in range(17):
-            probe_actions = torch.tensor([action_ids])
-            probe_arg1 = torch.tensor([arg1_ids])
-            probe_arg2 = torch.tensor([arg2_ids])
             with torch.no_grad():
                 logits = self.model(
-                    canonical_task_encoding(row), probe_actions, probe_arg1, probe_arg2
+                    encoded,
+                    torch.tensor([action_ids]),
+                    torch.tensor([arg1_ids]),
+                    torch.tensor([arg2_ids]),
                 )
             action_id = int(logits.action[0, index].argmax())
             if action_id == 4:
@@ -61,234 +69,244 @@ class A2Planner:
             if action_id in (1, 3):
                 step.append(row["blocks"][arg2_id])
             decoded.append(step)
-            action_ids[index] = action_id
-            arg1_ids[index] = arg1_id
-            arg2_ids[index] = arg2_id
-        raise ValueError("planner did not emit END within normative limit")
+            action_ids[index], arg1_ids[index], arg2_ids[index] = action_id, arg1_id, arg2_id
+        raise ValueError("PLAN_NO_END")
 
 
 def parse_work_plan(raw: list[list[str]], blocks: list[str]) -> tuple[tuple[str, ...], ...]:
     if not raw or raw[-1] != ["END"] or any(step == ["END"] for step in raw[:-1]):
-        raise ValueError("plan must contain exactly one terminal END")
-    result = []
+        raise ValueError("PLAN_NO_END")
     arity = {"PICK_UP": 1, "UNSTACK": 2, "PUT_DOWN": 1, "STACK": 2}
+    parsed = []
     for step in raw[:-1]:
         if step[0] not in arity or len(step) != arity[step[0]] + 1:
-            raise ValueError("invalid typed action")
+            raise ValueError("PLAN_PARSE_ERROR")
         if any(arg not in blocks for arg in step[1:]):
-            raise ValueError("unknown object reference")
-        result.append(tuple(step))
-    return tuple(result)
+            raise ValueError("PLAN_UNKNOWN_REF")
+        parsed.append(tuple(step))
+    return tuple(parsed)
 
 
 def execute(row: dict, plan: tuple[tuple[str, ...], ...]) -> tuple[list[dict], bool]:
     task = task_from_row(row)
     state = validate_state(task.blocks, task.initial)
-    attempts = []
+    events = []
     for index, action in enumerate(plan):
         before = state_hash(state)
-        try:
-            state = apply_action(task.blocks, state, action)
-        except ValueError as exc:
-            attempts.append(
-                {
-                    "step": index,
-                    "action": list(action),
-                    "before": before,
-                    "status": "FAILED",
-                    "error": str(exc),
-                }
-            )
-            return attempts, False
-        attempts.append(
-            {
-                "step": index,
-                "action": list(action),
-                "before": before,
-                "after": state_hash(state),
-                "status": "APPLIED",
-            }
+        state = apply_action(task.blocks, state, action)
+        events.append(
+            {"index": index, "action": list(action), "before": before, "after": state_hash(state)}
         )
-    return attempts, goal_satisfied(state, task.goal)
+    return events, goal_satisfied(state, task.goal)
 
 
-def _template(name: str) -> dict:
-    return json.loads(files("planner_toy").joinpath("templates", name).read_text())
-
-
-def normative_attempts(row, events, plan, manifest, checkpoint_hash, config_hash) -> list[dict]:
-    records = []
-    for index, event in enumerate(events):
-        record = _template("attempt_log.json")
-        action = event["action"]
-        typed_args = (
-            [{"role": "block", "ref": action[1]}]
-            if len(action) == 2
-            else [{"role": "moving", "ref": action[1]}, {"role": "support", "ref": action[2]}]
-        )
-        record.update(
-            run_id="run-toy-a2",
-            episode_id="episode-toy-a2-0001",
-            trajectory_id="trajectory-toy-a2-0001",
-            stage="PLANNER_ONLY",
-            task_id=row["task_id"],
-            base_task_id=row["task_id"],
-            canonical_task_hash=row["canonical_task_hash"],
-            split="development",
-            arm="PLANNER_A2_RAW",
-            planner_seed=17,
-            planner_checkpoint_sha256=checkpoint_hash,
-            planner_config_sha256=config_hash,
-            episode_plan_manifest_hash=manifest["manifest_hash"],
-            plan_generation_status="READY",
-            plan_content_hash=plan["plan_content_hash"],
-            plan_artifact_hash=plan["plan_artifact_hash"],
-            plan_step_id=f"S{index:02d}",
-            step_index=index,
-            plan_position_index=index,
-            state_before_hash=event["before"],
-            state_after_hash=event["after"],
-            goal_hash=goal_hash(row["goal"]),
-            candidate_source="PLAN_REPLAY",
-            candidate_typed_action={
-                "schema_version": "work-planner/1.21",
-                "action": action[0],
-                "args": typed_args,
-            },
-            raw_unmasked_action=action[0],
-            raw_unmasked_args=action[1:],
-            parsed_typed_action=None,
-            parsed_llm_response=None,
-            parse_status="NOT_APPLICABLE",
-            validation_status="VALID",
-            replanning_observed=False,
-            guidance_source_position_index=None,
-            guidance_source_step_id=None,
-            guidance_source_semantic_ref=None,
-            tokens_in=0,
-            tokens_out=0,
-            queue_ms=0.0,
-            inference_ms=0.0,
-            total_ms=0.0,
-        )
-        records.append(record)
-    return records
-
-
-def normative_episode(row, attempts, manifest, success, final_state) -> dict:
-    episode = _template("episode_log.json")
-    episode.update(
-        run_id="run-toy-a2",
-        episode_id="episode-toy-a2-0001",
-        trajectory_id="trajectory-toy-a2-0001",
-        stage="PLANNER_ONLY",
-        task_id=row["task_id"],
-        base_task_id=row["task_id"],
-        canonical_task_hash=row["canonical_task_hash"],
-        split="development",
-        arm="PLANNER_A2_RAW",
-        planner_seed=17,
-        trajectory_policy="frozen_full_plan",
-        goal_success=success,
-        steps_accepted=len(attempts),
-        attempts_total=len(attempts),
-        planner_calls=1,
-        oracle_length=len(row["oracle_work_plan"]) - 1,
-        executed_length=len(attempts),
-        final_state_hash=final_state,
-        episode_plan_manifest_hash=manifest["manifest_hash"],
-        plan_generation_status="READY",
-        plan_positions_consumed=len(attempts),
-        total_tokens_in=0,
-        total_attended_tokens=0,
-        total_tokens_out=0,
-        total_latency_ms=0.0,
-        executor_tokens_in=0,
-        executor_tokens_out=0,
-        executor_latency_ms=0.0,
-        plan_tokens_in_actual=192,
-        plan_tokens_out_actual=len(row["oracle_work_plan"]),
-        plan_latency_ms_actual=0.0,
-        plan_tokens_in_attributed=192,
-        plan_tokens_out_attributed=len(row["oracle_work_plan"]),
-        plan_latency_ms_attributed=0.0,
+def _git_commit() -> str | None:
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=False
     )
-    return episode
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _config(row: dict, dataset: dict) -> dict:
+    return {
+        "schema_version": "toy-development-config/1.0",
+        "variant": "A2",
+        "seed": 17,
+        "training": {
+            "steps": 30,
+            "learning_rate": 3e-4,
+            "adamw_betas": [0.9, 0.95],
+            "eps": 1e-8,
+            "weight_decay": 0.01,
+            "gradient_clip_norm": 1.0,
+        },
+        "architecture": {
+            "d_model": 256,
+            "encoder_layers": 4,
+            "decoder_layers": 4,
+            "attention_heads": 8,
+            "ffn_dim": 1024,
+        },
+        "inventory_sha256": file_hash(ROOT / "docs/architecture/planner_module_inventory_v1.yaml"),
+        "task_encoding_sha256": file_hash(ROOT / "docs/architecture/task_encoding_v1.yaml"),
+        "dataset_hash": dataset["dataset_hash"],
+        "training_task_id": row["task_id"],
+        "training_task_hash": row["canonical_task_hash"],
+        "runtime": {
+            "torch_version": torch.__version__,
+            "torch_cuda_version": torch.version.cuda,
+            "cuda_available": torch.cuda.is_available(),
+            "device": "cpu",
+        },
+        "code_commit": _git_commit(),
+        "confirmatory": False,
+        "sealed_data": False,
+    }
+
+
+def _common(row, config_hash, checkpoint_manifest_hash, checkpoint_file_hash):
+    return {
+        "task_id": row["task_id"],
+        "canonical_task_hash": row["canonical_task_hash"],
+        "config_hash": config_hash,
+        "checkpoint_manifest_hash": checkpoint_manifest_hash,
+        "checkpoint_file_hash": checkpoint_file_hash,
+    }
+
+
+def _write(path: Path, value, *, jsonl=False) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(jsonl_bytes(value) if jsonl else canonical_bytes(value) + b"\n")
 
 
 def validate_lineage(
+    *,
+    root: Path,
     task: dict,
     request: dict,
-    plan: dict,
+    config: dict,
+    checkpoint: dict,
+    work_plan: dict | None,
     manifest: dict,
     attempts: list[dict],
     episode: dict,
     evaluation: dict,
 ) -> None:
-    """Recompute every content edge; never trust a stored lineage hash."""
-    development_objects = [manifest, episode, *attempts]
-    for value in development_objects:
-        if value.get("planner_seed") != 17 or value.get("split") != "development":
-            raise ValueError("seed 17 requires development split")
-        if value.get("stage") != "PLANNER_ONLY" or value.get("arm") != "PLANNER_A2_RAW":
-            raise ValueError("seed 17 requires toy A2 planner-only profile")
-    if not manifest.get("work_plan_path", "").startswith("results/development/plans/"):
-        raise ValueError("seed 17 requires development-only artifact path")
+    """Validate files, hashes, profile constraints, and replay semantics end to end."""
     task_hash = canonical_task_hash(task)
-    if task_hash != request["canonical_task_hash"] or task_hash != plan["canonical_task_hash"]:
-        raise ValueError("task lineage mismatch")
-    if artifact_hash(request, "request_hash") != request["request_hash"]:
-        raise ValueError("PlannerRequest content mutation")
-    if plan["planner_checkpoint_sha256"] != request["planner_checkpoint_sha256"]:
-        raise ValueError("checkpoint lineage mismatch")
-    if plan["planner_config_sha256"] != request["planner_config_sha256"]:
-        raise ValueError("config lineage mismatch")
-    if plan_content_hash(plan) != plan["plan_content_hash"]:
-        raise ValueError("WorkPlan content mutation")
-    if plan_artifact_hash(plan) != plan["plan_artifact_hash"]:
-        raise ValueError("WorkPlan artifact mutation")
-    if manifest["planner_seed"] != 17:
-        raise ValueError("development planner seed mismatch")
-    if manifest["work_plan_content_hash"] != plan["plan_content_hash"]:
-        raise ValueError("EpisodePlanManifest content lineage mismatch")
-    if manifest["work_plan_artifact_hash"] != plan["plan_artifact_hash"]:
-        raise ValueError("EpisodePlanManifest artifact lineage mismatch")
-    if artifact_hash(manifest, "manifest_hash") != manifest["manifest_hash"]:
-        raise ValueError("EpisodePlanManifest content mutation")
-    state = validate_state(tuple(task["blocks"]), tuple(tuple(x) for x in task["initial"]))
-    non_end = [step for step in plan["steps"] if step["typed_action"]["action"] != "END"]
-    if len(attempts) != len(non_end):
-        raise ValueError("AttemptLog length mismatch")
-    for index, (attempt, step) in enumerate(zip(attempts, non_end, strict=True)):
-        if attempt["episode_plan_manifest_hash"] != manifest["manifest_hash"]:
-            raise ValueError("AttemptLog manifest lineage mismatch")
-        if attempt["plan_artifact_hash"] != plan["plan_artifact_hash"]:
-            raise ValueError("AttemptLog plan lineage mismatch")
-        expected = step["typed_action"]
-        if (
-            attempt["candidate_typed_action"] != expected
-            or attempt["plan_step_id"] != step["step_id"]
-        ):
-            raise ValueError("AttemptLog frozen action mismatch")
-        if attempt["state_before_hash"] != state_hash(state):
-            raise ValueError("AttemptLog state-before mismatch")
-        action = (expected["action"], *(arg["ref"] for arg in expected["args"]))
-        state = apply_action(tuple(task["blocks"]), state, action)
-        if attempt["state_after_hash"] != state_hash(state) or attempt["step_index"] != index:
-            raise ValueError("AttemptLog transition mismatch")
-    attempts_hash = sha256(
-        {"schema": "work-planner-hash/1.0", "kind": "attempt_logs", "value": attempts}
+    if request["task_id"] != task["task_id"] or request["canonical_task_hash"] != task_hash:
+        raise ValueError("request task mismatch")
+    if file_hash(root / "development-config.json") != request["config_hash"]:
+        raise ValueError("config file mismatch")
+    if json.loads((root / "development-config.json").read_bytes()) != config:
+        raise ValueError("config content mismatch")
+    if file_hash(root / "checkpoint-manifest.json") != request["checkpoint_manifest_hash"]:
+        raise ValueError("checkpoint manifest file mismatch")
+    if json.loads((root / "checkpoint-manifest.json").read_bytes()) != checkpoint:
+        raise ValueError("checkpoint manifest content mismatch")
+    if file_hash(root / checkpoint["model_path"]) != checkpoint["model_file_sha256"]:
+        raise ValueError("checkpoint file mismatch")
+    persisted_state = torch.load(
+        root / checkpoint["model_path"], map_location="cpu", weights_only=True
     )
-    if evaluation["attempt_log_hash"] != attempts_hash:
-        raise ValueError("EvaluationResult attempt lineage mismatch")
-    if episode["final_state_hash"] != state_hash(state) or episode[
-        "goal_success"
-    ] != goal_satisfied(state, tuple(tuple(x) for x in task["goal"])):
-        raise ValueError("EpisodeLog semantic outcome mismatch")
-    if episode["episode_plan_manifest_hash"] != manifest["manifest_hash"]:
-        raise ValueError("EpisodeLog manifest lineage mismatch")
+    if state_dict_sha256(persisted_state) != checkpoint["state_dict_sha256"]:
+        raise ValueError("checkpoint state_dict mismatch")
+    if file_hash(root / checkpoint["config_path"]) != checkpoint["config_hash"]:
+        raise ValueError("checkpoint config mismatch")
+    if file_hash(root / checkpoint["training_report_path"]) != checkpoint["training_report_hash"]:
+        raise ValueError("training report mismatch")
+    bindings = _common(
+        task,
+        request["config_hash"],
+        request["checkpoint_manifest_hash"],
+        checkpoint["model_file_sha256"],
+    )
+    for artifact in [manifest, episode, evaluation, *attempts]:
+        for field, expected in bindings.items():
+            if artifact.get(field) != expected:
+                raise ValueError(f"{artifact['schema_version']} {field} mismatch")
+    for artifact in (manifest, episode, evaluation, *attempts):
+        for field, expected in DEV.items():
+            if artifact.get(field) != expected:
+                raise ValueError(f"development profile {field} mismatch")
+        if artifact.get("confirmatory", False) or artifact.get("sealed_data", False):
+            raise ValueError("toy artifacts cannot claim confirmatory or sealed evidence")
+    if manifest["planner_call_count"] != 1 or episode["planner_calls"] != 1:
+        raise ValueError("planner call count mismatch")
+    if (
+        episode["episode_plan_manifest_hash"] != manifest["manifest_hash"]
+        or evaluation["episode_plan_manifest_hash"] != manifest["manifest_hash"]
+    ):
+        raise ValueError("manifest downstream binding mismatch")
+    if artifact_hash(request, "request_hash") != request["request_hash"]:
+        raise ValueError("request hash mismatch")
+    if artifact_hash(manifest, "manifest_hash") != manifest["manifest_hash"]:
+        raise ValueError("manifest hash mismatch")
+    if evaluation["replanning_count"] != 0 or any(a["replanning_observed"] for a in attempts):
+        raise ValueError("replanning forbidden")
+    if work_plan is None:
+        if manifest["plan_status"] != "FAILED" or manifest["work_plan_path"] is not None:
+            raise ValueError("failure manifest mismatch")
+        if (
+            manifest["work_plan_content_hash"] is not None
+            or manifest["work_plan_artifact_hash"] is not None
+        ):
+            raise ValueError("failed generation cannot bind WorkPlan")
+        if attempts or episode["attempts_total"] or episode["executed_length"]:
+            raise ValueError("failure must execute zero attempts")
+        if evaluation["success"] or evaluation["executed_action_count"]:
+            raise ValueError("failure evaluation mismatch")
+        if episode["plan_generation_status"] != "FAILED" or not manifest["failure_code"]:
+            raise ValueError("typed failure missing")
+        if not (
+            manifest["failure_code"] == episode["terminal_error"] == evaluation["failure_code"]
+        ):
+            raise ValueError("failure code lineage mismatch")
+    else:
+        for field, expected in bindings.items():
+            if work_plan.get(field) != expected:
+                raise ValueError(f"WorkPlan {field} mismatch")
+        content = {
+            k: v
+            for k, v in work_plan.items()
+            if k not in {"plan_content_hash", "plan_artifact_hash"}
+        }
+        if toy_hash("plan_content", content) != work_plan["plan_content_hash"]:
+            raise ValueError("plan content mismatch")
+        artifact = {k: v for k, v in work_plan.items() if k != "plan_artifact_hash"}
+        if toy_hash("plan_artifact", artifact) != work_plan["plan_artifact_hash"]:
+            raise ValueError("plan artifact mismatch")
+        if (
+            manifest["work_plan_content_hash"] != work_plan["plan_content_hash"]
+            or manifest["work_plan_artifact_hash"] != work_plan["plan_artifact_hash"]
+        ):
+            raise ValueError("manifest plan mismatch")
+        if manifest["failure_code"] is not None or evaluation["failure_code"] is not None:
+            raise ValueError("successful generation cannot carry failure")
+        if not (root / manifest["work_plan_path"]).is_file():
+            raise ValueError("declared WorkPlan missing")
+        non_end = [step for step in work_plan["steps"] if step["action"] != "END"]
+        if len(attempts) != len(non_end):
+            raise ValueError("attempt count mismatch")
+        state = validate_state(tuple(task["blocks"]), tuple(tuple(x) for x in task["initial"]))
+        for index, (attempt, step) in enumerate(zip(attempts, non_end, strict=True)):
+            if attempt["step_index"] != index or attempt["plan_position_index"] != index:
+                raise ValueError("attempt order mismatch")
+            if attempt["episode_plan_manifest_hash"] != manifest["manifest_hash"]:
+                raise ValueError("attempt manifest mismatch")
+            if (
+                attempt["checkpoint_manifest_hash"] != request["checkpoint_manifest_hash"]
+                or attempt["config_hash"] != request["config_hash"]
+            ):
+                raise ValueError("attempt model binding mismatch")
+            if attempt["candidate_action"] != {"action": step["action"], "args": step["args"]}:
+                raise ValueError("frozen action mismatch")
+            if attempt["plan_content_hash"] != work_plan["plan_content_hash"]:
+                raise ValueError("attempt plan mismatch")
+            if attempt["state_before_hash"] != state_hash(state):
+                raise ValueError("state before mismatch")
+            state = apply_action(tuple(task["blocks"]), state, (step["action"], *step["args"]))
+            if attempt["state_after_hash"] != state_hash(state):
+                raise ValueError("state after mismatch")
+        success = goal_satisfied(state, tuple(tuple(x) for x in task["goal"]))
+        count = len(attempts)
+        if (
+            episode["attempts_total"],
+            episode["executed_length"],
+            episode["plan_positions_consumed"],
+        ) != (count, count, count):
+            raise ValueError("episode counts mismatch")
+        if episode["final_state_hash"] != state_hash(state) or episode["goal_success"] != success:
+            raise ValueError("episode outcome mismatch")
+        if evaluation["success"] != success or evaluation["executed_action_count"] != count:
+            raise ValueError("evaluation outcome mismatch")
+        if evaluation["goal_hash"] != goal_hash(task["goal"]):
+            raise ValueError("evaluation goal mismatch")
+    attempt_hash = toy_hash("attempt_jsonl", attempts)
+    if evaluation["attempt_log_hash"] != attempt_hash:
+        raise ValueError("attempt log hash mismatch")
     if artifact_hash(evaluation, "evaluation_result_hash") != evaluation["evaluation_result_hash"]:
-        raise ValueError("EvaluationResult content mutation")
+        raise ValueError("evaluation hash mismatch")
 
 
 def run(output: Path, *, failure_mode: str | None = None, reuse_from: Path | None = None) -> dict:
@@ -298,266 +316,179 @@ def run(output: Path, *, failure_mode: str | None = None, reuse_from: Path | Non
     dataset = generate(17)
     row = next(r for r in dataset["train"] if len(r["oracle_work_plan"]) > 1)
     if reuse_from is None:
-        trained_model, training = train(row, output / "model", steps=30)
-        del trained_model
+        trained, training = train(row, output / "model", steps=30)
+        del trained
     else:
+        import shutil
+
         shutil.copytree(reuse_from / "model", output / "model")
         training = json.loads((reuse_from / "training-summary.json").read_bytes())
+    config = _config(row, dataset)
+    _write(output / "development-config.json", config)
+    config_hash = file_hash(output / "development-config.json")
     checkpoint_path = output / "model/trained.pt"
-    checkpoint_hash = "sha256:" + hashlib.sha256(checkpoint_path.read_bytes()).hexdigest()
-    if checkpoint_hash != training["trained_file_sha256"]:
-        raise ValueError("persisted checkpoint hash mismatch")
-    model = LockedA2(17)
-    model.load_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=True))
-    model.eval()
-    config = {
-        "schema_version": "toy-a2-config/1.0",
-        "variant": "A2",
-        "seed": 17,
-        "training_steps": 30,
-        "optimizer": "AdamW",
-        "betas": [0.9, 0.95],
+    checkpoint = {
+        "schema_version": "toy-checkpoint-manifest/1.0",
+        "model_path": "model/trained.pt",
+        "model_file_sha256": file_hash(checkpoint_path),
+        "state_dict_sha256": training["trained_sha256"],
+        "config_path": "development-config.json",
+        "config_hash": config_hash,
+        "inventory_sha256": config["inventory_sha256"],
+        "initialization_sha256": training["initialization_sha256"],
+        "training_report_path": "model/training-report.json",
+        "training_report_hash": file_hash(output / "model/training-report.json"),
+        "runtime": config["runtime"],
+        "confirmatory": False,
+        "sealed_data": False,
     }
-    config_path = output / "planner-config.json"
-    config_path.write_bytes(canonical_bytes(config))
-    config_hash = "sha256:" + hashlib.sha256(config_path.read_bytes()).hexdigest()
+    _write(output / "checkpoint-manifest.json", checkpoint)
+    checkpoint_manifest_hash = file_hash(output / "checkpoint-manifest.json")
+    common = _common(row, config_hash, checkpoint_manifest_hash, checkpoint["model_file_sha256"])
     request = {
-        "schema_version": "work-planner/1.21",
-        "request_id": "request-toy-a2-0001",
-        "run_id": "run-toy-a2",
-        "task_id": row["task_id"],
-        "canonical_task_hash": row["canonical_task_hash"],
-        "planner_variant": "A2",
-        "planner_seed": 17,
-        "planner_checkpoint_sha256": checkpoint_hash,
-        "planner_config_sha256": config_hash,
+        "schema_version": "toy-planner-request/1.0",
+        "request_id": "toy-request-0001",
+        **common,
+        **DEV,
+        "confirmatory": False,
+        "sealed_data": False,
         "request_hash": "",
     }
     request["request_hash"] = artifact_hash(request, "request_hash")
+    _write(output / "planner-request.json", request)
+    model = LockedA2(17)
+    model.load_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=True))
+    model.eval()
     planner = A2Planner(model)
+    work_plan = None
+    failure_code = None
     try:
         raw = planner.plan(row)
         if failure_mode == "NO_END":
             raw = raw[:-1]
-        plan = parse_work_plan(raw, row["blocks"])
+        parsed = parse_work_plan(raw, row["blocks"])
+        steps = [
+            {"step_index": i, "action": step[0], "args": step[1:]} for i, step in enumerate(raw)
+        ]
+        work_plan = {
+            "schema_version": "toy-work-plan/1.0",
+            **common,
+            **DEV,
+            "state_hash": state_hash(row["initial"]),
+            "steps": steps,
+            "plan_content_hash": "",
+            "plan_artifact_hash": "",
+        }
+        content = {
+            k: v
+            for k, v in work_plan.items()
+            if k not in {"plan_content_hash", "plan_artifact_hash"}
+        }
+        work_plan["plan_content_hash"] = toy_hash("plan_content", content)
+        artifact = {k: v for k, v in work_plan.items() if k != "plan_artifact_hash"}
+        work_plan["plan_artifact_hash"] = toy_hash("plan_artifact", artifact)
+        events, success = execute(row, parsed)
     except (RuntimeError, ValueError) as error:
-        code = "PLAN_NO_END" if failure_mode == "NO_END" else "PLAN_PARSE_ERROR"
-        manifest = {
-            "schema_version": "work-planner/1.21",
-            "run_id": "run-toy-a2",
-            "episode_id": "episode-toy-a2-0001",
-            "trajectory_id": "trajectory-toy-a2-0001",
-            "stage": "PLANNER_ONLY",
-            "task_id": row["task_id"],
-            "base_task_id": row["task_id"],
-            "canonical_task_hash": row["canonical_task_hash"],
-            "split": "development",
-            "arm": "PLANNER_A2_RAW",
-            "planner_seed": 17,
-            "planner_checkpoint_sha256": checkpoint_hash,
-            "generator_type": "MICRO_PLANNER_A2",
-            "plan_status": "FAILED",
-            "planner_call_count": planner.calls,
-            "generated_before_execution": True,
-            "generation_started_at": "2026-01-01T00:00:00Z",
-            "generation_completed_at": "2026-01-01T00:00:00Z",
-            "initial_state_hash": state_hash(row["initial"]),
-            "goal_hash": goal_hash(row["goal"]),
-            "work_plan_content_hash": None,
-            "work_plan_artifact_hash": None,
-            "work_plan_path": None,
-            "source_episode_plan_manifest_hash": None,
-            "source_arm": None,
-            "semantic_signature_bank_hash": None,
-            "generation_failure_code": code,
-            "control_artifact_path": None,
-            "control_artifact_hash": None,
-            "control_status": "NOT_APPLICABLE",
-            "actual_cost": {"tokens_in": 192, "tokens_out": 0, "latency_ms": 0},
-            "attributed_cost": {"tokens_in": 192, "tokens_out": 0, "latency_ms": 0},
-            "replay_context": None,
-            "manifest_hash": "",
-        }
-        manifest["manifest_hash"] = artifact_hash(manifest, "manifest_hash")
-        episode = normative_episode(row, [], manifest, False, state_hash(row["initial"]))
-        episode.update(
-            plan_generation_status="FAILED",
-            terminal_error=code,
-            error_tags=[code],
-            planner_calls=planner.calls,
-            plan_tokens_out_actual=0,
-            plan_tokens_out_attributed=0,
-        )
-        attempts: list[dict] = []
-        attempts_hash = sha256(
-            {"schema": "work-planner-hash/1.0", "kind": "attempt_logs", "value": attempts}
-        )
-        evaluation = {
-            "schema_version": "work-planner/1.21",
-            "run_id": "run-toy-a2",
-            "task_id": row["task_id"],
-            "canonical_task_hash": row["canonical_task_hash"],
-            "attempt_log_hash": attempts_hash,
-            "success": False,
-            "executed_action_count": 0,
-            "goal_hash": goal_hash(row["goal"]),
-            "replanning_count": 0,
-            "failure_code": code,
-            "failure_detail": str(error),
-            "evaluation_result_hash": "",
-        }
-        evaluation["evaluation_result_hash"] = artifact_hash(evaluation, "evaluation_result_hash")
-        artifacts = {
-            "planner-request.json": request,
-            "episode-plan-manifest.json": manifest,
-            "attempt-log.json": attempts,
-            "episode-log.json": episode,
-            "evaluation-result.json": evaluation,
-            "training-summary.json": training,
-        }
-        for name, payload in artifacts.items():
-            (output / name).write_bytes(canonical_bytes(payload) + b"\n")
-        result = {
-            "success": False,
-            "planner_call_count": planner.calls,
-            "executed_action_count": 0,
-            "failure_code": code,
-            "tensor_count": training["tensor_count"],
-        }
-        (output / "run-result.json").write_bytes(canonical_bytes(result) + b"\n")
-        return result
-    steps = []
-    for index, action in enumerate(raw):
-        if len(action) == 2:
-            typed_args = [{"role": "block", "ref": action[1]}]
-        elif len(action) == 3:
-            typed_args = [
-                {"role": "moving", "ref": action[1]},
-                {"role": "support", "ref": action[2]},
-            ]
-        else:
-            typed_args = []
-        steps.append(
-            {
-                "schema_version": "work-planner/1.21",
-                "step_id": f"S{index:02d}",
-                "step_index": index,
-                "representation": "TYPED_ONLY",
-                "planner_variant": "A2",
-                "typed_action": {
-                    "schema_version": "work-planner/1.21",
-                    "action": action[0],
-                    "args": typed_args,
-                },
-                "status": "VALIDATED",
-                "semantic_ref": None,
-                "intent_id": None,
-                "semantic_signature": None,
-                "semantic_similarity": None,
-                "semantic_margin": None,
-            }
-        )
-    plan_payload = {
-        "schema_version": "work-planner/1.21",
-        "plan_id": "plan-toy-a2-0001",
-        "plan_version": 1,
-        "run_id": "run-toy-a2",
-        "stage": "PLANNER_ONLY",
-        "task_id": row["task_id"],
-        "canonical_task_hash": row["canonical_task_hash"],
-        "planner_checkpoint_sha256": checkpoint_hash,
-        "planner_config_sha256": config_hash,
-        "planner_seed": 17,
-        "semantic_artifact_manifest_sha256": None,
-        "state_hash": state_hash(row["initial"]),
-        "steps": steps,
-        "created_at": "2026-01-01T00:00:00Z",
-        "planner_variant": "A2",
-        "representation": "TYPED_ONLY",
-        "plan_content_hash": "",
-        "plan_artifact_hash": "",
-    }
-    plan_payload["plan_content_hash"] = plan_content_hash(plan_payload)
-    plan_payload["plan_artifact_hash"] = plan_artifact_hash(plan_payload)
+        failure_code = str(error) if str(error).startswith("PLAN_") else "PLAN_GENERATION_ERROR"
+        events, success = [], False
+    plan_path = "results/development/plans/work-plan.json" if work_plan else None
     manifest = {
-        "schema_version": "work-planner/1.21",
-        "run_id": "run-toy-a2",
-        "episode_id": "episode-toy-a2-0001",
-        "trajectory_id": "trajectory-toy-a2-0001",
-        "stage": "PLANNER_ONLY",
-        "task_id": row["task_id"],
-        "base_task_id": row["task_id"],
-        "canonical_task_hash": row["canonical_task_hash"],
-        "split": "development",
-        "arm": "PLANNER_A2_RAW",
-        "planner_seed": 17,
-        "planner_checkpoint_sha256": checkpoint_hash,
-        "generator_type": "MICRO_PLANNER_A2",
-        "plan_status": "READY",
-        "planner_call_count": planner.calls,
-        "generated_before_execution": True,
-        "generation_started_at": "2026-01-01T00:00:00Z",
-        "generation_completed_at": "2026-01-01T00:00:00Z",
-        "initial_state_hash": state_hash(row["initial"]),
-        "goal_hash": goal_hash(row["goal"]),
-        "work_plan_content_hash": plan_payload["plan_content_hash"],
-        "work_plan_artifact_hash": plan_payload["plan_artifact_hash"],
-        "work_plan_path": "results/development/plans/work-plan.json",
-        "source_episode_plan_manifest_hash": None,
-        "source_arm": None,
-        "semantic_signature_bank_hash": None,
-        "generation_failure_code": None,
-        "control_artifact_path": None,
-        "control_artifact_hash": None,
-        "control_status": "NOT_APPLICABLE",
-        "actual_cost": {"tokens_in": 192, "tokens_out": len(raw), "latency_ms": 0},
-        "attributed_cost": {"tokens_in": 192, "tokens_out": len(raw), "latency_ms": 0},
-        "replay_context": None,
+        "schema_version": "toy-episode-plan-manifest/1.0",
+        **common,
+        **DEV,
+        "confirmatory": False,
+        "sealed_data": False,
+        "plan_status": "READY" if work_plan else "FAILED",
+        "planner_call_count": 1,
+        "work_plan_path": plan_path,
+        "work_plan_content_hash": work_plan["plan_content_hash"] if work_plan else None,
+        "work_plan_artifact_hash": work_plan["plan_artifact_hash"] if work_plan else None,
+        "failure_code": failure_code,
         "manifest_hash": "",
     }
     manifest["manifest_hash"] = artifact_hash(manifest, "manifest_hash")
-    events, success = execute(row, plan)
-    attempts = normative_attempts(row, events, plan_payload, manifest, checkpoint_hash, config_hash)
+    attempts = []
+    if work_plan:
+        for event in events:
+            step = work_plan["steps"][event["index"]]
+            attempts.append(
+                {
+                    "schema_version": "toy-attempt-log/1.0",
+                    **common,
+                    **DEV,
+                    "confirmatory": False,
+                    "sealed_data": False,
+                    "episode_plan_manifest_hash": manifest["manifest_hash"],
+                    "plan_content_hash": work_plan["plan_content_hash"],
+                    "plan_artifact_hash": work_plan["plan_artifact_hash"],
+                    "step_index": event["index"],
+                    "plan_position_index": event["index"],
+                    "candidate_action": {"action": step["action"], "args": step["args"]},
+                    "state_before_hash": event["before"],
+                    "state_after_hash": event["after"],
+                    "replanning_observed": False,
+                }
+            )
     final_state = events[-1]["after"] if events else state_hash(row["initial"])
-    episode = normative_episode(row, attempts, manifest, success, final_state)
-    attempts_hash = sha256(
-        {"schema": "work-planner-hash/1.0", "kind": "attempt_logs", "value": attempts}
-    )
+    episode = {
+        "schema_version": "toy-episode-log/1.0",
+        **common,
+        **DEV,
+        "episode_plan_manifest_hash": manifest["manifest_hash"],
+        "planner_calls": 1,
+        "attempts_total": len(attempts),
+        "executed_length": len(attempts),
+        "plan_positions_consumed": len(attempts),
+        "final_state_hash": final_state,
+        "goal_success": success,
+        "plan_generation_status": "READY" if work_plan else "FAILED",
+        "terminal_error": failure_code,
+    }
     evaluation = {
-        "schema_version": "work-planner/1.21",
-        "run_id": "run-toy-a2",
-        "task_id": row["task_id"],
-        "canonical_task_hash": row["canonical_task_hash"],
-        "attempt_log_hash": attempts_hash,
+        "schema_version": "toy-evaluation-result/1.0",
+        **common,
+        **DEV,
+        "confirmatory": False,
+        "sealed_data": False,
+        "episode_plan_manifest_hash": manifest["manifest_hash"],
+        "attempt_log_hash": toy_hash("attempt_jsonl", attempts),
         "success": success,
-        "executed_action_count": len(events),
         "goal_hash": goal_hash(row["goal"]),
+        "executed_action_count": len(attempts),
         "replanning_count": 0,
+        "failure_code": failure_code,
         "evaluation_result_hash": "",
     }
     evaluation["evaluation_result_hash"] = artifact_hash(evaluation, "evaluation_result_hash")
-    validate_lineage(row, request, plan_payload, manifest, attempts, episode, evaluation)
-    artifacts = {
-        "planner-request.json": request,
-        "results/development/plans/work-plan.json": plan_payload,
-        "episode-plan-manifest.json": manifest,
-        "attempt-log.json": attempts,
-        "episode-log.json": episode,
-        "evaluation-result.json": evaluation,
-        "training-summary.json": training,
-    }
-    for name, payload in artifacts.items():
-        path = output / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(canonical_bytes(payload) + b"\n")
-    replay_hash = sha256(
-        {name: json.loads((output / name).read_bytes()) for name in sorted(artifacts)}
+    if work_plan:
+        _write(output / plan_path, work_plan)
+    validate_lineage(
+        root=output,
+        task=row,
+        request=request,
+        config=config,
+        checkpoint=checkpoint,
+        work_plan=work_plan,
+        manifest=manifest,
+        attempts=attempts,
+        episode=episode,
+        evaluation=evaluation,
+    )
+    _write(output / "episode-plan-manifest.json", manifest)
+    _write(output / "attempt-log.jsonl", attempts, jsonl=True)
+    _write(output / "episode-log.json", episode)
+    _write(output / "evaluation-result.json", evaluation)
+    _write(output / "training-summary.json", training)
+    artifacts = sorted(p for p in output.rglob("*") if p.is_file())
+    replay_hash = toy_hash(
+        "run_files", {str(p.relative_to(output)): file_hash(p) for p in artifacts}
     )
     result = {
         "success": success,
-        "planner_call_count": planner.calls,
+        "planner_call_count": 1,
         "tensor_count": training["tensor_count"],
+        "failure_code": failure_code,
         "replay_hash": replay_hash,
     }
-    (output / "run-result.json").write_bytes(canonical_bytes(result) + b"\n")
+    _write(output / "run-result.json", result)
     return result

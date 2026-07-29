@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 import torch
 import yaml
 
@@ -76,3 +77,48 @@ def test_real_training_active_and_dormant_policy(tmp_path) -> None:
     assert report["active_gradients_all_finite_nonzero"] is True
     assert report["optimizer_state_matches_active_set"] is True
     assert report["optimizer_state_all_finite_nonzero"] is True
+
+
+def test_hashing_is_differentially_exact_to_validation_protocol() -> None:
+    from planner_toy.canonical import (
+        canonical_bytes,
+        canonical_task_hash,
+        goal_hash,
+        plan_artifact_hash,
+        plan_content_hash,
+        state_hash,
+    )
+    from validation.fixtures import plan_manifest, task
+    from validation.hashing import (
+        canonical_json_bytes,
+    )
+    from validation.hashing import (
+        canonical_task_hash as reference_task,
+    )
+    from validation.hashing import (
+        goal_hash as reference_goal,
+    )
+    from validation.hashing import (
+        plan_artifact_hash as reference_artifact,
+    )
+    from validation.hashing import (
+        plan_content_hash as reference_content,
+    )
+    from validation.hashing import (
+        state_hash as reference_state,
+    )
+
+    value = task()
+    plan, _ = plan_manifest()
+    assert canonical_task_hash(value) == reference_task(value)
+    assert state_hash(value["initial"]) == reference_state(value["initial"])
+    assert goal_hash(value["goal"]) == reference_goal(value["goal"])
+    assert plan_content_hash(plan) == reference_content(plan)
+    assert plan_artifact_hash(plan) == reference_artifact(plan)
+    unicode_value = {"é": "e\u0301"}
+    assert canonical_bytes(unicode_value) == canonical_json_bytes(unicode_value)
+    for bad in ({"é": 1, "e\u0301": 2}, {"x": float("nan")}, {"x": float("inf")}):
+        with pytest.raises((TypeError, ValueError)):
+            canonical_bytes(bad)
+        with pytest.raises((TypeError, ValueError)):
+            canonical_json_bytes(bad)

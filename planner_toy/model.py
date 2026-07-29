@@ -16,13 +16,23 @@ import yaml
 from torch import nn
 
 SEED = 17
-TORCH_VERSION = "2.12.0+cpu"
+TORCH_VERSION = "2.12.0"
 SOURCE_INVENTORY = Path(__file__).parents[1] / "docs/architecture/planner_module_inventory_v1.yaml"
 
 
 def validate_torch_runtime() -> None:
-    if torch.__version__ != TORCH_VERSION:
-        raise RuntimeError(f"PyTorch {TORCH_VERSION} required, found {torch.__version__}")
+    evidence = (
+        f"torch.__version__={torch.__version__}\n"
+        f"torch.version.cuda={torch.version.cuda}\n"
+        f"torch.cuda.is_available()={torch.cuda.is_available()}"
+    )
+    base = torch.__version__.split("+", 1)[0]
+    if base != TORCH_VERSION or torch.version.cuda is not None or torch.cuda.is_available():
+        raise RuntimeError(f"CPU-only PyTorch {TORCH_VERSION} required\n{evidence}")
+    probe = torch.tensor([2.0], requires_grad=True)
+    probe.square().backward()
+    if probe.grad is None or probe.device.type != "cpu":
+        raise RuntimeError(f"CPU autograd probe failed\n{evidence}")
 
 
 class _Node(nn.Module):

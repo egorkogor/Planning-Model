@@ -18,15 +18,19 @@
 - Review remediation: removed zero-valued synthetic loss edges. Pointer gradients now
   arise from real UNSTACK/STACK targets, AdamW uses locked betas `(0.9, 0.95)`, and
   replay comparison recursively covers both checkpoints and all nested evidence.
-- Lineage uses the normative domain-separated task/state/goal/WorkPlan hashes and the
-  full WorkPlan, EpisodePlanManifest, per-step AttemptLog, and EpisodeLog shapes. It
-  semantically replays every transition and binds real persisted checkpoint/config files.
+- Lineage has an explicit development boundary under `planner_toy/schemas`: emitted
+  versions are `toy-planner-request/1.0`, `toy-development-config/1.0`,
+  `toy-checkpoint-manifest/1.0`, `toy-work-plan/1.0`,
+  `toy-episode-plan-manifest/1.0`, `toy-attempt-log/1.0`, `toy-episode-log/1.0`, and
+  `toy-evaluation-result/1.0`. It semantically replays every transition and binds real
+  persisted checkpoint/config files without claiming v1.21 evidence validity.
 - Protected runtime, dependency, and schema contracts are unchanged. Seed 17 remains a
   non-normative development profile constrained in code to `split=development`,
-  `stage=PLANNER_ONLY`, `arm=PLANNER_A2_RAW`, and development-only plan paths. Their
-  complete shapes validate against locked schemas when checked with an allowed schema seed.
-- Decoder cross-attention masks all PAD keys. CI discovers toy tests recursively, wheel
-  runtime extras include PyYAML, and runtime validation requires exact `2.12.0+cpu`.
+  `stage=PLANNER_ONLY`, `arm=PLANNER_A2_RAW`, and development-only plan paths. Toy
+  artifacts validate only against their separate schemas and are not v1.21 evidence.
+- Decoder cross-attention masks all PAD keys. CI discovers toy tests recursively, installs
+  the official CPU wheel, and prints failed per-file logs. Runtime validation requires
+  base 2.12.0, `torch.version.cuda is None`, unavailable CUDA, and working CPU autograd.
 - Generation/parsing failures emit a FAILED manifest, empty per-step AttemptLog,
   zero-execution EpisodeLog, EvaluationResult, and typed failure code rather than raising
   before evidence is recorded.
