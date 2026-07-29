@@ -6,7 +6,7 @@ from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .canonical import sha256
+from .canonical import canonical_task_hash
 
 Fact = tuple[str, ...]
 Action = tuple[str, ...]
@@ -34,7 +34,7 @@ class Task:
 
     @property
     def canonical_hash(self) -> str:
-        return sha256(self.payload())
+        return canonical_task_hash(self.payload())
 
 
 def validate_state(blocks: tuple[str, ...], state: Iterable[Fact]) -> tuple[Fact, ...]:

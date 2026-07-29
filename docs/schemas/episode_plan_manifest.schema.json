@@ -85,7 +85,6 @@
         "null"
       ],
       "enum": [
-        17,
         101,
         202,
         303,
@@ -94,9 +93,6 @@
         null
       ],
       "description": "Final Planner checkpoint seed. Required even when plan generation fails; null only when no Planner checkpoint applies."
-    },
-    "run_class": {
-      "enum": ["DEVELOPMENT_TOY", "FINAL_CONFIRMATORY"]
     },
     "generator_type": {
       "$ref": "common.schema.json#/$defs/plan_generator_type"
@@ -232,14 +228,6 @@
     }
   },
   "allOf": [
-    {
-      "if": {
-        "properties": {"run_class": {"const": "DEVELOPMENT_TOY"}},
-        "required": ["run_class"]
-      },
-      "then": {"properties": {"planner_seed": {"const": 17}}},
-      "else": {"properties": {"planner_seed": {"enum": [101, 202, 303, 404, 505, null]}}}
-    },
     {
       "if": {
         "properties": {
@@ -440,7 +428,16 @@
       },
       "then": {
         "properties": {
-          "planner_seed": {"type": "integer"}
+          "planner_seed": {
+            "type": "integer",
+            "enum": [
+              101,
+              202,
+              303,
+              404,
+              505
+            ]
+          }
         }
       }
     }

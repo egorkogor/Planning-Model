@@ -16,13 +16,12 @@ import yaml
 from torch import nn
 
 SEED = 17
-TORCH_VERSION = "2.12.0"
+TORCH_VERSION = "2.12.0+cpu"
 SOURCE_INVENTORY = Path(__file__).parents[1] / "docs/architecture/planner_module_inventory_v1.yaml"
 
 
 def validate_torch_runtime() -> None:
-    version = torch.__version__.split("+", 1)[0]
-    if version != TORCH_VERSION:
+    if torch.__version__ != TORCH_VERSION:
         raise RuntimeError(f"PyTorch {TORCH_VERSION} required, found {torch.__version__}")
 
 
@@ -169,7 +168,7 @@ class LockedA2(nn.Module):
             y = F.layer_norm(x, (256,), layer.norm1.weight, layer.norm1.bias, 1e-5)
             x = x + self._attention(y, y, layer.self_attn, causal=True)
             y = F.layer_norm(x, (256,), layer.norm2.weight, layer.norm2.bias, 1e-5)
-            x = x + self._attention(y, memory, layer.cross_attn)
+            x = x + self._attention(y, memory, layer.cross_attn, key_mask=encoded.attention_mask)
             y = F.layer_norm(x, (256,), layer.norm3.weight, layer.norm3.bias, 1e-5)
             x = x + self._ffn(y, layer.ffn)
         x = F.layer_norm(

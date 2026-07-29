@@ -20,6 +20,7 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r requirements.lock
       - run: python -m pip install -e . --no-deps
+      - run: python -m pip install -e '.[ml]'
       - run: python validation/verify_release_manifest.py
       - run: python validation/validate_bundle.py --skip-nested-pytest
       - run: python validation/run_test_suite.py --timeout-per-file 120

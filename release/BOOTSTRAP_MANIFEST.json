@@ -6,7 +6,7 @@
   "generated_at": "2026-07-25T17:20:00Z",
   "scope": "SCIENTIFIC_TRUST_ROOT_ONLY",
   "files": {
-    ".github/workflows/ci.yml": "sha256:46443cc9e02ac37ea922b3b469534d09e5a6625f09aad62130ac31264ac4eec3",
+    ".github/workflows/ci.yml": "sha256:7c4af94f8f528c2f00a03a09e81e04a29487d5e9c0c1e72c59a68c44743601eb",
     "analysis/decision_gates.py": "sha256:d7f1b3f4d3e8c5699bd83e120dd05c31e4ddbf72f0e7bcb169b9cde210f64c07",
     "analysis/sample_size.py": "sha256:e668425dcc697eda129a385e346d3d2d716966c0779431474070ca86e2160b19",
     "docs/Planner_LLM_Stage1_Operator_Runbook_v2.21_RU.md": "sha256:002521a71f526dda36cbccf905cf6e94d03624083ba640e1e2bdcd504b8cc76a",
@@ -32,7 +32,7 @@
     "docs/domain/intent_labeler_v1.py": "sha256:d50b2df2df49f02c6bbc228b542f8c4d7d9db175348025a54eb0e2964e1ca2f2",
     "docs/domain/training_corpus_contract_v1.yaml": "sha256:d05ccba9ced37203e3ec587c2f92777a049c675c2bb56e241849cbed70f0ac70",
     "docs/infrastructure/provisioning_contract_v1.yaml": "sha256:d351a3945e782b191145a0375e27f625f75c64e58665621682d698a78816ee9b",
-    "docs/infrastructure/runtime_dependency_contract_v1.yaml": "sha256:62d00285d03b27e024523932715b319ba57b0cfa73df14333e482cc984565cdb",
+    "docs/infrastructure/runtime_dependency_contract_v1.yaml": "sha256:2488614fa00858c86cd4ea040dc3cb5c3a5751a916bf99222682fe0440968164",
     "docs/operator/AUTONOMOUS_EXECUTION_PLAYBOOK_RU.md": "sha256:a0686e6419d56a1efaa16d925652417f7410cfdb430f7874f21e2c66f9bf9eae",
     "docs/operator/OPERATOR_GATE_CHECKLIST.md": "sha256:98eb41f181ed7d20f9d9e06d181aa5bc60c6c25b3548814d4284281070535db9",
     "docs/operator/agent_execution_contract_v1.yaml": "sha256:1b8ab75c867df62c312b30e218f21c0b08584f8fbb76e299f33145bf219d1d33",
@@ -63,7 +63,7 @@
     "docs/schemas/dispatch_record.schema.json": "sha256:beeaf570c9a3e163754fd9d00cf50230778296ca2250f3b41345a9165aea6c02",
     "docs/schemas/dormant_gradient_audit.schema.json": "sha256:f054041707e7a310654a2c8c0a21c05f0ac203add99d03075f5e84bfe5eba95e",
     "docs/schemas/episode_log.schema.json": "sha256:eae92a9a3cac3648a1ae059ca69b30e5f20e802ab422475f8efc21ebd1048b13",
-    "docs/schemas/episode_plan_manifest.schema.json": "sha256:2c8f8b2414c69070f73ef456d03631d304b8f58de3827afda1ccb934a2754d54",
+    "docs/schemas/episode_plan_manifest.schema.json": "sha256:ca1a8caebaf0ae13f0e6fbc7a0ec49620e5fae6b8920d0fea96b7d89e23cdf11",
     "docs/schemas/evaluator_result_manifest.schema.json": "sha256:f0747b7000f75611bcbc0ee869ac25d6dbbde8fcfb8aa581edcf3df5ee6ec142",
     "docs/schemas/experiment_freeze.schema.json": "sha256:fc3a37c3585c98e9648b1f296a2236d103674b257abd628cb38db4876f10ce6c",
     "docs/schemas/full_plan_lineage_index.schema.json": "sha256:0f710211533fcbfcf95b0f8758350c78918a57bcc98257b32a0064c8e39c936f",
@@ -104,7 +104,7 @@
     "docs/training/planner_training_contract_v1.yaml": "sha256:70bcfadc6d02e622cd532495600d37046cf8e8a1ea25aa616cb000363071a5c6",
     "docs/training/seed_selection_contract_v1.yaml": "sha256:199c88dc9eb130c0c904371010c06ceaef7e0cd07e01242daef27e6b0e6bbc8e",
     "prompts/00_MASTER_ORCHESTRATOR.md": "sha256:2adedc5e8d062e4a31ef1813c5864f4aa6302a87b108ea6a1e7414e3d463155d",
-    "requirements.lock": "sha256:abd898564a330940e9451d051255ee0e80ff879e5e554bc15beb1dee5009a972",
+    "requirements.lock": "sha256:883c8e262c6f3ea917239010be08ac0064ab67de70c1caad7bb98fe9f0b68401",
     "scripts/build_release_manifest.py": "sha256:e0e84bc3be977e308b0ea82a6437516f4ba8f45d0a16f154f35a6fd071efa81f",
     "scripts/phase_check_runner.py": "sha256:9d954f2183719d6fb2302c59c66050c5f34ff3105c9164c8e8b9cf3b548d3172",
     "scripts/verify_gate.py": "sha256:474bd6ce7093780f55670495219a3b4be03b526a5e7bbf2c9f891c6b824f7af2",
@@ -156,5 +156,5 @@
     "**/__pycache__/**",
     "**/*.pyc"
   ],
-  "manifest_hash": "sha256:de61cb9747f8968f76c029eef5c7565a1a7aa5096f1ad291b134a0ac978bd761"
+  "manifest_hash": "sha256:a33677a92689f972b94420add70d2967153e5cf7d2d4d9994027aec34cc6b19f"
 }

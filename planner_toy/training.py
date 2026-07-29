@@ -22,6 +22,10 @@ def state_dict_sha256(state: dict[str, torch.Tensor]) -> str:
     return "sha256:" + digest.hexdigest()
 
 
+def file_sha256(path: Path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def labels(row: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     plan = row["oracle_work_plan"]
     action, arg1, arg2 = [], [], []
@@ -85,6 +89,28 @@ def train(row: dict, output: Path, steps: int = 2) -> tuple[LockedA2, dict]:
     ]
     dormant_equal = all(torch.equal(before[name], model.state_dict()[name]) for name in dormant)
     dormant_grad_none = all(dict(model.named_parameters())[name].grad is None for name in dormant)
+    named = dict(model.named_parameters())
+    active_gradient_evidence = {
+        name: {
+            "finite": bool(torch.isfinite(parameter.grad).all()),
+            "nonzero": bool(torch.any(parameter.grad != 0)),
+        }
+        for name, parameter in named.items()
+        if parameter.requires_grad
+    }
+    optimizer_active_names = {
+        name
+        for name, parameter in named.items()
+        if parameter.requires_grad and parameter in optimizer.state
+    }
+    optimizer_state_complete = optimizer_active_names == set(model.active_names)
+    optimizer_state_finite_nonzero = optimizer_state_complete and all(
+        torch.isfinite(optimizer.state[named[name]]["exp_avg"]).all()
+        and bool(torch.any(optimizer.state[named[name]]["exp_avg"] != 0))
+        and torch.isfinite(optimizer.state[named[name]]["exp_avg_sq"]).all()
+        and bool(torch.any(optimizer.state[named[name]]["exp_avg_sq"] != 0))
+        for name in model.active_names
+    )
     optimizer_nonzero = any(
         state
         and any(
@@ -103,16 +129,25 @@ def train(row: dict, output: Path, steps: int = 2) -> tuple[LockedA2, dict]:
         "dormant_tensor_count": len(dormant),
         "active_changed_count": len(active_changed),
         "active_grad_count": sum(p.grad is not None for p in active),
+        "active_gradient_evidence": active_gradient_evidence,
+        "active_gradients_all_finite_nonzero": all(
+            row["finite"] and row["nonzero"] for row in active_gradient_evidence.values()
+        ),
         "dormant_grad_none": dormant_grad_none,
         "dormant_byte_equal": dormant_equal,
         "optimizer": "torch.optim.AdamW",
         "optimizer_betas": [0.9, 0.95],
         "optimizer_nonzero_state": optimizer_nonzero,
+        "optimizer_active_state_count": len(optimizer_active_names),
+        "optimizer_state_matches_active_set": optimizer_state_complete,
+        "optimizer_state_all_finite_nonzero": optimizer_state_finite_nonzero,
         "gradient_norm": gradient_norm,
         "losses": losses,
         # Content hashes deliberately exclude container serialization metadata.
         "initialization_sha256": state_dict_sha256(before),
         "trained_sha256": state_dict_sha256(model.state_dict()),
+        "initialization_file_sha256": file_sha256(initial),
+        "trained_file_sha256": file_sha256(trained),
     }
     (output / "training-report.json").write_bytes(canonical_bytes(report) + b"\n")
     return model, report

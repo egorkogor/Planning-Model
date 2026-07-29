@@ -29,7 +29,7 @@ class FileResult:
 def discover_test_files() -> list[Path]:
     files: list[Path] = []
     for test_root in TEST_ROOTS:
-        files.extend(sorted(test_root.glob("test_*.py")))
+        files.extend(sorted(test_root.rglob("test_*.py")))
     return files
 
 
@@ -161,23 +161,33 @@ def main() -> int:
             )
             results.append(result)
             if result.timed_out:
-                print(f"  TIMEOUT after {args.timeout_per_file}s; log: {result.log_path}", flush=True)
+                print(
+                    f"  TIMEOUT after {args.timeout_per_file}s; log: {result.log_path}", flush=True
+                )
             elif result.returncode != 0:
                 print(f"  FAIL (exit {result.returncode}); log: {result.log_path}", flush=True)
             elif result.total == 0 or result.skipped != 0:
-                print(f"  FAIL ({result.total} collected, {result.skipped} skipped); log: {result.log_path}", flush=True)
+                print(
+                    f"  FAIL ({result.total} collected, {result.skipped} skipped); "
+                    f"log: {result.log_path}",
+                    flush=True,
+                )
             else:
                 print(f"  PASS ({result.passed} tests)", flush=True)
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 
     failed = [
-        result for result in results
+        result
+        for result in results
         if result.returncode != 0 or result.timed_out or result.total == 0 or result.skipped != 0
     ]
     total_passed = sum(result.passed for result in results)
     if failed:
-        print(f"FAIL: {len(failed)}/{len(results)} test files failed; {total_passed} tests passed", file=sys.stderr)
+        print(
+            f"FAIL: {len(failed)}/{len(results)} test files failed; {total_passed} tests passed",
+            file=sys.stderr,
+        )
         print(f"Logs: {log_dir}", file=sys.stderr)
         return 1
 

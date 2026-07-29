@@ -18,12 +18,18 @@
 - Review remediation: removed zero-valued synthetic loss edges. Pointer gradients now
   arise from real UNSTACK/STACK targets, AdamW uses locked betas `(0.9, 0.95)`, and
   replay comparison recursively covers both checkpoints and all nested evidence.
-- Lineage artifacts use the normative WorkPlan and EpisodePlanManifest schemas and
-  recompute content/artifact hashes across PlannerRequest, task, checkpoint, config,
-  WorkPlan, EpisodePlanManifest, AttemptLog, and EvaluationResult.
-- Seed conflict resolution: the EpisodePlanManifest schema gained a backwards-compatible
-  optional `run_class`; seed 17 is valid only for explicit `DEVELOPMENT_TOY`, while an
-  absent or `FINAL_CONFIRMATORY` class retains the five final seeds and prior behavior.
+- Lineage uses the normative domain-separated task/state/goal/WorkPlan hashes and the
+  full WorkPlan, EpisodePlanManifest, per-step AttemptLog, and EpisodeLog shapes. It
+  semantically replays every transition and binds real persisted checkpoint/config files.
+- Protected runtime, dependency, and schema contracts are unchanged. Seed 17 remains a
+  non-normative development profile constrained in code to `split=development`,
+  `stage=PLANNER_ONLY`, `arm=PLANNER_A2_RAW`, and development-only plan paths. Their
+  complete shapes validate against locked schemas when checked with an allowed schema seed.
+- Decoder cross-attention masks all PAD keys. CI discovers toy tests recursively, wheel
+  runtime extras include PyYAML, and runtime validation requires exact `2.12.0+cpu`.
+- Generation/parsing failures emit a FAILED manifest, empty per-step AttemptLog,
+  zero-execution EpisodeLog, EvaluationResult, and typed failure code rather than raising
+  before evidence is recorded.
 - This is implementation evidence only. No sealed data was accessed, no confirmatory
   experiment was run, and P06/P07 are not claimed complete.
 - Remaining before A3: broaden training beyond the deliberately minimal toy task,
