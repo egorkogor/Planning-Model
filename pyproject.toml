@@ -20,7 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 ml = [
-  "torch==2.12.0",
+  "torch==2.12.0+cpu",
   "PyYAML==6.0.3",
 ]
 dev = [

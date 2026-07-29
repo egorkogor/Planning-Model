@@ -22,7 +22,7 @@
   versions are `toy-planner-request/1.0`, `toy-development-config/1.0`,
   `toy-checkpoint-manifest/1.0`, `toy-work-plan/1.0`,
   `toy-episode-plan-manifest/1.0`, `toy-attempt-log/1.0`, `toy-episode-log/1.0`, and
-  `toy-evaluation-result/1.0`. It semantically replays every transition and binds real
+  `toy-evaluation-result/1.0`, plus `toy-optimizer-evidence/1.0`. It semantically replays every transition and binds real
   persisted checkpoint/config files without claiming v1.21 evidence validity.
 - Protected runtime, dependency, and schema contracts are unchanged. Seed 17 remains a
   non-normative development profile constrained in code to `split=development`,
@@ -34,6 +34,11 @@
 - Generation/parsing failures emit a FAILED manifest, empty per-step AttemptLog,
   zero-execution EpisodeLog, EvaluationResult, and typed failure code rather than raising
   before evidence is recorded.
+- Executor/precondition failures retain the READY frozen WorkPlan, emit a FAILED AttemptLog
+  row at the exact plan position, preserve the actual final state, and never replan.
+- Development config is persisted before training; training and optimizer reports bind its
+  hash and full provenance. Reuse validates and copies the original chain rather than
+  wrapping model bytes in newly asserted provenance.
 - This is implementation evidence only. No sealed data was accessed, no confirmatory
   experiment was run, and P06/P07 are not claimed complete.
 - Remaining before A3: broaden training beyond the deliberately minimal toy task,

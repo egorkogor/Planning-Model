@@ -41,18 +41,26 @@ def labels(row: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     )
 
 
-def train(row: dict, output: Path, steps: int = 2) -> tuple[LockedA2, dict]:
+def train(row: dict, output: Path, *, config: dict, config_hash: str) -> tuple[LockedA2, dict]:
     """Run real AdamW updates and persist reproducible checkpoints/evidence."""
     torch.use_deterministic_algorithms(True)
     torch.set_num_threads(1)
     torch.manual_seed(SEED)
+    steps = config["training"]["steps"]
     model = LockedA2(SEED).cpu()
     output.mkdir(parents=True, exist_ok=True)
     initial = output / "initialization.pt"
     torch.save(model.state_dict(), initial)
     before = {name: value.detach().clone() for name, value in model.state_dict().items()}
     active = [parameter for parameter in model.parameters() if parameter.requires_grad]
-    optimizer = torch.optim.AdamW(active, lr=3e-4, betas=(0.9, 0.95), eps=1e-8, weight_decay=0.01)
+    training = config["training"]
+    optimizer = torch.optim.AdamW(
+        active,
+        lr=training["learning_rate"],
+        betas=tuple(training["adamw_betas"]),
+        eps=training["eps"],
+        weight_decay=training["weight_decay"],
+    )
     action, arg1, arg2 = labels(row)
     valid_steps = len(row["oracle_work_plan"])
     encoded = canonical_task_encoding(row)
@@ -76,7 +84,9 @@ def train(row: dict, output: Path, steps: int = 2) -> tuple[LockedA2, dict]:
                 arg2[:, :valid_steps].flatten()[has_arg2],
             )
         loss.backward()
-        gradient_norm = float(torch.nn.utils.clip_grad_norm_(active, 1.0))
+        gradient_norm = float(
+            torch.nn.utils.clip_grad_norm_(active, training["gradient_clip_norm"])
+        )
         optimizer.step()
         losses.append(float(loss.detach()))
     trained = output / "trained.pt"
@@ -118,8 +128,27 @@ def train(row: dict, output: Path, steps: int = 2) -> tuple[LockedA2, dict]:
         )
         for state in optimizer.state.values()
     )
+    optimizer_evidence = {
+        "schema_version": "toy-optimizer-evidence/1.0",
+        "config_hash": config_hash,
+        "active_parameter_names": sorted(model.active_names),
+        "optimizer_state_parameter_names": sorted(optimizer_active_names),
+        "active_gradient_evidence": active_gradient_evidence,
+        "state_matches_active_set": optimizer_state_complete,
+        "state_all_finite_nonzero": optimizer_state_finite_nonzero,
+    }
+    optimizer_path = output / "optimizer-evidence.json"
+    optimizer_path.write_bytes(canonical_bytes(optimizer_evidence) + b"\n")
     report = {
         "schema_version": "toy-a2-training/1.0",
+        "config_hash": config_hash,
+        "dataset_hash": config["dataset_hash"],
+        "training_task_id": config["training_task_id"],
+        "training_task_hash": config["training_task_hash"],
+        "inventory_sha256": config["inventory_sha256"],
+        "task_encoding_sha256": config["task_encoding_sha256"],
+        "runtime": config["runtime"],
+        "code_commit": config["code_commit"],
         "seed": SEED,
         "torch_version": torch.__version__,
         "device": "cpu",
@@ -148,6 +177,8 @@ def train(row: dict, output: Path, steps: int = 2) -> tuple[LockedA2, dict]:
         "trained_sha256": state_dict_sha256(model.state_dict()),
         "initialization_file_sha256": file_sha256(initial),
         "trained_file_sha256": file_sha256(trained),
+        "optimizer_evidence_path": "model/optimizer-evidence.json",
+        "optimizer_evidence_hash": file_sha256(optimizer_path),
     }
     (output / "training-report.json").write_bytes(canonical_bytes(report) + b"\n")
     return model, report

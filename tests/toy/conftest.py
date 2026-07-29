@@ -15,6 +15,18 @@ def replay_dirs(tmp_path_factory):
     return one, two, run(one), run(two)
 
 
+@pytest.fixture(scope="module")
+def failure_replay_dirs(tmp_path_factory, replay_dirs):
+    root = tmp_path_factory.mktemp("failure-replays")
+    one, two = root / "one", root / "two"
+    return (
+        one,
+        two,
+        run(one, failure_mode="NO_END", reuse_from=replay_dirs[0]),
+        run(two, failure_mode="NO_END", reuse_from=replay_dirs[1]),
+    )
+
+
 def load_jsonl(path):
     return [json.loads(line) for line in path.read_text().splitlines()]
 
@@ -34,6 +46,7 @@ def e2e_artifacts(replay_dirs):
         "request": request,
         "config": load("development-config.json"),
         "checkpoint": load("checkpoint-manifest.json"),
+        "optimizer": load("model/optimizer-evidence.json"),
         "work_plan": load("results/development/plans/work-plan.json"),
         "manifest": load("episode-plan-manifest.json"),
         "attempts": load_jsonl(root / "attempt-log.jsonl"),

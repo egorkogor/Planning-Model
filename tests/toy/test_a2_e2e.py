@@ -55,6 +55,7 @@ def test_toy_schemas_validate_emitted_artifacts(e2e_artifacts) -> None:
         "request": "toy_planner_request",
         "config": "toy_development_config",
         "checkpoint": "toy_checkpoint_manifest",
+        "optimizer": "toy_optimizer_evidence",
         "work_plan": "toy_work_plan",
         "manifest": "toy_episode_plan_manifest",
         "episode": "toy_episode_log",
@@ -83,12 +84,12 @@ def test_multistep_and_bindings(e2e_artifacts) -> None:
     validate(e2e_artifacts)
 
 
-def test_failure_is_empty_jsonl_and_semantically_valid(tmp_path, replay_dirs) -> None:
-    from planner_toy.e2e import run
-
-    root = tmp_path / "failed"
-    result = run(root, failure_mode="NO_END", reuse_from=replay_dirs[0])
+def test_failure_is_empty_jsonl_and_semantically_valid(failure_replay_dirs) -> None:
+    root, second, result, second_result = failure_replay_dirs
     assert result["success"] is False
+    assert result == second_result
+    names = sorted(path.relative_to(root) for path in root.rglob("*") if path.is_file())
+    assert all((root / name).read_bytes() == (second / name).read_bytes() for name in names)
     assert (root / "attempt-log.jsonl").read_bytes() == b""
     assert not (root / "results/development/plans/work-plan.json").exists()
 
@@ -127,6 +128,37 @@ def test_failure_is_empty_jsonl_and_semantically_valid(tmp_path, replay_dirs) ->
     changed["episode"]["planner_calls"] = 0
     with pytest.raises(ValueError):
         validate(changed)
+
+
+def test_inapplicable_plan_records_frozen_executor_failure(tmp_path, replay_dirs) -> None:
+    from planner_toy.e2e import run
+
+    root = tmp_path / "executor-failure"
+    result = run(root, failure_mode="INAPPLICABLE", reuse_from=replay_dirs[0])
+    assert result["success"] is False
+    assert result["failure_code"] == "EXECUTOR_PRECONDITION_FAILED"
+    manifest = json.loads((root / "episode-plan-manifest.json").read_bytes())
+    assert manifest["plan_status"] == "READY"
+    attempts = [json.loads(line) for line in (root / "attempt-log.jsonl").read_text().splitlines()]
+    assert [attempt["status"] for attempt in attempts] == ["APPLIED", "FAILED"]
+    assert attempts[1]["state_before_hash"] == attempts[1]["state_after_hash"]
+    episode = json.loads((root / "episode-log.json").read_bytes())
+    assert episode["attempts_total"] == 2 and episode["executed_length"] == 1
+
+
+def test_reuse_rejects_rewrapped_foreign_provenance(tmp_path, replay_dirs) -> None:
+    import shutil
+
+    from planner_toy.e2e import run
+
+    source = tmp_path / "foreign"
+    shutil.copytree(replay_dirs[0], source)
+    config_path = source / "development-config.json"
+    config = json.loads(config_path.read_bytes())
+    config["training_task_id"] = "bw-99999999"
+    config_path.write_text(json.dumps(config, sort_keys=True, separators=(",", ":")) + "\n")
+    with pytest.raises(ValueError, match="provenance"):
+        run(tmp_path / "reused", failure_mode="NO_END", reuse_from=source)
 
 
 def test_invalid_plan_is_not_repaired() -> None:

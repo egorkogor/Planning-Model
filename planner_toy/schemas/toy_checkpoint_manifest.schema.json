@@ -2,6 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "arm": {
+      "const": "PLANNER_A2_RAW"
+    },
     "config_hash": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
@@ -28,7 +31,36 @@
       "pattern": "^model/trained\\.pt$",
       "type": "string"
     },
+    "optimizer_evidence_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "optimizer_evidence_path": {
+      "const": "model/optimizer-evidence.json"
+    },
     "runtime": {
+      "additionalProperties": false,
+      "properties": {
+        "cuda_available": {
+          "const": false
+        },
+        "device": {
+          "const": "cpu"
+        },
+        "torch_cuda_version": {
+          "type": "null"
+        },
+        "torch_version": {
+          "pattern": "^2\\.12\\.0(?:\\+cpu)?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "torch_version",
+        "torch_cuda_version",
+        "cuda_available",
+        "device"
+      ],
       "type": "object"
     },
     "schema_version": {
@@ -36,6 +68,15 @@
     },
     "sealed_data": {
       "const": false
+    },
+    "seed": {
+      "const": 17
+    },
+    "split": {
+      "const": "development"
+    },
+    "stage": {
+      "const": "PLANNER_ONLY"
     },
     "state_dict_sha256": {
       "pattern": "^sha256:[0-9a-f]{64}$",
@@ -62,7 +103,13 @@
     "training_report_hash",
     "runtime",
     "confirmatory",
-    "sealed_data"
+    "sealed_data",
+    "optimizer_evidence_path",
+    "optimizer_evidence_hash",
+    "seed",
+    "split",
+    "stage",
+    "arm"
   ],
   "title": "toy-checkpoint-manifest/1.0",
   "type": "object"

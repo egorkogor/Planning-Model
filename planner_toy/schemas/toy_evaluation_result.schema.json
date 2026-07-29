@@ -28,6 +28,10 @@
     "confirmatory": {
       "const": false
     },
+    "episode_log_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
     "episode_plan_manifest_hash": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
@@ -47,6 +51,10 @@
       ]
     },
     "goal_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "planner_request_hash": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
     },
@@ -95,7 +103,9 @@
     "stage",
     "arm",
     "confirmatory",
-    "sealed_data"
+    "sealed_data",
+    "planner_request_hash",
+    "episode_log_hash"
   ],
   "title": "toy-evaluation-result/1.0",
   "type": "object"

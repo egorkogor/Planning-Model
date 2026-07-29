@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "toy-optimizer-evidence/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "config_hash", "active_parameter_names", "optimizer_state_parameter_names", "active_gradient_evidence", "state_matches_active_set", "state_all_finite_nonzero"],
+  "properties": {
+    "schema_version": {"const": "toy-optimizer-evidence/1.0"},
+    "config_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "active_parameter_names": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "optimizer_state_parameter_names": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "active_gradient_evidence": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "object", "additionalProperties": false, "required": ["finite", "nonzero"], "properties": {"finite": {"const": true}, "nonzero": {"const": true}}}},
+    "state_matches_active_set": {"const": true},
+    "state_all_finite_nonzero": {"const": true}
+  }
+}

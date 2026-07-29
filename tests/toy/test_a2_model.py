@@ -65,7 +65,14 @@ def test_decoder_cross_attention_cannot_observe_pad_states() -> None:
 
 def test_real_training_active_and_dormant_policy(tmp_path) -> None:
     row = next(row for row in generate()["train"] if len(row["oracle_work_plan"]) > 1)
-    _, report = train(row, tmp_path, steps=1)
+    from planner_toy.canonical import canonical_bytes
+    from planner_toy.e2e import _config, file_hash
+
+    config = _config(row, generate())
+    config["training"]["steps"] = 1
+    config_path = tmp_path / "development-config.json"
+    config_path.write_bytes(canonical_bytes(config) + b"\n")
+    _, report = train(row, tmp_path, config=config, config_hash=file_hash(config_path))
     assert report["active_tensor_count"] == 140
     assert report["dormant_tensor_count"] == 37
     assert report["active_grad_count"] == 140

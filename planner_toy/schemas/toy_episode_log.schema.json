@@ -53,6 +53,10 @@
     "planner_calls": {
       "const": 1
     },
+    "planner_request_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
     "schema_version": {
       "const": "toy-episode-log/1.0"
     },
@@ -94,7 +98,8 @@
     "final_state_hash",
     "goal_success",
     "plan_generation_status",
-    "terminal_error"
+    "terminal_error",
+    "planner_request_hash"
   ],
   "title": "toy-episode-log/1.0",
   "type": "object"

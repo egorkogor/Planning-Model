@@ -3,7 +3,35 @@
   "additionalProperties": false,
   "properties": {
     "architecture": {
+      "additionalProperties": false,
+      "properties": {
+        "attention_heads": {
+          "const": 8
+        },
+        "d_model": {
+          "const": 256
+        },
+        "decoder_layers": {
+          "const": 4
+        },
+        "encoder_layers": {
+          "const": 4
+        },
+        "ffn_dim": {
+          "const": 1024
+        }
+      },
+      "required": [
+        "d_model",
+        "encoder_layers",
+        "decoder_layers",
+        "attention_heads",
+        "ffn_dim"
+      ],
       "type": "object"
+    },
+    "arm": {
+      "const": "PLANNER_A2_RAW"
     },
     "code_commit": {
       "type": [
@@ -23,6 +51,28 @@
       "type": "string"
     },
     "runtime": {
+      "additionalProperties": false,
+      "properties": {
+        "cuda_available": {
+          "const": false
+        },
+        "device": {
+          "const": "cpu"
+        },
+        "torch_cuda_version": {
+          "type": "null"
+        },
+        "torch_version": {
+          "pattern": "^2\\.12\\.0(?:\\+cpu)?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "torch_version",
+        "torch_cuda_version",
+        "cuda_available",
+        "device"
+      ],
       "type": "object"
     },
     "schema_version": {
@@ -34,11 +84,49 @@
     "seed": {
       "const": 17
     },
+    "split": {
+      "const": "development"
+    },
+    "stage": {
+      "const": "PLANNER_ONLY"
+    },
     "task_encoding_sha256": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
     },
     "training": {
+      "additionalProperties": false,
+      "properties": {
+        "adamw_betas": {
+          "const": [
+            0.9,
+            0.95
+          ]
+        },
+        "eps": {
+          "const": 1e-08
+        },
+        "gradient_clip_norm": {
+          "const": 1.0
+        },
+        "learning_rate": {
+          "const": 0.0003
+        },
+        "steps": {
+          "const": 30
+        },
+        "weight_decay": {
+          "const": 0.01
+        }
+      },
+      "required": [
+        "steps",
+        "learning_rate",
+        "adamw_betas",
+        "eps",
+        "weight_decay",
+        "gradient_clip_norm"
+      ],
       "type": "object"
     },
     "training_task_hash": {
@@ -66,7 +154,10 @@
     "runtime",
     "code_commit",
     "confirmatory",
-    "sealed_data"
+    "sealed_data",
+    "split",
+    "stage",
+    "arm"
   ],
   "title": "toy-development-config/1.0",
   "type": "object"

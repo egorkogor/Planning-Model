@@ -6,6 +6,29 @@
       "const": "PLANNER_A2_RAW"
     },
     "candidate_action": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "PICK_UP",
+            "UNSTACK",
+            "PUT_DOWN",
+            "STACK"
+          ]
+        },
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "action",
+        "args"
+      ],
       "type": "object"
     },
     "canonical_task_hash": {
@@ -31,6 +54,12 @@
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
     },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "plan_artifact_hash": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
@@ -42,6 +71,10 @@
     "plan_position_index": {
       "minimum": 0,
       "type": "integer"
+    },
+    "planner_request_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
     },
     "replanning_observed": {
       "const": false
@@ -68,6 +101,12 @@
     "state_before_hash": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
+    },
+    "status": {
+      "enum": [
+        "APPLIED",
+        "FAILED"
+      ]
     },
     "step_index": {
       "minimum": 0,
@@ -98,7 +137,10 @@
     "stage",
     "arm",
     "confirmatory",
-    "sealed_data"
+    "sealed_data",
+    "planner_request_hash",
+    "status",
+    "error"
   ],
   "title": "toy-attempt-log/1.0",
   "type": "object"
