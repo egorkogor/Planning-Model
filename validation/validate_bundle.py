@@ -13,6 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_DIR = ROOT / "docs" / "schemas"
 
 
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise RuntimeError(message)
+
+
 def main() -> None:
     ap=argparse.ArgumentParser()
     ap.add_argument("--skip-nested-pytest", action="store_true")
@@ -21,13 +26,13 @@ def main() -> None:
     for path in sorted(SCHEMA_DIR.glob("*.json")):
         obj = json.loads(path.read_text(encoding="utf-8"))
         Draft202012Validator.check_schema(obj)
-        assert obj["$id"].startswith("https://ml-brain.local/schemas/work-planner/v1.20/")
+        require(obj["$id"].startswith("https://ml-brain.local/schemas/work-planner/v1.20/"), f"unexpected schema id: {path}")
         schemas.append(path)
 
     yamls = []
     for path in sorted((ROOT / "docs").rglob("*.yaml")):
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
-        assert data is not None, f"empty YAML: {path}"
+        require(data is not None, f"empty YAML: {path}")
         yamls.append(path)
 
     required = [
@@ -40,15 +45,15 @@ def main() -> None:
         ROOT / "prompts/00_MASTER_ORCHESTRATOR.md",
     ]
     for path in required:
-        assert path.exists(), f"missing normative artifact: {path}"
+        require(path.exists(), f"missing normative artifact: {path}")
 
     prompt = yaml.safe_load((ROOT / "docs/prompt/stage1_prompt_v1.yaml").read_text(encoding="utf-8"))
-    assert prompt["chat_rendering"]["right_padding"] == "forbidden"
-    assert prompt["chat_rendering"]["generation"]["tokenizer_padding_side_for_batches"] == "left"
-    assert prompt["guidance_blocks"]["attended_token_budget"] == 32
+    require(prompt["chat_rendering"]["right_padding"] == "forbidden", "right padding must be forbidden")
+    require(prompt["chat_rendering"]["generation"]["tokenizer_padding_side_for_batches"] == "left", "batch padding side must be left")
+    require(prompt["guidance_blocks"]["attended_token_budget"] == 32, "attended token budget must equal 32")
 
     phases = yaml.safe_load((ROOT / "docs/operator/phase_registry_v1.yaml").read_text(encoding="utf-8"))["phases"]
-    assert [p["phase_id"] for p in phases] == [f"P{i:02d}" for i in range(21)]
+    require([p["phase_id"] for p in phases] == [f"P{i:02d}" for i in range(21)], "phase registry must contain P00..P20 exactly")
 
     if not args.skip_nested_pytest:
         env=dict(__import__("os").environ); env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"]="1"

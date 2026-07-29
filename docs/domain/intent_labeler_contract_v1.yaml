@@ -17,14 +17,36 @@ determinism:
   goal_fact_selection: lexicographically_smallest_unsatisfied_goal_relevant_to_selected_action_then_global_smallest
   rule_priority: fixed_in_implementation
 exhaustive_validation:
-  block_counts: [1, 2, 3, 4, 5]
   generated_fixture_path: data/fixtures/intent-labeler-exhaustive-n1-n5.jsonl
   fixture_manifest_path: data/manifests/intent-labeler-exhaustive.json
   required_properties:
-    - same_input_same_output
-    - output_schema_valid
-    - END_maps_to_GOAL_ALREADY_SATISFIED
-    - selected_action_and_signature_consistent
-    - no_exact_object_identity_in_canonical_text
+  - same_input_same_output
+  - output_schema_valid
+  - END_maps_to_GOAL_ALREADY_SATISFIED
+  - selected_action_and_signature_consistent
+  - no_exact_object_identity_in_canonical_text
   fixture_generated_before_contract_lock: false
   implementation_locked_before_confirmatory: true
+  block_counts_exhaustive:
+  - 1
+  - 2
+  - 3
+  - 4
+  block_count_5_mode: deterministic_hash_selected_coverage
+  block_count_5_selected_case_count: 4096
+  selection_hash_algorithm: sha256 over canonical case payload; select lexicographically
+    smallest 4096 digests
+  case_identity: canonical state + canonical goal + ordered shortest-first-action
+    set + selected first action + remaining oracle length
+  multiple_shortest_actions: one case per ordered shortest-first-action set; selected
+    action is the normative first action
+  manifest_required_fields:
+  - generator_sha256
+  - universe_definition_sha256
+  - row_count
+  - byte_count
+  - fixture_sha256
+  - per_block_count_rows
+  - per_intent_rows
+  maximum_generation_seconds: 120
+  maximum_fixture_bytes: 268435456

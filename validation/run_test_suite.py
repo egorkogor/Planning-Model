@@ -20,6 +20,8 @@ class FileResult:
     path: Path
     returncode: int
     passed: int
+    skipped: int
+    total: int
     timed_out: bool
     log_path: Path
 
@@ -51,19 +53,23 @@ def _terminate_process_tree(proc: subprocess.Popen[bytes]) -> None:
         proc.wait(timeout=5)
 
 
-def _count_junit_tests(path: Path) -> int:
+def _count_junit_tests(path: Path) -> tuple[int, int, int]:
     if not path.is_file():
-        return 0
+        return 0, 0, 0
     root = ET.parse(path).getroot()
     suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
     passed = 0
+    skipped_total = 0
+    total_all = 0
     for suite in suites:
         total = int(suite.attrib.get("tests", "0"))
         failed = int(suite.attrib.get("failures", "0"))
         errors = int(suite.attrib.get("errors", "0"))
         skipped = int(suite.attrib.get("skipped", "0"))
         passed += total - failed - errors - skipped
-    return passed
+        skipped_total += skipped
+        total_all += total
+    return passed, skipped_total, total_all
 
 
 def run_test_file(path: Path, *, timeout_seconds: int, work_dir: Path, log_dir: Path) -> FileResult:
@@ -110,10 +116,13 @@ def run_test_file(path: Path, *, timeout_seconds: int, work_dir: Path, log_dir: 
             timed_out = True
             _terminate_process_tree(proc)
 
+    passed, skipped, total = _count_junit_tests(junit_path)
     return FileResult(
         path=rel,
         returncode=proc.returncode if proc.returncode is not None else 1,
-        passed=_count_junit_tests(junit_path),
+        passed=passed,
+        skipped=skipped,
+        total=total,
         timed_out=timed_out,
         log_path=log_path,
     )
@@ -155,12 +164,17 @@ def main() -> int:
                 print(f"  TIMEOUT after {args.timeout_per_file}s; log: {result.log_path}", flush=True)
             elif result.returncode != 0:
                 print(f"  FAIL (exit {result.returncode}); log: {result.log_path}", flush=True)
+            elif result.total == 0 or result.skipped != 0:
+                print(f"  FAIL ({result.total} collected, {result.skipped} skipped); log: {result.log_path}", flush=True)
             else:
                 print(f"  PASS ({result.passed} tests)", flush=True)
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
 
-    failed = [result for result in results if result.returncode != 0 or result.timed_out]
+    failed = [
+        result for result in results
+        if result.returncode != 0 or result.timed_out or result.total == 0 or result.skipped != 0
+    ]
     total_passed = sum(result.passed for result in results)
     if failed:
         print(f"FAIL: {len(failed)}/{len(results)} test files failed; {total_passed} tests passed", file=sys.stderr)

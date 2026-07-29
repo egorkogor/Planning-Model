@@ -36,7 +36,7 @@
 6. obtain signed independent statistical audit and signed independent implementation audit of the same commit
 7. create implementation-lock candidate binding both audits, Scientific lock, Trust Topology lock and reviewed commit
 8. after G06 approval create and verify active Implementation lock; no later source implementation is permitted
-9. materialize check-specific P06 evidence: exact parameter inventory counts, at least three normative SAME_INFORMATION cases recomputed by intent_labeler, at least three RAW_ROLLOUT cases with no mask/replanning, and six seed-17 dormant-gradient audits
+9. materialize check-specific P06 evidence: exact parameter inventory counts, at at least 21 normative SAME_INFORMATION cases with at least three cases per intent_id recomputed by intent_labeler, exactly 36 RAW_ROLLOUT cases covering six trainable variants by six non-terminal intents with bound logits/plan/event files and no mask/replanning, and six seed-17 dormant-gradient audits
 10. model-audit recomputed_value is produced by validator code; Builder-submitted booleans are not authoritative
 
 ## Обязательные результаты фазы

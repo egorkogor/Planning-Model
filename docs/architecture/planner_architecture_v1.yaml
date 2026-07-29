@@ -88,26 +88,34 @@ parameter_matching:
   - intent_head_and_embedding
   - signature_heads_and_embeddings
   - latent_head_and_feedback_projection
-  arm_activation: locked arm mask selects losses, outputs and feedback; unused modules receive no task loss and must have
-    grad None
+  arm_activation: locked arm mask selects losses, outputs and feedback; unused modules
+    receive no task loss and must have grad None
   total_parameter_count_tolerance_fraction: 0.0
   active_parameter_count_reported_separately: true
   dormant_module_output_may_enter_backbone_or_logits: false
-  flops_difference_handling: measured and addressed by locked FLOPs-matched sensitivity run
+  flops_difference_handling: measured and addressed by locked FLOPs-matched sensitivity
+    run
   checkpoint_inventory_hash_must_match_across_A1_A2_A2b_A2c_A3_A3r: true
-  shared_decoder_position_inventory: 85 learned positions in every trainable arm; step-level arms activate positions 0..16
-    only
-  A1_token_head_inventory: 24 logits including reserved token IDs; dormant in step-level arms with grad None
+  shared_decoder_position_inventory: 85 learned positions in every trainable arm;
+    step-level arms activate positions 0..16 only
+  A1_token_head_inventory: 24 logits including reserved token IDs; dormant in step-level
+    arms with grad None
+  active_capacity_equality_claim: false
+  interpretation_rule: A3_vs_A2c is an architecture-bundle comparison unless a future
+    separately locked active-capacity sensitivity is added
 initialization_contract: docs/training/planner_initialization_contract_v1.yaml
 A3r_external_resolution:
-  purpose: Resolve an external semantic signature for WorkPlan/evaluation without altering autoregressive latent feedback.
+  purpose: Resolve an external semantic signature for WorkPlan/evaluation without
+    altering autoregressive latent feedback.
   query: raw normalized predicted z before feedback projection
   candidate_vectors: all normalized vectors in the frozen random codebook manifest
-  metric: maximum cosine similarity (equivalently maximum dot product for normalized vectors)
+  metric: maximum cosine similarity (equivalently maximum dot product for normalized
+    vectors)
   threshold: none; nearest entry is always selected
   tie_break: lexicographically smallest signature_sha256
   exact_tie_action: deterministic selection, not failure
-  concept_packer_feedback: raw normalized predicted z, never the selected codebook vector
+  concept_packer_feedback: raw normalized predicted z, never the selected codebook
+    vector
   work_plan_semantic_signature: semantic signature associated with the selected signature_sha256
 module_inventory_contract: docs/architecture/planner_module_inventory_v1.yaml
 exact_implementation:

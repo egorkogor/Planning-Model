@@ -33,7 +33,15 @@ def canonical_json_bytes(value: Any) -> bytes:
         if isinstance(x, dict):
             if not all(isinstance(k, str) for k in x):
                 raise TypeError("JSON object keys must be strings")
-            return {unicodedata.normalize("NFC", k): norm(x[k]) for k in sorted(x)}
+            normalized_items: list[tuple[str, Any]] = []
+            seen_keys: set[str] = set()
+            for key, value in x.items():
+                normalized_key = unicodedata.normalize("NFC", key)
+                if normalized_key in seen_keys:
+                    raise ValueError(f"duplicate JSON key after NFC normalization: {normalized_key!r}")
+                seen_keys.add(normalized_key)
+                normalized_items.append((normalized_key, norm(value)))
+            return {key: value for key, value in sorted(normalized_items, key=lambda item: item[0])}
         raise TypeError(f"unsupported canonical JSON type: {type(x)!r}")
 
     return json.dumps(norm(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
@@ -95,7 +103,8 @@ def canonical_task_payload(task: Mapping[str, Any]) -> dict[str, Any]:
         if best is None or encoded < best:
             best = encoded
             best_payload = payload
-    assert best_payload is not None
+    if best_payload is None:
+        raise ValueError("canonical task must contain at least one ledger reference")
     return best_payload
 
 

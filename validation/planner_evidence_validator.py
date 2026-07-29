@@ -510,10 +510,11 @@ def _parameter_tolerance_result(root: Path) -> tuple[dict[str, Any], list[str]]:
 def _same_information_result(details: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
     errors: list[str] = []
     cases = details.get("cases", [])
-    if not isinstance(cases, list) or len(cases) < 3:
-        return {}, ["SAME_INFORMATION requires at least three normative cases"]
+    if not isinstance(cases, list) or len(cases) < 21:
+        return {}, ["SAME_INFORMATION requires at least 21 fixed coverage cases"]
     seen: set[str] = set()
     mismatches = 0
+    intent_counts = {intent_id: 0 for intent_id in range(7)}
     for i, case in enumerate(cases):
         try:
             case_id = str(case["case_id"])
@@ -524,6 +525,7 @@ def _same_information_result(details: Mapping[str, Any]) -> tuple[dict[str, Any]
                 case["state"], case["goal"], case["all_shortest_first_actions"],
                 case["selected_action"], int(case["remaining_oracle_length"]),
             )
+            intent_counts[int(expected["intent_id"])] += 1
             if case.get("a2c_semantic_signature") != expected["semantic_signature"]:
                 mismatches += 1
                 errors.append(f"SAME_INFORMATION A2c signature mismatch: {case_id}")
@@ -533,15 +535,20 @@ def _same_information_result(details: Mapping[str, Any]) -> tuple[dict[str, Any]
         except Exception as exc:
             mismatches += 1
             errors.append(f"SAME_INFORMATION case[{i}] invalid: {exc}")
-    return {"case_count": len(cases), "mismatch_count": mismatches}, errors
+    missing = [intent_id for intent_id, count in intent_counts.items() if count < 3]
+    if missing:
+        errors.append(f"SAME_INFORMATION requires at least three cases per intent_id; insufficient: {missing}")
+    return {"case_count": len(cases), "mismatch_count": mismatches, "intent_counts": {str(k): v for k, v in intent_counts.items()}}, errors
 
 
-def _raw_rollout_result(details: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
+def _raw_rollout_result(root: Path, details: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
     errors: list[str] = []
     cases = details.get("cases", [])
-    if not isinstance(cases, list) or len(cases) < 3:
-        return {}, ["RAW_ROLLOUT requires at least three cases"]
+    variants = ("A1", "A2", "A2b", "A2c", "A3", "A3r")
+    if not isinstance(cases, list) or len(cases) != 36:
+        return {}, ["RAW_ROLLOUT requires exactly 36 fixed cases (6 variants x 6 intents)"]
     seen: set[str] = set()
+    matrix: set[tuple[str, int]] = set()
     violations = 0
     for i, case in enumerate(cases):
         try:
@@ -550,6 +557,12 @@ def _raw_rollout_result(details: Mapping[str, Any]) -> tuple[dict[str, Any], lis
                 violations += 1
                 errors.append(f"duplicate RAW_ROLLOUT case_id: {case_id}")
             seen.add(case_id)
+            variant = str(case.get("variant"))
+            intent_id = int(case.get("intent_id", -1))
+            if variant not in variants or intent_id not in range(6):
+                violations += 1
+                errors.append(f"RAW_ROLLOUT {case_id} invalid variant/intent pair")
+            matrix.add((variant, intent_id))
             required = {
                 "planner_calls": 1,
                 "execution_planner_calls": 0,
@@ -561,12 +574,17 @@ def _raw_rollout_result(details: Mapping[str, Any]) -> tuple[dict[str, Any], lis
                 if case.get(field) != expected:
                     violations += 1
                     errors.append(f"RAW_ROLLOUT {case_id} {field} mismatch")
-            if not isinstance(case.get("raw_logits_sha256"), str) or not str(case.get("raw_logits_sha256")).startswith("sha256:"):
-                violations += 1
-                errors.append(f"RAW_ROLLOUT {case_id} missing raw logits digest")
-            if not isinstance(case.get("frozen_plan_sha256"), str) or not str(case.get("frozen_plan_sha256")).startswith("sha256:"):
-                violations += 1
-                errors.append(f"RAW_ROLLOUT {case_id} missing frozen plan digest")
+            for path_field, digest_field in (
+                ("raw_logits_path", "raw_logits_sha256"),
+                ("frozen_plan_path", "frozen_plan_sha256"),
+                ("event_log_path", "event_log_sha256"),
+            ):
+                rel = case.get(path_field)
+                submitted = case.get(digest_field)
+                _, file_errors = _check_bound_file(root, rel, submitted, f"RAW_ROLLOUT {case_id} {path_field}")
+                if file_errors:
+                    violations += len(file_errors)
+                    errors.extend(file_errors)
             consumed = int(case.get("plan_positions_consumed", -1))
             if consumed < 1 or consumed > 17:
                 violations += 1
@@ -574,8 +592,10 @@ def _raw_rollout_result(details: Mapping[str, Any]) -> tuple[dict[str, Any], lis
         except Exception as exc:
             violations += 1
             errors.append(f"RAW_ROLLOUT case[{i}] invalid: {exc}")
-    return {"case_count": len(cases), "violation_count": violations}, errors
-
+    expected_matrix = {(variant, intent_id) for variant in variants for intent_id in range(6)}
+    if matrix != expected_matrix:
+        errors.append("RAW_ROLLOUT variant x intent matrix mismatch")
+    return {"case_count": len(cases), "violation_count": violations, "matrix_complete": matrix == expected_matrix}, errors
 
 def _dormant_gradient_result(root: Path) -> tuple[dict[str, Any], list[str]]:
     errors: list[str] = []
@@ -635,7 +655,7 @@ def validate_model_audit_check_evidence(root: Path, obj: Mapping[str, Any]) -> l
             "docs/training/planner_training_contract_v1.yaml",
         }
         errors += _validate_exact_bindings(root, bindings, required, "RAW_ROLLOUT")
-        canonical, check_errors = _raw_rollout_result(details)
+        canonical, check_errors = _raw_rollout_result(root, details)
     elif check_id == "DORMANT_GRADIENT":
         required = {"reports/model-evidence/parameter-inventory.json"} | {
             f"reports/model-evidence/dormant-gradients/{variant}-seed-17.json"

@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from validation.role_validator import canonical_identity_hash, canonical_registry_hash, role_challenge_bytes
 from validation.operator_decision_validator import sign_record
+from validation.hashing import hash_json
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 ROOT = SOURCE_ROOT
@@ -80,7 +81,7 @@ def role(role_name: str, principal: str, family: str = 'builder-family') -> dict
 
 
 def resource_plan(approval: bool) -> dict:
-    return {
+    plan = {
         "schema_version":"work-planner-infra/1.0","run_id":"run-gate-test",
         "builder":role('BUILDER','builder'),"data_sealer":role('DATA_SEALER','sealer'),
         "evaluator":role('EVALUATION_RUNNER','evaluator'),"auditor":role('AUDITOR','auditor','audit-family'),
@@ -88,8 +89,9 @@ def resource_plan(approval: bool) -> dict:
         "machine_checks":{k:"PASS" for k in ("cpu","ram","disk","gpu","credentials","workspace","role_separation")},
         "estimated_cost":1 if approval else 0,"currency":"USD","requires_operator_budget_approval":approval,
         "capacity_limits":{"maximum_gpu_seconds":1000000.0,"maximum_storage_bytes":1000000000,"gpu_hour_cost":0.0},
-        "plan_hash":"sha256:"+"0"*64,
     }
+    plan["plan_hash"] = hash_json(plan)
+    return plan
 
 
 def _phase() -> dict:

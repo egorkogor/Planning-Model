@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from validation.role_validator import validate_role_independence
+from validation.resource_plan_validator import validate_resource_plan_semantics
 from validation.statistical_audit_validator import validate_statistical_audit
 from validation.implementation_audit_validator import validate_implementation_audit
 from validation.implementation_candidate_validator import validate_candidate
@@ -84,7 +85,10 @@ def core_check(kind: str, phase: str, check_id: str, report: dict) -> list[str]:
     elif kind == "resource_plan_schema":
         path = ROOT / "reports/resource-plan.json"
         if not path.is_file(): errors.append("resource plan missing")
-        else: errors.extend(validate_schema(load_json(path), "resource_plan.schema.json"))
+        else:
+            plan = load_json(path)
+            errors.extend(validate_schema(plan, "resource_plan.schema.json"))
+            errors.extend(validate_resource_plan_semantics(plan))
     elif kind == "role_independence":
         try: errors.extend(validate_role_independence(load_json(ROOT / "reports/resource-plan.json"), load_json(ROOT / "locks/public-keys.json")))
         except Exception as exc: errors.append(str(exc))

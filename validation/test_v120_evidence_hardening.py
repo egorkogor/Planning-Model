@@ -68,58 +68,44 @@ def test_parameter_tolerance_is_recomputed_from_inventory(tmp_path: Path) -> Non
 
 
 def test_same_information_is_recomputed_with_normative_labeler(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
     for rel in (
-        "docs/domain/intent_labeler_v1.py",
-        "docs/domain/intent_catalog_v1.yaml",
+        "docs/domain/intent_labeler_v1.py", "docs/domain/intent_catalog_v1.yaml",
         "docs/semantic/semantic_target_v1.yaml",
     ):
         dst = tmp_path / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
-        src = Path(__file__).resolve().parents[1] / rel
-        dst.write_bytes(src.read_bytes())
-    inputs = [
-        {
-            "case_id": "goal-end",
-            "state": [["ON_TABLE", "@B0"], ["CLEAR", "@B0"], ["HAND_EMPTY"]],
-            "goal": [["ON_TABLE", "@B0"]],
-            "all_shortest_first_actions": [{"action": "END", "args": []}],
-            "selected_action": {"action": "END", "args": []},
-            "remaining_oracle_length": 0,
-        },
-        {
-            "case_id": "stack-goal",
-            "state": [["HOLDING", "@B0"], ["ON_TABLE", "@B1"], ["CLEAR", "@B1"]],
-            "goal": [["ON", "@B0", "@B1"]],
-            "all_shortest_first_actions": [{"action": "STACK", "args": ["@B0", "@B1"]}],
-            "selected_action": {"action": "STACK", "args": ["@B0", "@B1"]},
-            "remaining_oracle_length": 1,
-        },
-        {
-            "case_id": "temporary-put",
-            "state": [["HOLDING", "@B2"], ["ON_TABLE", "@B0"], ["CLEAR", "@B0"]],
-            "goal": [["ON", "@B0", "@B2"]],
-            "all_shortest_first_actions": [{"action": "PUT_DOWN", "args": ["@B2"]}],
-            "selected_action": {"action": "PUT_DOWN", "args": ["@B2"]},
-            "remaining_oracle_length": 3,
-        },
+        dst.write_bytes((root / rel).read_bytes())
+    templates = [
+        {"state": [["ON", "@B2", "@B0"], ["CLEAR", "@B2"], ["HAND_EMPTY"]], "goal": [["ON", "@B0", "@B1"]], "action": {"action": "UNSTACK", "args": ["@B2", "@B0"]}, "distance": 4},
+        {"state": [["ON", "@B2", "@B1"], ["CLEAR", "@B2"], ["HAND_EMPTY"]], "goal": [["ON", "@B0", "@B1"]], "action": {"action": "UNSTACK", "args": ["@B2", "@B1"]}, "distance": 4},
+        {"state": [["ON_TABLE", "@B0"], ["CLEAR", "@B0"], ["HAND_EMPTY"]], "goal": [["ON", "@B0", "@B1"]], "action": {"action": "PICK_UP", "args": ["@B0"]}, "distance": 2},
+        {"state": [["HOLDING", "@B2"], ["ON_TABLE", "@B0"], ["CLEAR", "@B0"]], "goal": [["ON", "@B0", "@B2"]], "action": {"action": "PUT_DOWN", "args": ["@B2"]}, "distance": 3},
+        {"state": [["HOLDING", "@B0"], ["ON_TABLE", "@B1"], ["CLEAR", "@B1"]], "goal": [["ON", "@B0", "@B1"]], "action": {"action": "STACK", "args": ["@B0", "@B1"]}, "distance": 1},
+        {"state": [["HOLDING", "@B0"], ["ON_TABLE", "@B1"], ["CLEAR", "@B1"], ["ON_TABLE", "@B2"], ["CLEAR", "@B2"]], "goal": [["ON", "@B0", "@B2"]], "action": {"action": "STACK", "args": ["@B0", "@B1"]}, "distance": 3},
+        {"state": [["ON_TABLE", "@B0"], ["CLEAR", "@B0"], ["HAND_EMPTY"]], "goal": [["ON_TABLE", "@B0"]], "action": {"action": "END", "args": []}, "distance": 0},
     ]
-    for case in inputs:
-        out = label_intent(
-            case["state"], case["goal"], case["all_shortest_first_actions"],
-            case["selected_action"], case["remaining_oracle_length"],
-        )
-        case["a2c_semantic_signature"] = out["semantic_signature"]
-        case["a3_canonical_text"] = out["canonical_text"]
-    value = {"case_count": 3, "mismatch_count": 0}
+    inputs = []
+    for intent_id, template in enumerate(templates):
+        for repetition in range(3):
+            action = template["action"]
+            case = {
+                "case_id": f"intent-{intent_id}-{repetition}",
+                "state": template["state"], "goal": template["goal"],
+                "all_shortest_first_actions": [action], "selected_action": action,
+                "remaining_oracle_length": template["distance"],
+            }
+            out = label_intent(case["state"], case["goal"], case["all_shortest_first_actions"], case["selected_action"], case["remaining_oracle_length"])
+            assert out["intent_id"] == intent_id
+            case["a2c_semantic_signature"] = out["semantic_signature"]
+            case["a3_canonical_text"] = out["canonical_text"]
+            inputs.append(case)
+    counts = {str(intent_id): 3 for intent_id in range(7)}
+    value = {"case_count": 21, "mismatch_count": 0, "intent_counts": counts}
     obj = _evidence(
         "SAME_INFORMATION",
-        [
-            _binding(tmp_path, "docs/domain/intent_labeler_v1.py"),
-            _binding(tmp_path, "docs/domain/intent_catalog_v1.yaml"),
-            _binding(tmp_path, "docs/semantic/semantic_target_v1.yaml"),
-        ],
-        {"cases": inputs},
-        value,
+        [_binding(tmp_path, "docs/domain/intent_labeler_v1.py"), _binding(tmp_path, "docs/domain/intent_catalog_v1.yaml"), _binding(tmp_path, "docs/semantic/semantic_target_v1.yaml")],
+        {"cases": inputs}, value,
     )
     assert validate_model_audit_check_evidence(tmp_path, obj) == []
     bad = deepcopy(obj)
@@ -130,39 +116,41 @@ def test_same_information_is_recomputed_with_normative_labeler(tmp_path: Path) -
 
 def test_raw_rollout_invariants_are_recomputed(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
-    for rel in (
-        "docs/architecture/a1_token_grammar_v1.yaml",
-        "docs/training/planner_training_contract_v1.yaml",
-    ):
+    bindings = []
+    for rel in ("docs/architecture/a1_token_grammar_v1.yaml", "docs/training/planner_training_contract_v1.yaml"):
         dst = tmp_path / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_bytes((root / rel).read_bytes())
-    cases = [
-        {
-            "case_id": f"raw-{i}", "planner_calls": 1, "execution_planner_calls": 0,
-            "domain_action_mask_applied": False, "grammar_constrained_decoding": False,
-            "replanning": False, "plan_positions_consumed": i + 1,
-            "raw_logits_sha256": "sha256:" + str(i + 1) * 64,
-            "frozen_plan_sha256": "sha256:" + str(i + 4) * 64,
-        }
-        for i in range(3)
-    ]
-    value = {"case_count": 3, "violation_count": 0}
-    obj = _evidence(
-        "RAW_ROLLOUT",
-        [
-            _binding(tmp_path, "docs/architecture/a1_token_grammar_v1.yaml"),
-            _binding(tmp_path, "docs/training/planner_training_contract_v1.yaml"),
-        ],
-        {"cases": cases},
-        value,
-    )
+        bindings.append(_binding(tmp_path, rel))
+    cases = []
+    for variant in ("A1", "A2", "A2b", "A2c", "A3", "A3r"):
+        for intent_id in range(6):
+            case_id = f"{variant}-{intent_id}"
+            case = {
+                "case_id": case_id, "variant": variant, "intent_id": intent_id,
+                "planner_calls": 1, "execution_planner_calls": 0,
+                "domain_action_mask_applied": False, "grammar_constrained_decoding": False,
+                "replanning": False, "plan_positions_consumed": intent_id + 1,
+            }
+            for field, suffix, payload in (
+                ("raw_logits", "logits.bin", b"logits"),
+                ("frozen_plan", "plan.json", b"{}"),
+                ("event_log", "events.jsonl", b"{}\n"),
+            ):
+                rel = f"reports/model-evidence/raw-rollout/{case_id}.{suffix}"
+                path = tmp_path / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(payload + case_id.encode())
+                case[f"{field}_path"] = rel
+                case[f"{field}_sha256"] = _sha(path)
+            cases.append(case)
+    value = {"case_count": 36, "violation_count": 0, "matrix_complete": True}
+    obj = _evidence("RAW_ROLLOUT", bindings, {"cases": cases}, value)
     assert validate_model_audit_check_evidence(tmp_path, obj) == []
     bad = deepcopy(obj)
     bad["details"]["cases"][1]["replanning"] = True
     bad["evidence_hash"] = hash_json({k: v for k, v in bad.items() if k != "evidence_hash"})
     assert any("replanning mismatch" in e for e in validate_model_audit_check_evidence(tmp_path, bad))
-
 
 def test_dormant_gradient_check_loads_all_six_audits(tmp_path: Path) -> None:
     inventory, _ = _prepare_contracts(tmp_path)

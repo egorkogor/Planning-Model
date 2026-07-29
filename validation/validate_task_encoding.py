@@ -30,15 +30,23 @@ def encode(ex:dict):
     ids += [T['PAD']]*pad; seg += [SEG['SPECIAL']]*pad; arg += [0]*pad; mask += [0]*pad
     return {'token_ids':ids,'segment_ids':seg,'argument_position_ids':arg,'attention_mask':mask,'ref_slot_positions':ref_positions}
 
-def validate_all()->None:
-    assert len(SPEC['golden_examples'])>=3
-    for ex in SPEC['golden_examples']:
-        actual=encode(ex)
-        assert actual['token_ids']==ex['expected_token_ids'],ex['id']+' token_ids'
-        assert actual['segment_ids']==ex['expected_segment_ids'],ex['id']+' segment_ids'
-        assert actual['argument_position_ids']==ex['expected_argument_position_ids'],ex['id']+' argument positions'
-        assert actual['attention_mask']==ex['expected_attention_mask'],ex['id']+' attention mask'
-        assert actual['ref_slot_positions']==ex['expected_ref_slot_positions'],ex['id']+' ref positions'
+def validate_all() -> None:
+    examples = SPEC.get("golden_examples", [])
+    if len(examples) < 3:
+        raise RuntimeError("at least three task-encoding golden examples are required")
+    fields = (
+        ("token_ids", "token_ids"),
+        ("segment_ids", "segment_ids"),
+        ("argument_position_ids", "argument positions"),
+        ("attention_mask", "attention mask"),
+        ("ref_slot_positions", "ref positions"),
+    )
+    for ex in examples:
+        actual = encode(ex)
+        for field, label in fields:
+            expected_field = f"expected_{field}"
+            if actual[field] != ex[expected_field]:
+                raise RuntimeError(f"{ex['id']} {label} mismatch")
 
 if __name__=='__main__':
     validate_all(); print(f"PASS: {len(SPEC['golden_examples'])} complete task-encoding golden examples")

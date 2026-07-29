@@ -108,7 +108,8 @@ def shortest_plan(initial: Iterable[Iterable[str]], goal: Iterable[Iterable[str]
                 cur = nxt
                 while path[cur][0] is not None:
                     prev, act = path[cur]
-                    assert prev is not None and act is not None
+                    if prev is None or act is None:
+                        raise RuntimeError("oracle predecessor chain is incomplete")
                     result.append(act)
                     cur = prev
                 result.reverse()

@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 
 from validation.verify_lock import DEFAULT_LOCKS, verify as verify_lock
 from validation.role_validator import validate_role_independence, canonical_identity_hash
+from validation.resource_plan_validator import validate_resource_plan_semantics
 from validation.statistical_audit_validator import validate_statistical_audit
 from validation.implementation_audit_validator import validate_implementation_audit
 from validation.implementation_candidate_validator import validate_candidate
@@ -548,6 +549,7 @@ def main()->int:
             key_registry=load_json(ROOT/'locks/public-keys.json')
             validate(key_registry,'public_key_registry.schema.json')
             errors.extend(validate_role_independence(resource_plan,key_registry))
+            errors.extend(validate_resource_plan_semantics(resource_plan))
         except Exception as exc: errors.append(f'invalid resource plan: {exc}')
         errors.extend(verify_trust_topology(expected_run_id=report.get("run_id")))
     if report['phase_id']!='P00' and (ROOT/'reports/resource-plan.json').exists() and phase.get('execution_role')!='OPERATOR':
