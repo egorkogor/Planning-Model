@@ -13,7 +13,9 @@ def test_autonomous_prompt_set_is_complete() -> None:
 
 
 def test_phase_registry_has_exact_order_and_gates() -> None:
-    registry = yaml.safe_load((ROOT / "docs/operator/phase_registry_v1.yaml").read_text(encoding="utf-8"))
+    registry = yaml.safe_load(
+        (ROOT / "docs/operator/phase_registry_v1.yaml").read_text(encoding="utf-8")
+    )
     phases = registry["phases"]
     assert [p["phase_id"] for p in phases] == [f"P{i:02d}" for i in range(21)]
     gates = [p["manual_gate_id"] for p in phases if p["manual_gate_id"]]

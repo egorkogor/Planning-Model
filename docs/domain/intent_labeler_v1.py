@@ -4,10 +4,11 @@ The module is deliberately dependency-free. Facts are tuples such as
 ("ON", "@B0", "@B1") and actions are dictionaries with keys ``action`` and
 ``args`` where args are refs in normative order.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
-from typing import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import asdict, dataclass
 
 INTENT_KEYS = {
     0: "CLEAR_MOVING_BLOCK",
@@ -125,7 +126,9 @@ def _bucket_distance(distance: int) -> str:
     raise ValueError("remaining_oracle_length must be 0..16")
 
 
-def _relevant_goal(goal: set[tuple[str, ...]], selected_action: Mapping[str, object]) -> tuple[str, ...] | None:
+def _relevant_goal(
+    goal: set[tuple[str, ...]], selected_action: Mapping[str, object]
+) -> tuple[str, ...] | None:
     name, args = _action_tuple(selected_action)
     moving = args[0] if args else None
     candidates = sorted(g for g in goal if moving is not None and len(g) >= 2 and g[1] == moving)
@@ -167,7 +170,11 @@ def label_intent(
             intent_id = 4
         elif name == "UNSTACK" and support in goal_supports:
             intent_id = 1
-        elif name in {"UNSTACK", "PICK_UP"} and moving in goal_subjects and _blocks_above(state, moving) == 0:
+        elif (
+            name in {"UNSTACK", "PICK_UP"}
+            and moving in goal_subjects
+            and _blocks_above(state, moving) == 0
+        ):
             intent_id = 2
         elif name == "UNSTACK" and moving not in goal_subjects:
             intent_id = 0
@@ -182,11 +189,21 @@ def label_intent(
         moving_clear = support_clear = "NOT_APPLICABLE"
         obstruction_depth = None
     else:
-        goal_relation = relevant[0] if relevant and relevant[0] in {"ON", "ON_TABLE"} else "ON_TABLE"
+        goal_relation = (
+            relevant[0] if relevant and relevant[0] in {"ON", "ON_TABLE"} else "ON_TABLE"
+        )
         moving = args[0] if args else None
         support = relevant[2] if relevant and relevant[0] == "ON" else None
-        moving_clear = "YES" if moving and ("CLEAR", moving) in state else ("NO" if moving else "NOT_APPLICABLE")
-        support_clear = "YES" if support and ("CLEAR", support) in state else ("NO" if support else "NOT_APPLICABLE")
+        moving_clear = (
+            "YES"
+            if moving and ("CLEAR", moving) in state
+            else ("NO" if moving else "NOT_APPLICABLE")
+        )
+        support_clear = (
+            "YES"
+            if support and ("CLEAR", support) in state
+            else ("NO" if support else "NOT_APPLICABLE")
+        )
         relevant_blocks = [b for b in (moving, support) if b]
         obstruction_depth = max((_blocks_above(state, b) for b in relevant_blocks), default=0)
 

@@ -45,8 +45,16 @@ def test_action_contracts_reject_bad_signatures() -> None:
     validator = Draft202012Validator(schemas["llm_step_response.schema.json"], registry=registry)
     valid_end = {"schema_version": "work-planner/1.21", "action": "END", "args": []}
     assert not list(validator.iter_errors(valid_end))
-    assert list(validator.iter_errors({"schema_version": "work-planner/1.21", "action": "END", "args": ["block_0"]}))
-    assert list(validator.iter_errors({"schema_version": "work-planner/1.21", "action": "PICK_UP", "args": []}))
+    assert list(
+        validator.iter_errors(
+            {"schema_version": "work-planner/1.21", "action": "END", "args": ["block_0"]}
+        )
+    )
+    assert list(
+        validator.iter_errors(
+            {"schema_version": "work-planner/1.21", "action": "PICK_UP", "args": []}
+        )
+    )
 
 
 def test_validation_bundle() -> None:
