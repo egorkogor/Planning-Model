@@ -32,7 +32,7 @@
     "docs/domain/intent_labeler_v1.py": "sha256:d50b2df2df49f02c6bbc228b542f8c4d7d9db175348025a54eb0e2964e1ca2f2",
     "docs/domain/training_corpus_contract_v1.yaml": "sha256:d05ccba9ced37203e3ec587c2f92777a049c675c2bb56e241849cbed70f0ac70",
     "docs/infrastructure/provisioning_contract_v1.yaml": "sha256:d351a3945e782b191145a0375e27f625f75c64e58665621682d698a78816ee9b",
-    "docs/infrastructure/runtime_dependency_contract_v1.yaml": "sha256:2488614fa00858c86cd4ea040dc3cb5c3a5751a916bf99222682fe0440968164",
+    "docs/infrastructure/runtime_dependency_contract_v1.yaml": "sha256:62d00285d03b27e024523932715b319ba57b0cfa73df14333e482cc984565cdb",
     "docs/operator/AUTONOMOUS_EXECUTION_PLAYBOOK_RU.md": "sha256:a0686e6419d56a1efaa16d925652417f7410cfdb430f7874f21e2c66f9bf9eae",
     "docs/operator/OPERATOR_GATE_CHECKLIST.md": "sha256:98eb41f181ed7d20f9d9e06d181aa5bc60c6c25b3548814d4284281070535db9",
     "docs/operator/agent_execution_contract_v1.yaml": "sha256:1b8ab75c867df62c312b30e218f21c0b08584f8fbb76e299f33145bf219d1d33",
@@ -63,7 +63,7 @@
     "docs/schemas/dispatch_record.schema.json": "sha256:beeaf570c9a3e163754fd9d00cf50230778296ca2250f3b41345a9165aea6c02",
     "docs/schemas/dormant_gradient_audit.schema.json": "sha256:f054041707e7a310654a2c8c0a21c05f0ac203add99d03075f5e84bfe5eba95e",
     "docs/schemas/episode_log.schema.json": "sha256:eae92a9a3cac3648a1ae059ca69b30e5f20e802ab422475f8efc21ebd1048b13",
-    "docs/schemas/episode_plan_manifest.schema.json": "sha256:ca1a8caebaf0ae13f0e6fbc7a0ec49620e5fae6b8920d0fea96b7d89e23cdf11",
+    "docs/schemas/episode_plan_manifest.schema.json": "sha256:2c8f8b2414c69070f73ef456d03631d304b8f58de3827afda1ccb934a2754d54",
     "docs/schemas/evaluator_result_manifest.schema.json": "sha256:f0747b7000f75611bcbc0ee869ac25d6dbbde8fcfb8aa581edcf3df5ee6ec142",
     "docs/schemas/experiment_freeze.schema.json": "sha256:fc3a37c3585c98e9648b1f296a2236d103674b257abd628cb38db4876f10ce6c",
     "docs/schemas/full_plan_lineage_index.schema.json": "sha256:0f710211533fcbfcf95b0f8758350c78918a57bcc98257b32a0064c8e39c936f",
@@ -156,5 +156,5 @@
     "**/__pycache__/**",
     "**/*.pyc"
   ],
-  "manifest_hash": "sha256:4edd45ef2bc61486b6ff560131e2111da4b3877f0209d6fb5a5f25bca2966a58"
+  "manifest_hash": "sha256:de61cb9747f8968f76c029eef5c7565a1a7aa5096f1ad291b134a0ac978bd761"
 }

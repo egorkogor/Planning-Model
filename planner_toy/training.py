@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 
 from .canonical import canonical_bytes
-from .model import SEED, LockedA2, canonical_token_ids
+from .model import SEED, LockedA2, canonical_task_encoding
 
 ACTIONS = {"PICK_UP": 0, "UNSTACK": 1, "PUT_DOWN": 2, "STACK": 3, "END": 4}
 
@@ -29,7 +29,12 @@ def labels(row: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         action.append(ACTIONS[step[0]])
         arg1.append(row["blocks"].index(step[1]) if len(step) > 1 else 0)
         arg2.append(row["blocks"].index(step[2]) if len(step) > 2 else 0)
-    return (torch.tensor([action]), torch.tensor([arg1]), torch.tensor([arg2]))
+    padding = 17 - len(action)
+    return (
+        torch.tensor([action + [ACTIONS["END"]] * padding]),
+        torch.tensor([arg1 + [0] * padding]),
+        torch.tensor([arg2 + [0] * padding]),
+    )
 
 
 def train(row: dict, output: Path, steps: int = 2) -> tuple[LockedA2, dict]:
@@ -43,29 +48,29 @@ def train(row: dict, output: Path, steps: int = 2) -> tuple[LockedA2, dict]:
     torch.save(model.state_dict(), initial)
     before = {name: value.detach().clone() for name, value in model.state_dict().items()}
     active = [parameter for parameter in model.parameters() if parameter.requires_grad]
-    optimizer = torch.optim.AdamW(active, lr=1e-3, weight_decay=0.01)
+    optimizer = torch.optim.AdamW(active, lr=3e-4, betas=(0.9, 0.95), eps=1e-8, weight_decay=0.01)
     action, arg1, arg2 = labels(row)
-    tokens = canonical_token_ids(row)
+    valid_steps = len(row["oracle_work_plan"])
+    encoded = canonical_task_encoding(row)
     losses = []
     gradient_norm = 0.0
     for _ in range(steps):
         optimizer.zero_grad(set_to_none=True)
-        logits = model(tokens, action, arg1, arg2)
-        loss = F.cross_entropy(logits.action.flatten(0, 1), action.flatten())
-        has_arg1 = action.flatten() != ACTIONS["END"]
-        has_arg2 = (action.flatten() == ACTIONS["UNSTACK"]) | (action.flatten() == ACTIONS["STACK"])
+        logits = model(encoded, action, arg1, arg2)
+        flat_action = action[:, :valid_steps].flatten()
+        loss = F.cross_entropy(logits.action[:, :valid_steps].flatten(0, 1), flat_action)
+        has_arg1 = flat_action != ACTIONS["END"]
+        has_arg2 = (flat_action == ACTIONS["UNSTACK"]) | (flat_action == ACTIONS["STACK"])
         if has_arg1.any():
             loss = loss + F.cross_entropy(
-                logits.arg1.flatten(0, 1)[has_arg1], arg1.flatten()[has_arg1]
+                logits.arg1[:, :valid_steps].flatten(0, 1)[has_arg1],
+                arg1[:, :valid_steps].flatten()[has_arg1],
             )
         if has_arg2.any():
             loss = loss + F.cross_entropy(
-                logits.arg2.flatten(0, 1)[has_arg2], arg2.flatten()[has_arg2]
+                logits.arg2[:, :valid_steps].flatten(0, 1)[has_arg2],
+                arg2[:, :valid_steps].flatten()[has_arg2],
             )
-        # Pointer heads are active A2 tensors even on zero-argument END examples.
-        # A zero-valued masked term records their normative participation without
-        # inventing an argument target or allowing their output into the action loss.
-        loss = loss + 0.0 * (logits.arg1.sum() + logits.arg2.sum())
         loss.backward()
         gradient_norm = float(torch.nn.utils.clip_grad_norm_(active, 1.0))
         optimizer.step()
@@ -101,6 +106,7 @@ def train(row: dict, output: Path, steps: int = 2) -> tuple[LockedA2, dict]:
         "dormant_grad_none": dormant_grad_none,
         "dormant_byte_equal": dormant_equal,
         "optimizer": "torch.optim.AdamW",
+        "optimizer_betas": [0.9, 0.95],
         "optimizer_nonzero_state": optimizer_nonzero,
         "gradient_norm": gradient_norm,
         "losses": losses,

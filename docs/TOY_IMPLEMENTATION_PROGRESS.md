@@ -11,9 +11,19 @@
 - Implemented: single-call frozen WorkPlan pipeline, fail-closed parser and executor,
   development EpisodePlanManifest, AttemptLog, EvaluationResult, lineage validation,
   mutation tests, deterministic replay and `python -m scripts.run_toy_a2_e2e`.
-- Seed conflict resolution: the normative FINAL_CONFIRMATORY schema remains untouched.
-  Seed 17 is accepted only by the separate, explicitly non-confirmatory
-  `DEVELOPMENT/TOY` lineage validator and artifact schema identifiers.
+- Review remediation: task inputs now match `task-encoding/1.6` byte-for-byte,
+  including 192 positions, segment/argument-position IDs, padding mask, and pointer
+  states selected only from ledger `REF_SLOT_i` positions. The E2E task executes four
+  predicted state-changing actions before END; no oracle plan enters Planner decoding.
+- Review remediation: removed zero-valued synthetic loss edges. Pointer gradients now
+  arise from real UNSTACK/STACK targets, AdamW uses locked betas `(0.9, 0.95)`, and
+  replay comparison recursively covers both checkpoints and all nested evidence.
+- Lineage artifacts use the normative WorkPlan and EpisodePlanManifest schemas and
+  recompute content/artifact hashes across PlannerRequest, task, checkpoint, config,
+  WorkPlan, EpisodePlanManifest, AttemptLog, and EvaluationResult.
+- Seed conflict resolution: the EpisodePlanManifest schema gained a backwards-compatible
+  optional `run_class`; seed 17 is valid only for explicit `DEVELOPMENT_TOY`, while an
+  absent or `FINAL_CONFIRMATORY` class retains the five final seeds and prior behavior.
 - This is implementation evidence only. No sealed data was accessed, no confirmatory
   experiment was run, and P06/P07 are not claimed complete.
 - Remaining before A3: broaden training beyond the deliberately minimal toy task,

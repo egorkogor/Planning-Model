@@ -4,10 +4,11 @@ import copy
 
 import pytest
 import torch
+import yaml
 
 from planner_toy.dataset import generate
 from planner_toy.e2e import validate_lineage
-from planner_toy.model import LockedA2
+from planner_toy.model import LockedA2, canonical_task_encoding
 from planner_toy.training import train
 
 
@@ -21,12 +22,30 @@ def test_locked_inventory_and_initialization() -> None:
     )
 
 
+def test_task_encoding_matches_locked_golden_vectors() -> None:
+    spec = yaml.safe_load(open("docs/architecture/task_encoding_v1.yaml", encoding="utf-8"))
+    for example in spec["golden_examples"]:
+        encoded = canonical_task_encoding(
+            {
+                "blocks": example["ledger_refs"],
+                "initial": example["initial"],
+                "goal": example["goal"],
+            }
+        )
+        assert encoded.token_ids[0].tolist() == example["expected_token_ids"]
+        assert encoded.segment_ids[0].tolist() == example["expected_segment_ids"]
+        assert (
+            encoded.argument_position_ids[0].tolist() == example["expected_argument_position_ids"]
+        )
+        assert encoded.attention_mask[0].int().tolist() == example["expected_attention_mask"]
+        assert (
+            dict(zip(example["ledger_refs"], encoded.ref_slot_positions, strict=True))
+            == example["expected_ref_slot_positions"]
+        )
+
+
 def test_real_training_active_and_dormant_policy(tmp_path) -> None:
-    row = next(
-        row
-        for row in generate()["train"] + generate()["validation"]
-        if row["oracle_work_plan"] == [["END"]]
-    )
+    row = next(row for row in generate()["train"] if len(row["oracle_work_plan"]) > 1)
     _, report = train(row, tmp_path, steps=1)
     assert report["active_tensor_count"] == 140
     assert report["dormant_tensor_count"] == 37
@@ -35,24 +54,27 @@ def test_real_training_active_and_dormant_policy(tmp_path) -> None:
     assert report["dormant_grad_none"] is True
     assert report["dormant_byte_equal"] is True
     assert report["optimizer_nonzero_state"] is True
+    assert report["optimizer_betas"] == [0.9, 0.95]
 
 
 @pytest.mark.parametrize(
-    "target,path",
+    "target,field,value",
     [
-        ("attempts", ("plan_sha256",)),
-        ("evaluation", ("attempt_log_sha256",)),
-        ("manifest", ("seed",)),
+        ("plan", "steps", []),
+        ("attempts", "attempts", []),
+        ("manifest", "planner_seed", 42),
+        ("evaluation", "success", False),
     ],
 )
-def test_lineage_mutations_fail_closed(target, path) -> None:
-    manifest = {"work_plan_sha256": "sha256:plan", "run_class": "DEVELOPMENT/TOY", "seed": 17}
-    attempts = {"plan_sha256": "sha256:plan", "attempts": []}
-    from planner_toy.canonical import sha256
-
-    evaluation = {"attempt_log_sha256": sha256(attempts)}
-    values = {"manifest": manifest, "attempts": attempts, "evaluation": evaluation}
-    mutated = copy.deepcopy(values)
-    mutated[target][path[0]] = "mutated" if path[0] != "seed" else 42
+def test_real_artifact_mutations_fail_closed(e2e_artifacts, target, field, value) -> None:
+    mutated = copy.deepcopy(e2e_artifacts)
+    mutated[target][field] = value
     with pytest.raises(ValueError):
-        validate_lineage(mutated["manifest"], mutated["attempts"], mutated["evaluation"])
+        validate_lineage(
+            mutated["task"],
+            mutated["request"],
+            mutated["plan"],
+            mutated["manifest"],
+            mutated["attempts"],
+            mutated["evaluation"],
+        )

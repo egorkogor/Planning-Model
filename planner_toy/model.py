@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import math
+from dataclasses import dataclass
+from importlib.resources import files
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,7 +17,7 @@ from torch import nn
 
 SEED = 17
 TORCH_VERSION = "2.12.0"
-INVENTORY = Path(__file__).parents[1] / "docs/architecture/planner_module_inventory_v1.yaml"
+SOURCE_INVENTORY = Path(__file__).parents[1] / "docs/architecture/planner_module_inventory_v1.yaml"
 
 
 def validate_torch_runtime() -> None:
@@ -39,7 +41,10 @@ def _install(root: nn.Module, name: str, shape: list[int]) -> None:
 
 
 def _inventory() -> dict:
-    with INVENTORY.open(encoding="utf-8") as handle:
+    inventory = SOURCE_INVENTORY
+    if not inventory.is_file():
+        inventory = Path(str(files("planner_toy").joinpath("planner_module_inventory_v1.yaml")))
+    with inventory.open(encoding="utf-8") as handle:
         return yaml.safe_load(handle)
 
 
@@ -88,7 +93,7 @@ class LockedA2(nn.Module):
                     parameter[0].zero_()
 
     @staticmethod
-    def _attention(x, memory, module, causal=False):
+    def _attention(x, memory, module, causal=False, key_mask=None):
         q = F.linear(x, module.q_proj.weight)
         k = F.linear(memory, module.k_proj.weight)
         v = F.linear(memory, module.v_proj.weight)
@@ -98,6 +103,8 @@ class LockedA2(nn.Module):
         k = k.view(batch, k_len, 8, 32).transpose(1, 2)
         v = v.view(batch, k_len, 8, 32).transpose(1, 2)
         scores = q @ k.transpose(-2, -1) / math.sqrt(32)
+        if key_mask is not None:
+            scores = scores.masked_fill(~key_mask[:, None, None, :], float("-inf"))
         if causal:
             mask = torch.ones(q_len, k_len, dtype=torch.bool, device=x.device).triu(1)
             scores = scores.masked_fill(mask, float("-inf"))
@@ -112,17 +119,19 @@ class LockedA2(nn.Module):
             module.linear2.bias,
         )
 
-    def encode(self, token_ids: torch.Tensor) -> torch.Tensor:
+    def encode(self, encoded: TaskEncoding) -> torch.Tensor:
+        token_ids = encoded.token_ids
         positions = torch.arange(token_ids.shape[1], device=token_ids.device)
         x = F.embedding(token_ids, self.task_encoder.token_embedding.weight)
         x = x + self.task_encoder.position_embedding.weight[positions]
-        # These normative embeddings describe segment/argument metadata. Toy canonical
-        # encoding uses segment and argument-position zero, while retaining a real path.
-        x = x + self.task_encoder.segment_embedding.weight[0]
-        x = x + self.task_encoder.predicate_argument_position_embedding.weight[0]
+        x = x + F.embedding(encoded.segment_ids, self.task_encoder.segment_embedding.weight)
+        x = x + F.embedding(
+            encoded.argument_position_ids,
+            self.task_encoder.predicate_argument_position_embedding.weight,
+        )
         for layer in self.task_encoder.layers.children():
             y = F.layer_norm(x, (256,), layer.norm1.weight, layer.norm1.bias, 1e-5)
-            x = x + self._attention(y, y, layer.self_attn)
+            x = x + self._attention(y, y, layer.self_attn, key_mask=encoded.attention_mask)
             y = F.layer_norm(x, (256,), layer.norm2.weight, layer.norm2.bias, 1e-5)
             x = x + self._ffn(y, layer.ffn)
         return F.layer_norm(
@@ -130,21 +139,21 @@ class LockedA2(nn.Module):
         )
 
     def forward(
-        self, token_ids: torch.Tensor, actions: torch.Tensor, arg1: torch.Tensor, arg2: torch.Tensor
+        self, encoded: TaskEncoding, actions: torch.Tensor, arg1: torch.Tensor, arg2: torch.Tensor
     ) -> SimpleNamespace:
-        memory = self.encode(token_ids)
+        memory = self.encode(encoded)
         steps = actions.shape[1]
         pos = torch.arange(steps, device=actions.device)
         previous = torch.cat([torch.full_like(actions[:, :1], 4), actions[:, :-1]], 1)
         action_part = F.embedding(previous, self.concept_packer.previous_action_embedding.weight)
         action_part[:, 0] = self.concept_packer.bos_embedding
-        refs = memory[:, : token_ids.shape[1]]
+        refs = memory[:, encoded.ref_slot_positions]
         prev1 = torch.cat([torch.zeros_like(arg1[:, :1]), arg1[:, :-1]], 1)
         prev2 = torch.cat([torch.zeros_like(arg2[:, :1]), arg2[:, :-1]], 1)
         r1 = refs.gather(1, prev1[..., None].expand(-1, -1, 256))
         r2 = refs.gather(1, prev2[..., None].expand(-1, -1, 256))
-        r1[:, 0].zero_()
-        r2[:, 0].zero_()
+        r1 = r1 * (previous != 4)[..., None]
+        r2 = r2 * ((previous == 1) | (previous == 3))[..., None]
         x = action_part + self.concept_packer.step_position_embedding.weight[pos]
         x = x + F.linear(r1, self.concept_packer.previous_arg1_projection.weight)
         x = x + F.linear(r2, self.concept_packer.previous_arg2_projection.weight)
@@ -176,15 +185,73 @@ class LockedA2(nn.Module):
         return SimpleNamespace(action=action_logits, arg1=arg1_logits, arg2=arg2_logits)
 
 
-def canonical_token_ids(row: dict) -> torch.Tensor:
-    """Stable 40-symbol canonical encoding with object refs in leading positions."""
-    blocks = row["blocks"]
-    ids = list(range(1, len(blocks) + 1))
-    symbols = {"HAND_EMPTY": 8, "ON_TABLE": 9, "CLEAR": 10, "ON": 11, "HOLDING": 12, "GOAL": 13}
-    for section in ("initial", "goal"):
-        if section == "goal":
-            ids.append(symbols["GOAL"])
-        for fact in row[section]:
-            ids.append(symbols[fact[0]])
-            ids.extend(blocks.index(arg) + 1 for arg in fact[1:])
-    return torch.tensor([ids], dtype=torch.long)
+@dataclass(frozen=True)
+class TaskEncoding:
+    token_ids: torch.Tensor
+    segment_ids: torch.Tensor
+    argument_position_ids: torch.Tensor
+    attention_mask: torch.Tensor
+    ref_slot_positions: tuple[int, ...]
+
+
+TOKENS = {
+    "PAD": 0,
+    "BOS": 1,
+    "EOS": 2,
+    "DOMAIN_BLOCKS": 3,
+    "LEDGER": 4,
+    "STATE": 5,
+    "GOAL": 6,
+    "PRED_OPEN": 7,
+    "PRED_CLOSE": 8,
+    "TYPE_BLOCK": 9,
+    "ON": 10,
+    "ON_TABLE": 11,
+    "CLEAR": 12,
+    "HOLDING": 13,
+    "HAND_EMPTY": 14,
+}
+
+
+def canonical_task_encoding(row: dict) -> TaskEncoding:
+    """Exact task-encoding/1.6 sequence, metadata and ledger REF positions."""
+    ids: list[int] = []
+    segments: list[int] = []
+    arguments: list[int] = []
+    refs: list[int] = []
+
+    def add(token: int, segment: int, argument: int = 0) -> None:
+        ids.append(token)
+        segments.append(segment)
+        arguments.append(argument)
+
+    add(TOKENS["BOS"], 0)
+    add(TOKENS["DOMAIN_BLOCKS"], 0)
+    add(TOKENS["LEDGER"], 1)
+    for index, _ in enumerate(row["blocks"]):
+        refs.append(len(ids))
+        add(32 + index, 1)
+        add(TOKENS["TYPE_BLOCK"], 1)
+    for marker, section, segment in (("STATE", "initial", 2), ("GOAL", "goal", 3)):
+        add(TOKENS[marker], segment)
+        for fact in sorted(row[section], key=tuple):
+            add(TOKENS["PRED_OPEN"], segment)
+            add(TOKENS[fact[0]], segment, 1)
+            for index, ref in enumerate(fact[1:]):
+                add(32 + row["blocks"].index(ref), segment, 2 + index)
+            add(TOKENS["PRED_CLOSE"], segment)
+    add(TOKENS["EOS"], 0)
+    length = len(ids)
+    if length > 192:
+        raise ValueError("task encoding exceeds locked length")
+    padding = 192 - length
+    ids += [0] * padding
+    segments += [0] * padding
+    arguments += [0] * padding
+    return TaskEncoding(
+        torch.tensor([ids]),
+        torch.tensor([segments]),
+        torch.tensor([arguments]),
+        torch.tensor([[True] * length + [False] * padding]),
+        tuple(refs),
+    )
