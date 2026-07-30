@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "active_gradient_evidence": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "finite": {
+            "const": true
+          },
+          "nonzero": {
+            "const": true
+          }
+        },
+        "required": [
+          "finite",
+          "nonzero"
+        ],
+        "type": "object"
+      },
+      "minProperties": 1,
+      "type": "object"
+    },
+    "active_parameter_names": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "config_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "optimizer_state_file_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "optimizer_state_parameter_names": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "optimizer_state_path": {
+      "const": "model/optimizer-state.pt"
+    },
+    "optimizer_state_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "toy-optimizer-evidence/1.0"
+    },
+    "state_all_finite_nonzero": {
+      "const": true
+    },
+    "state_matches_active_set": {
+      "const": true
+    }
+  },
+  "required": [
+    "schema_version",
+    "config_hash",
+    "active_parameter_names",
+    "optimizer_state_parameter_names",
+    "active_gradient_evidence",
+    "state_matches_active_set",
+    "state_all_finite_nonzero",
+    "optimizer_state_path",
+    "optimizer_state_file_sha256",
+    "optimizer_state_sha256"
+  ],
+  "title": "toy-optimizer-evidence/1.0",
+  "type": "object"
+}

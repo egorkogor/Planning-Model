@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "arm": {
+      "const": "PLANNER_A2_RAW"
+    },
+    "candidate_action": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "PICK_UP",
+            "UNSTACK",
+            "PUT_DOWN",
+            "STACK"
+          ]
+        },
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "action",
+        "args"
+      ],
+      "type": "object"
+    },
+    "canonical_task_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "checkpoint_file_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "checkpoint_manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "config_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "confirmatory": {
+      "const": false
+    },
+    "episode_plan_manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "plan_artifact_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "plan_content_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "plan_position_index": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "planner_request_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "replanning_observed": {
+      "const": false
+    },
+    "schema_version": {
+      "const": "toy-attempt-log/1.0"
+    },
+    "sealed_data": {
+      "const": false
+    },
+    "seed": {
+      "const": 17
+    },
+    "split": {
+      "const": "development"
+    },
+    "stage": {
+      "const": "PLANNER_ONLY"
+    },
+    "state_after_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "state_before_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "APPLIED",
+        "FAILED"
+      ]
+    },
+    "step_index": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "task_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "task_id",
+    "canonical_task_hash",
+    "config_hash",
+    "checkpoint_manifest_hash",
+    "checkpoint_file_hash",
+    "episode_plan_manifest_hash",
+    "plan_content_hash",
+    "plan_artifact_hash",
+    "step_index",
+    "plan_position_index",
+    "candidate_action",
+    "state_before_hash",
+    "state_after_hash",
+    "replanning_observed",
+    "seed",
+    "split",
+    "stage",
+    "arm",
+    "confirmatory",
+    "sealed_data",
+    "planner_request_hash",
+    "status",
+    "error"
+  ],
+  "title": "toy-attempt-log/1.0",
+  "type": "object"
+}
