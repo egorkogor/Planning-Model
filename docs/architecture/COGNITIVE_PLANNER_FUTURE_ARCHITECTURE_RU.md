@@ -1,8 +1,10 @@
 # Cognitive Planner — расширенная архитектура исходной гипотезы
 
-**Статус:** non-normative architecture roadmap; интерфейсы зафиксированы для перехода к experiment contracts.  
+**Статус:** Non-normative roadmap with proposed interfaces. No interface becomes binding until adopted through a separate versioned experiment contract.
 **Назначение:** описать архитектуру, выходящую за пределы узкого эксперимента Work Planner / BlocksWorld v1.21.  
 **Важно:** документ не изменяет scientific lock, confirmatory protocol или контракты v1.21.
+
+Предлагаемые здесь интерфейсы являются архитектурными кандидатами; сам документ не делает их нормативными. Implementation и experiment obligations возникают только после принятия отдельного versioned contract. Scientific lock, confirmatory protocol и нормативные контракты v1.21 имеют приоритет над этим roadmap.
 
 ## 1. Исходная гипотеза
 
@@ -20,6 +22,18 @@
 Ключевая проверяемая версия гипотезы:
 
 > Если смысл шага проходит через отдельный ограниченный интерфейс, а следующие шаги и downstream-модули не могут обойти этот интерфейс через скрытые состояния Reasoner, то последовательность крупных смысловых шагов может быть полезнее или эффективнее последовательности только текстовых токенов.
+
+### 1.1. Почему архитектура была расширена после начала реализации
+
+Предыдущая архитектура не была бесполезной или полностью неверной: она была достаточна для технического MVP A2 и начала A3 и проверяла, можно ли добавить latent feedback path. Однако она недостаточно строго описывала claim-bearing semantic bottleneck. Расширенная архитектура не отменяет A2 или текущий A3; она отделяет технический channel prototype от semantic experiment и делает более сильную гипотезу причинно проверяемой и опровержимой. Результатом проверки может быть как `GO`, так и `STOP/REDESIGN`.
+
+Исходный технический вопрос:
+
+> Можно ли добавить латентный вектор шага и использовать его при вычислении следующего шага?
+
+Более строгий вопрос:
+
+> Передаётся ли содержание между смысловыми шагами через ограниченный concept-level interface, а не через hidden states, KV-cache, autoregressive token history или другие обходные каналы?
 
 ## 2. Архитектурные объекты
 
@@ -40,6 +54,11 @@
 ```text
 LatentConceptStep {
   step_id
+  trajectory_kind: REASONING | ANSWER
+  trajectory_id
+  position_index
+  previous_step_hash?
+  allowed_context_hash
   step_type: REASON | ACTION | TOOL | ANSWER | END
   z_semantic: float[d]
   grounding_refs: unordered set<entity_id>
@@ -49,7 +68,19 @@ LatentConceptStep {
 }
 ```
 
-`z_semantic` — латентное смысловое представление шага. Размерность `384` используется в текущей архитектуре A3 как первая проверяемая конфигурация, но не является фундаментальным ограничением гипотезы.
+`z_semantic` — предлагаемое латентное смысловое представление шага в полной архитектуре. Размерность не является фундаментальным ограничением гипотезы; размерность `384` у текущего A3 относится к development-only codebook и сама по себе не придаёт ему семантической геометрии.
+
+`trajectory_id` назначается до первого шага и не зависит от будущих шагов. `position_index` начинается с `0` и непрерывен. `previous_step_hash` равен `null` только у первого шага. `step_hash` покрывает все поля объекта, поэтому одинаковый latent в другой trajectory или в другом разрешённом контексте имеет другой hash.
+
+Для `trajectory_kind: REASONING` разрешены только `REASON`, `ACTION`, `TOOL`, `END`; `ANSWER` запрещён. Для `trajectory_kind: ANSWER` разрешены только `ANSWER`, `END`; `REASON`, `ACTION`, `TOOL` запрещены. Planning `END` и Answer `END` различаются как минимум через `trajectory_kind`, `trajectory_id`, `position_index` и `allowed_context_hash`.
+
+#### allowed_context_hash
+
+`allowed_context_hash` хеширует canonical manifest разрешённого контекста, а не произвольный runtime object. Любое изменение разрешённого контекста обязано менять hash.
+
+Reasoning manifest включает task encoding hash, hash `InitialPublicState`, режим `PlanningState` и его hash, когда применимо, entity/tool catalogs, experiment config hash, model/checkpoint identity, observation prefix для closed-loop, а также service и position features.
+
+Answer manifest включает hash `VerifiedSolution`, hash `CompactReasoningSummary`, указанный внутри этого `VerifiedSolution`, permitted user-context policy, answer experiment config, answer position, разрешённую answer-concept history и model/checkpoint identity.
 
 #### Каноническая сериализация z_semantic
 
@@ -70,7 +101,7 @@ LatentConceptStep {
 
 #### Ограничения grounding_refs
 
-В первой версии `grounding_refs`:
+В BlocksWorld и других контролируемых доменах с однозначным gold `grounding_refs`:
 
 - являются семантически неупорядоченным множеством canonical entity IDs;
 - сериализуются в каноническом порядке и дедуплицируются;
@@ -90,6 +121,8 @@ LatentConceptStep {
 - extra-ref rate;
 - predicted refs против oracle refs;
 - refs-only performance.
+
+Для текстовых и интерактивных доменов единственный exact set не является универсальным требованием. Experiment contract задаёт equivalence classes, set-valued gold, multiple valid groundings, admissibility checker, partial-credit policy и ambiguity policy.
 
 Оператор, отношения и роли аргументов должны восстанавливаться из `z_semantic` и допустимых структурных контрактов.
 
@@ -118,6 +151,8 @@ ResolvedActionStep {
 ```
 
 Создаётся Action Decoder / Tool Resolver только для `ACTION` или `TOOL`. Не является частью исходного латентного шага.
+
+Tool identity не дублируется: для обычного `ACTION` используются `action_or_tool: concrete typed action` и `tool_ref: null`; для `TOOL` — `action_or_tool: CALL_TOOL` и `tool_ref: canonical_tool_id`. Конкретный tool ID нельзя одновременно кодировать в `action_or_tool` и `tool_ref`.
 
 ### 2.3. InitialPublicState
 
@@ -289,7 +324,13 @@ VerifiedSolution {
 - `evaluation_hash` связывает verifier, критерии и фактическое execution evidence;
 - `solution_hash` охватывает весь объект в канонической сериализации.
 
-`VerifiedSolution` является единственным разрешённым интерфейсом между reasoning trajectory и answer trajectory.
+`VerifiedSolution` является единственным **корневым** разрешённым интерфейсом между reasoning trajectory и answer trajectory. `CompactReasoningSummary` — отдельный content-addressed artifact с собственным hash, который находится внутри `VerifiedSolution`. Answer Planner загружает summary только транзитивно по этому hash; summary нельзя отдельно выбрать или заменить, и он не является параллельным root interface:
+
+```text
+VerifiedSolution
+→ referenced CompactReasoningSummary
+→ allowed answer context
+```
 
 ## 3. Semantic bottleneck
 
@@ -383,7 +424,7 @@ TaskEncoding
 
 ```text
 VerifiedSolution
-+ CompactReasoningSummary
+→ referenced CompactReasoningSummary
 + [AnswerConceptStep_1, ..., AnswerConceptStep_t]
 → temporary answer hidden state
 → AnswerConceptStep_(t+1)
@@ -572,7 +613,7 @@ END → terminal
 ### REASON
 
 - `z_semantic` обязателен;
-- entity refs опциональны, но при наличии проходят exact-minimal-set проверку;
+- entity refs опциональны и оцениваются по domain-scoped grounding policy;
 - `tool_ref` отсутствует;
 - Action Decoder не вызывается;
 - Verbalizer используется только диагностически;
@@ -583,14 +624,14 @@ END → terminal
 - `z_semantic` обязателен;
 - entity refs обязательны, кроме операторов без сущностных аргументов;
 - `tool_ref` отсутствует;
-- refs — точное минимальное множество сущностей действия;
+- refs проходят domain-scoped grounding policy (exact-minimal-set только там, где gold однозначен);
 - должен появиться `ResolvedActionStep`.
 
 ### TOOL
 
 - `z_semantic` обязателен;
 - `tool_ref` обязателен и единственен;
-- refs содержат точное минимальное множество сущностей инструмента;
+- refs проходят domain-scoped grounding policy;
 - текст запроса, роли и параметры не передаются через refs/tool_ref;
 - должен появиться `ResolvedActionStep`;
 - результат или ошибка фиксируются в Observation при исполнении.
@@ -638,14 +679,14 @@ END → terminal
 Используется для сравнения:
 
 ```text
-A2
-vs A3a
-vs A3b-history
-vs A3b-recurrent
-vs A3b-no-history
+A2-structured-baseline
+vs A3a-codebook / A3a-zero / A3a-shuffled / A3a-foreign
+vs A3s-semantic-target / A3s-zero / A3s-shuffled / A3s-foreign
 ```
 
 Planning-state mode одинаков для всех arms.
+
+`A3b-history`, `A3b-recurrent`, `A3b-no-history` и их history interventions рассматриваются только после прохождения Stage 2A semantic gate.
 
 #### Ограничение open-loop TOOL
 
@@ -684,8 +725,9 @@ Replanning является явной частью архитектуры. Open
 
 Создаёт временное внутреннее состояние шага.
 
-- A3a сохраняет обычную autoregressive hidden history, а `z_semantic` является дополнительным feedback-каналом.
-- A3b использует только concept-level memory между шагами.
+- `A3a-codebook` — implemented technical channel prototype: он сохраняет существующую autoregressive history, а latent является дополнительным feedback-каналом. `A3a-zero`, `A3a-shuffled` и `A3a-foreign` являются controls того же codebook family.
+- Планируемое семейство `A3s-*` использует semantic target и ту же разрешённую history policy в Stage 2A.
+- Семейство `A3b-*` использует concept-level inter-step bottleneck и остаётся gated до прохождения Stage 2A semantic gate.
 
 ### Semantic Bottleneck
 
@@ -693,7 +735,7 @@ Replanning является явной частью архитектуры. Open
 
 ### Grounding Head
 
-Выбирает точное минимальное множество сущностей. Предсказание канонизируется и дедуплицируется.
+Выбирает canonical grounding set согласно domain-specific experiment contract. Exact-minimal-set обязателен только в контролируемых доменах с однозначным gold. В текстовых и интерактивных доменах contract использует equivalence classes, set-valued gold, admissibility rules и partial-credit policy. Канонизация и дедупликация применяются во всех доменах.
 
 ### Tool Head
 
@@ -771,18 +813,9 @@ z_semantic
 
 ## 12. Что считается мыслью на разных этапах
 
-### Stage 2: supervised semantic proxy
+### Stage 2: codebook prototype и supervised semantic arm
 
-Текущий BlocksWorld A3 target — 384-мерный embedding заранее определённой semantic signature.
-
-```text
-semantic signature
-→ канонический текст
-→ frozen encoder
-→ target z
-```
-
-Это проверяет причинную полезность semantic feedback в ограниченном домене, но не универсальное представление человеческой мысли.
+Текущий BlocksWorld A3 target — 384-мерный deterministic development-only codebook для назначения типизированного шага. Отдельный будущий semantic-target arm должен использовать заранее зафиксированный frozen semantic encoder или иной versioned semantic target. Ни codebook, ни само наличие канала не проверяют причинную полезность semantic feedback без controls и interventions.
 
 ### Stage 3–4: learned ConceptStep representation
 
@@ -815,15 +848,20 @@ Boundary head не входит в первый MVP.
 
 Один Planner call создаёт воспроизводимый многошаговый frozen plan с terminal `END`, который исполняется без replanning.
 
-### Этап 2A — A3a: latent feedback
+### Этап 2A — A3a codebook family и A3s semantic-target family
 
-Сравниваются A2, правильный feedback, zero, shuffled и random-code parameter-matched control.
+Этап содержит две разные проверки:
+
+1. A3a codebook family: `A3a-codebook`, `A3a-zero`, `A3a-shuffled`, `A3a-foreign` сравниваются с `A2-structured-baseline`.
+2. A3s semantic target and controls: `A3s-semantic-target`, `A3s-zero`, `A3s-shuffled`, `A3s-foreign` сравниваются между собой и с `A3a-codebook`.
+
+`A3a-codebook` уже является random-codebook arm. Дополнительный codebook arm не является обязательным и допускается только по predeclared причине: другой seed, independent code assignment или capacity-matched comparison.
 
 ### Этап 2B — A3b: semantic и inter-step bottleneck
 
 Сравниваются:
 
-- A3a;
+- `A3a-codebook` и прошедший gate `A3s-semantic-target` как Stage 2A baselines;
 - A3b-history;
 - A3b-recurrent;
 - A3b-no-history;
@@ -885,8 +923,11 @@ Boundary head не входит в первый MVP.
 - правильный результат задачи;
 - валидность и исполнимость действий;
 - перенос на новые структуры и длины;
-- A3a против A2 и controls;
-- A3b-history против A3a, recurrent и no-history;
+- `A3a-codebook` против `A2-structured-baseline`;
+- `A3a-codebook` против `A3a-zero`, `A3a-shuffled`, `A3a-foreign`;
+- `A3s-semantic-target` против `A3a-codebook`;
+- `A3s-semantic-target` против `A3s-zero`, `A3s-shuffled`, `A3s-foreign`;
+- `A3b-history` против прошедших Stage 2A baselines, `A3b-recurrent` и `A3b-no-history` только после semantic gate;
 - causal sensitivity к whole-history interventions;
 - initial-state-only против deterministic rollout;
 - causal sensitivity к `z_semantic`, refs, tool_ref и `step_type`;
@@ -902,7 +943,7 @@ Boundary head не входит в первый MVP.
 
 - Один вектор не объявляется человеческим понятием.
 - Размерность 384 и граница шага — проверяемые инженерные решения.
-- Текущий A3 target является supervised semantic proxy.
+- Текущий A3 target является deterministic development-only codebook, а не semantic embedding или supervised semantic proxy.
 - BlocksWorld не доказывает перенос на общий reasoning.
 - Grounding является отдельным ограниченным каналом.
 - A3b-recurrent — ablation, а не единственная реализация памяти.
@@ -917,10 +958,147 @@ Boundary head не входит в первый MVP.
 
 Для ближайшей разработки:
 
-- текущий A2 PR не расширяется до A3;
-- A3a реализуется отдельным PR;
-- A3b начинается после технической проверки A3a;
+- A2, implementation A3 и implementation A4 уже реализованы;
+- current implementation A3 соответствует `A3a-codebook`;
+- implementation A4 соответствует `A3a-zero`;
+- следующий claim-bearing шаг — versioned Stage 2A experiment contract и evaluation;
+- claim-bearing `A3b-*` gated до прохождения Stage 2A semantic gate;
 - Verbalizer начинается после проверки причинной роли `z_semantic`;
 - closed-loop не смешивается с open-loop;
 - после этой фиксации широкое архитектурное ревью прекращается;
 - новые идеи переходят в backlog или отдельный versioned experiment contract.
+
+## 19. Статус текущей реализации A3
+
+Фактический target текущего A3 строится из `action`, `arg1`, `arg2`, включает seed и target configuration, использует deterministic SHA-derived code, имеет размерность `384` и L2-normalized. Это deterministic development-only codebook — код назначения типизированного BlocksWorld шага, а не frozen semantic encoder, semantic geometry или универсальное представление мысли.
+
+Каноническое соответствие:
+
+```text
+implementation A3
+→ experimental arm A3a-codebook
+→ architecture stage STAGE_2A
+→ technical latent channel prototype
+```
+
+Evidence текущей реализации разделяется на три уровня.
+
+**Техническое наличие канала.** Реализация показывает, что latent path вычисляется, predicted latent передаётся следующей позиции, а artifacts сохраняются и валидируются.
+
+**Локальная computational causal sensitivity.** Текущие controlled substitution tests показывают, что изменение latent может изменить hidden state и logits A3, A2 и A4 сохраняют ожидаемую инвариантность, а будущий latent не влияет на прошлые позиции. Это evidence локальной вычислительной причинной чувствительности latent path, но не evidence его полезности на уровне задачи.
+
+**Task-level causal usefulness.** Current tests не показывают рост task success, улучшение plan quality или action validity, structural generalization, semantic usefulness либо преимущество над codebook/zero/shuffled/foreign controls. Task-level causal usefulness устанавливается только Stage 2A evaluation с predeclared interventions и metrics. Для этого требуются конкретные arms `A3a-zero`, `A3a-shuffled`, `A3a-foreign`, semantic family controls и другие заранее зафиксированные interventions.
+
+Кроме того, A2 уже передаёт previous action и previous argument references через structured channel, поэтому `A3a-codebook` частично повторно кодирует уже доступную информацию.
+
+## 20. Canonical arm and stage registry
+
+Во всех будущих experiment contracts и artifacts используются отдельные поля `architecture_stage`, `implementation_variant`, `experimental_arm` и `target_type`; одно поле `variant` не заменяет эти разные смыслы.
+
+| implementation_variant | experimental_arm | architecture_stage | target_type | feedback_policy | history_policy | status |
+|---|---|---|---|---|---|---|
+| A2 | A2-structured-baseline | STAGE_1 | NONE | NONE | STRUCTURED_AUTOREGRESSIVE | IMPLEMENTED |
+| A3 | A3a-codebook | STAGE_2A | DETERMINISTIC_ACTION_SIGNATURE_CODEBOOK | PREVIOUS_PREDICTED_LATENT | EXISTING_AUTOREGRESSIVE_HISTORY | IMPLEMENTED |
+| A4 | A3a-zero | STAGE_2A | DETERMINISTIC_ACTION_SIGNATURE_CODEBOOK | COMPUTE_THEN_ZERO | SAME_AS_A3A_CODEBOOK | IMPLEMENTED |
+
+Implementation A4 **не связан** с архитектурным Stage 4.
+
+Запланированные arms: `A3a-shuffled`, `A3a-foreign`, `A3s-semantic-target`, `A3s-zero`, `A3s-shuffled`, `A3s-foreign`, `A3b-history`, `A3b-recurrent`, `A3b-no-history`, `A3b-zero-history`, `A3b-shuffled-history`, `A3b-wrong-task-history`.
+
+Текущий `A3a-codebook` уже является random-codebook arm. Второй random-codebook arm допустим только с заранее определённой целью: другой seed, независимое назначение кодов или capacity-matched comparison с semantic arm.
+
+## 21. Future closed-loop lineage
+
+Следующий proposed/non-implemented interface фиксирует lineage, но его полная schema и реализация остаются future backlog:
+
+```text
+ClosedLoopTrajectory {
+  trajectory_id
+  initial_public_state_hash
+  ordered_concept_step_hashes[]
+  ordered_resolved_action_hashes[]
+  ordered_observation_hashes[]
+  transition_policy_hash
+  verifier_feedback_policy_hash
+  planner_call_count
+  model_forward_count
+  trajectory_status
+  terminal_failure_code?
+  trajectory_hash
+}
+```
+
+Каждый action связан с предыдущим ConceptStep, каждый Observation — с выполненным action, а следующий ConceptStep после Observation содержит соответствующий `source_observation_hash`. Порядок событий однозначен. Contract задаёт max steps и max model/planner calls; unbounded repair loop запрещён. Verifier feedback типизирован и hash-bound; verifier не передаёт gold next action, oracle answer, hidden solution, privileged state delta или готовую repair instruction.
+
+## 22. Future Answer lineage
+
+Оба интерфейса proposed и non-implemented; они не являются текущими persisted artifacts.
+
+```text
+FrozenAnswerPlan {
+  source_verified_solution_hash
+  source_summary_hash
+  answer_concept_step_hashes[]
+  answer_context_hash
+  answer_planner_call_count
+  freeze_status
+  answer_plan_hash
+}
+
+VerbalizationTrace {
+  source_answer_plan_hash
+  ordered_answer_step_hashes[]
+  ordered_span_hashes[]
+  verbalizer_model_hash
+  tokenizer_hash
+  adapter_hash
+  prompt_template_hash
+  decoding_config_hash
+  final_answer_hash
+  trace_hash
+}
+```
+
+`FrozenAnswerPlan` создаётся после `VerifiedSolution`, а `source_summary_hash` обязан совпадать с hash внутри него. Verbalizer не создаёт следующий AnswerConceptStep и не меняет `FrozenAnswerPlan`. Каждый span связан ровно с одним `ANSWER` step; final answer является канонической конкатенацией spans. Contextual production не используется как доказательство task-level causal usefulness `z_semantic`.
+
+## 23. Versioned Stage 2A experiment contract
+
+До claim-bearing A3b обязателен versioned Stage 2A contract. Он фиксирует: primary hypothesis; primary metric; implementation variants; experimental arms; target types и target provenance; predeclared seeds; held-out split; split-before-target-generation; leakage checks; training-data matching; parameter-count и active-parameter reporting; FLOPs/compute/token-budget reporting; checkpoint-selection rule; feedback interventions; failure policy; quantitative GO/STOP criteria.
+
+Минимальные comparisons: `A2-structured-baseline`, `A3a-codebook`, `A3a-zero`, `A3a-shuffled`, `A3a-foreign`, `A3s-semantic-target`, `A3s-zero`, `A3s-shuffled`, `A3s-foreign`.
+
+### 23.1. Stage 2A semantic gate
+
+**Переход к claim-bearing A3b experiment запрещён до прохождения Stage 2A semantic gate.**
+
+До gate разрешён только ограниченный technical scaffolding: interfaces, type definitions, isolated validators и non-claiming prototypes. До gate запрещены содержательное обучение A3b, claim-bearing A3b evaluation, интерпретация результатов как concept-level reasoning и автоматический переход к следующему этапу.
+
+Обязательные условия gate:
+
+- held-out evaluation и несколько predeclared seeds;
+- `A2-structured-baseline`, `A3a-codebook`, `A3a-zero`, `A3a-shuffled`, `A3a-foreign`;
+- настоящий semantic-target arm;
+- semantic target против codebook, zero и shuffled/foreign;
+- task success, action validity и plan executability;
+- predeclared structural generalization;
+- parameter count, active parameter count и FLOPs/compute/token budget;
+- checkpoint-selection rule;
+- quantitative GO/STOP.
+
+Если semantic-target arm не отличается ожидаемым образом от codebook, zero и interventions, результат равен `STOP/REDESIGN`, а не автоматическому `GO` в A3b.
+
+### 23.2. Human-readable examples
+
+Evaluation report обязательно содержит qualitative diagnostic: input task, initial state, goal, predicted plan, reference plan, execution trace, success/failure и сравнение A2/A3/A4. Эти примеры не являются самостоятельным `BLOCKER`, не заменяют held-out metrics или causal interventions и не являются основным quantitative criterion.
+
+### 23.3. Граница научной интерпретации A3b
+
+Даже положительный A3b позволяет утверждать только:
+
+> В данном домене, распределении задач и заранее зафиксированном экспериментальном режиме ограниченное concept-level representation является достаточным и причинно полезным интерфейсом между шагами.
+
+Он не доказывает человеческое мышление, универсальную структуру мысли, общий перенос, фундаментальность размерности или ConceptStep boundaries либо превосходство во всех доменах.
+
+## 24. Неблокирующий backlog до A3b
+
+До A3b в backlog остаются полные JSON Schemas future lineage objects, реализация Answer Planner и Verbalizer, closed-loop execution, Boundary Head, текстовые и интерактивные домены, дополнительные codebook seeds, latent-space visualizations и дальнейшее улучшение semantic targets после первого predeclared arm. Эти пункты не блокируют Stage 2A gate и не означают, что соответствующие artifacts уже реализованы.
