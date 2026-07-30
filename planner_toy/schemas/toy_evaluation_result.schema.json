@@ -46,13 +46,23 @@
     },
     "failure_code": {
       "enum": [
+        null,
         "PLAN_NO_END",
         "PLAN_PARSE_ERROR",
         "PLAN_UNKNOWN_REF",
         "PLAN_GENERATION_ERROR",
         "EXECUTOR_PRECONDITION_FAILED",
         "GOAL_NOT_ACHIEVED",
-        null
+        "LATENT_NONFINITE",
+        "LATENT_ZERO_NORM",
+        "LATENT_DIMENSION",
+        "SEMANTIC_TRACE_MISSING",
+        "SEMANTIC_TRACE_LENGTH",
+        "VARIANT_MISMATCH"
+      ],
+      "type": [
+        "string",
+        "null"
       ]
     },
     "goal_hash": {
@@ -86,6 +96,13 @@
     },
     "task_id": {
       "type": "string"
+    },
+    "variant": {
+      "enum": [
+        "A2",
+        "A3",
+        "A4"
+      ]
     }
   },
   "required": [
@@ -110,7 +127,8 @@
     "confirmatory",
     "sealed_data",
     "planner_request_hash",
-    "episode_log_hash"
+    "episode_log_hash",
+    "variant"
   ],
   "title": "toy-evaluation-result/1.0",
   "type": "object"

@@ -114,6 +114,13 @@
     },
     "task_id": {
       "type": "string"
+    },
+    "variant": {
+      "enum": [
+        "A2",
+        "A3",
+        "A4"
+      ]
     }
   },
   "required": [
@@ -140,7 +147,8 @@
     "sealed_data",
     "planner_request_hash",
     "status",
-    "error"
+    "error",
+    "variant"
   ],
   "title": "toy-attempt-log/1.0",
   "type": "object"

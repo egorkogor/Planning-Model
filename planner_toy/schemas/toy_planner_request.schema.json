@@ -48,6 +48,13 @@
     },
     "task_id": {
       "type": "string"
+    },
+    "variant": {
+      "enum": [
+        "A2",
+        "A3",
+        "A4"
+      ]
     }
   },
   "required": [
@@ -64,7 +71,8 @@
     "confirmatory",
     "sealed_data",
     "request_hash",
-    "checkpoint_file_hash"
+    "checkpoint_file_hash",
+    "variant"
   ],
   "title": "toy-planner-request/1.0",
   "type": "object"

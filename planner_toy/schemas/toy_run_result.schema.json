@@ -1,0 +1,90 @@
+{
+  "$defs": {
+    "hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "checkpoint_file_hash": {
+      "$ref": "#/$defs/hash"
+    },
+    "checkpoint_manifest_hash": {
+      "$ref": "#/$defs/hash"
+    },
+    "config_hash": {
+      "$ref": "#/$defs/hash"
+    },
+    "evaluation_result_hash": {
+      "$ref": "#/$defs/hash"
+    },
+    "failure_code": {
+      "enum": [
+        null,
+        "PLAN_NO_END",
+        "PLAN_PARSE_ERROR",
+        "PLAN_UNKNOWN_REF",
+        "PLAN_GENERATION_ERROR",
+        "EXECUTOR_PRECONDITION_FAILED",
+        "GOAL_NOT_ACHIEVED",
+        "LATENT_NONFINITE",
+        "LATENT_ZERO_NORM",
+        "LATENT_DIMENSION",
+        "SEMANTIC_TRACE_MISSING",
+        "SEMANTIC_TRACE_LENGTH",
+        "VARIANT_MISMATCH"
+      ],
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "planner_call_count": {
+      "const": 1
+    },
+    "replay_hash": {
+      "$ref": "#/$defs/hash"
+    },
+    "request_hash": {
+      "$ref": "#/$defs/hash"
+    },
+    "run_result_hash": {
+      "$ref": "#/$defs/hash"
+    },
+    "schema_version": {
+      "const": "toy-run-result/1.0"
+    },
+    "success": {
+      "type": "boolean"
+    },
+    "tensor_count": {
+      "const": 177
+    },
+    "variant": {
+      "enum": [
+        "A2",
+        "A3",
+        "A4"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "variant",
+    "success",
+    "planner_call_count",
+    "tensor_count",
+    "failure_code",
+    "replay_hash",
+    "config_hash",
+    "request_hash",
+    "checkpoint_manifest_hash",
+    "checkpoint_file_hash",
+    "evaluation_result_hash",
+    "run_result_hash"
+  ],
+  "title": "toy-run-result/1.0",
+  "type": "object"
+}
