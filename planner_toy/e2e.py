@@ -94,6 +94,9 @@ class A2Planner:
         self.semantic_steps = []
         self.semantic_audit = []
         feedback = torch.zeros(1, 17, 384)
+        previous_z_hash = None
+        def tensor_hash(tensor):
+            return "sha256:" + hashlib.sha256(tensor.numpy().tobytes()).hexdigest()
         encoded = canonical_task_encoding(row)
         for index in range(17):
             with torch.no_grad():
@@ -107,11 +110,22 @@ class A2Planner:
                 )
             if logits.z_semantic is not None:
                 z = logits.z_semantic[0, index].detach().clone()
+                input_feedback = feedback[0, index].detach().cpu().contiguous()
+                projected = logits.projected_semantic[0, index].detach().cpu().contiguous()
+                downstream = logits.semantic_component[0, index].detach().cpu().contiguous()
                 self.semantic_steps.append(z)
                 if index + 1 < 17:
                     feedback[0, index + 1] = z
                 self.semantic_audit.append({
                     "step_index": index,
+                    "input_feedback_sha256": tensor_hash(input_feedback),
+                    "expected_previous_z_sha256": previous_z_hash,
+                    "projected_feedback_sha256": tensor_hash(projected),
+                    "downstream_semantic_component_sha256": tensor_hash(downstream),
+                    "input_feedback_norm": float(input_feedback.norm()),
+                    "projected_feedback_norm": float(projected.norm()),
+                    "downstream_semantic_component_norm": float(downstream.norm()),
+                    "source": "BOS_ZERO" if index == 0 else "PREVIOUS_PREDICTED_LATENT",
                     "projected_feedback_present": (
                         getattr(logits, "projected_semantic", None) is not None
                     ),
@@ -124,6 +138,7 @@ class A2Planner:
                         )
                     ),
                 })
+                previous_z_hash = tensor_hash(z.detach().cpu().contiguous())
             action_id = int(logits.action[0, index].argmax())
             if action_id == 4:
                 return decoded + [["END"]]
@@ -229,6 +244,7 @@ def evaluate_frozen_plan(
         "episode_log_hash": file_hash(output / "episode-log.json"),
     }
     _write(output / "evaluation-result.json", evaluation)
+    semantic_trace = None
     if planner.model.variant in {"A3", "A4"}:
         import struct
 
@@ -258,6 +274,12 @@ def evaluate_frozen_plan(
             "control_audit": planner.semantic_audit,
         }
         _write(output / "semantic-trace.json", trace)
+        semantic_trace = trace
+    validate_frozen_plan_lineage_core(
+        variant=planner.model.variant, planner_calls=planner.calls, replanning_count=0,
+        work_plan=work_plan, attempts=attempts, evaluation=evaluation,
+        semantic_trace=semantic_trace,
+    )
     evidence_files = sorted(path for path in output.iterdir() if path.is_file())
     evidence_hash = toy_hash(
         "quality_evidence",
@@ -390,6 +412,38 @@ def _write(path: Path, value, *, jsonl=False) -> None:
     path.write_bytes(jsonl_bytes(value) if jsonl else canonical_bytes(value) + b"\n")
 
 
+def validate_frozen_plan_lineage_core(
+    *, variant: str, planner_calls: int, replanning_count: int,
+    work_plan: dict | None, attempts: list[dict], evaluation: dict,
+    semantic_trace: dict | None,
+) -> None:
+    """Shared profile-independent invariants for legacy and quality evidence."""
+    if planner_calls != 1:
+        raise ValueError("planner call count mismatch")
+    if replanning_count != 0 or any(a.get("replanning_observed") for a in attempts):
+        raise ValueError("replanning forbidden")
+    if work_plan is not None:
+        steps = work_plan.get("steps", [])
+        indices = [step.get("step_index") for step in steps]
+        if indices != list(range(len(steps))):
+            raise ValueError("WorkPlan step indices mismatch")
+        if not steps or steps[-1].get("action") != "END":
+            raise ValueError("WorkPlan terminal END mismatch")
+    if variant == "A2" and semantic_trace is not None:
+        raise ValueError("A2_SEMANTIC_ARTIFACT_FORBIDDEN")
+    if variant in {"A3", "A4"} and (work_plan is not None or semantic_trace is not None):
+        if semantic_trace is None:
+            raise ValueError("SEMANTIC_TRACE_MISSING")
+        if semantic_trace.get("feedback_source") != "predicted":
+            raise ValueError("INFERENCE_FEEDBACK_NOT_PREDICTED")
+        if variant == "A3" and semantic_trace.get("feedback_applied") is not True:
+            raise ValueError("A3_INFERENCE_FEEDBACK_NOT_APPLIED")
+        if variant == "A4" and semantic_trace.get("feedback_applied") is not False:
+            raise ValueError("A4_FEEDBACK_APPLIED")
+    if evaluation.get("replanning_count", 0) != 0:
+        raise ValueError("evaluation replanning mismatch")
+
+
 def validate_lineage(
     *,
     root: Path,
@@ -405,6 +459,11 @@ def validate_lineage(
     semantic_trace: dict | None = None,
 ) -> None:
     """Validate files, hashes, profile constraints, and replay semantics end to end."""
+    validate_frozen_plan_lineage_core(
+        variant=config.get("variant", "A2"), planner_calls=episode["planner_calls"],
+        replanning_count=evaluation["replanning_count"], work_plan=work_plan,
+        attempts=attempts, evaluation=evaluation, semantic_trace=semantic_trace,
+    )
     task_hash = canonical_task_hash(task)
     variant = config.get("variant", "A2")
     for artifact in (request, checkpoint, work_plan, manifest, episode, evaluation, *attempts):

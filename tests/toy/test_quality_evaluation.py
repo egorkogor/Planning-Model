@@ -121,6 +121,14 @@ class _ScriptedModel:
             arg1=torch.zeros(1, 17, 3),
             arg2=torch.zeros(1, 17, 3),
             z_semantic=z,
+            projected_semantic=(torch.ones(1, 17, 256) if z is not None else None),
+            semantic_component=(
+                torch.zeros(1, 17, 256)
+                if self.variant == "A4"
+                else torch.ones(1, 17, 256)
+                if z is not None
+                else None
+            ),
         )
 
 
@@ -266,3 +274,32 @@ def test_plan_no_end_persists_generation_failure_without_workplan(tmp_path) -> N
     assert result["model_forward_count"] == 17
     assert not (tmp_path / "evidence/work-plan.json").exists()
     assert (tmp_path / "evidence/attempt-log.jsonl").read_text() == ""
+
+
+def test_quality_adapter_cannot_bypass_shared_lineage_core(tmp_path, monkeypatch) -> None:
+    from planner_toy import e2e
+    from planner_toy.dataset import generate
+    called = []
+    original = e2e.validate_frozen_plan_lineage_core
+    def spy(**kwargs):
+        called.append(kwargs["variant"])
+        return original(**kwargs)
+    monkeypatch.setattr(e2e, "validate_frozen_plan_lineage_core", spy)
+    e2e.evaluate_frozen_plan(
+        row=generate()["validation"][0], planner=A2Planner(_ScriptedModel([4])),
+        output=tmp_path / "evidence",
+        checkpoint_binding={"trained_state_dict_sha256": "sha256:" + "0" * 64,
+                            "trained_file_sha256": "sha256:" + "1" * 64},
+    )
+    assert called == ["A2"]
+
+
+def test_task_result_reordering_rejected(tmp_path) -> None:
+    root = tmp_path / "run"
+    run(root, variants=("A2",), seeds=(17,), max_eval_tasks=2)
+    path = root / "task-results.jsonl"
+    lines = path.read_text().splitlines()
+    path.write_text("\n".join(reversed(lines)) + "\n")
+    rehash_run(root, "task-results.jsonl")
+    with pytest.raises(ValueError, match="CANONICAL_ORDER"):
+        validate_evaluation(root)

@@ -63,6 +63,25 @@ def _file_hash(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _torch_object_sha256(value) -> str:
+    digest = hashlib.sha256()
+    def visit(item) -> None:
+        if torch.is_tensor(item):
+            digest.update(b"tensor\0" + str(item.dtype).encode() + b"\0")
+            digest.update(item.detach().cpu().contiguous().numpy().tobytes())
+        elif isinstance(item, dict):
+            for key in sorted(item, key=str):
+                digest.update(b"key\0" + str(key).encode() + b"\0"); visit(item[key])
+        elif isinstance(item, list | tuple):
+            digest.update(f"sequence:{len(item)}\0".encode())
+            for child in item:
+                visit(child)
+        else:
+            digest.update(repr(item).encode() + b"\0")
+    visit(value)
+    return "sha256:" + digest.hexdigest()
+
+
 def source_identity() -> dict:
     entries = [{"path": name, "sha256": _file_hash(ROOT / name)} for name in SOURCE_FILES]
     return {"evaluator_source_files": entries, "evaluator_source_sha256": sha256(entries)}
@@ -109,6 +128,14 @@ def _train(rows: list[dict], variant: str, seed: int, output: Path, dataset_hash
     torch.save(model.state_dict(), trained_path)
     optimizer_path = output / "optimizer-state.pt"
     torch.save(optimizer.state_dict(), optimizer_path)
+    optimizer_evidence = {
+        "schema_version": "toy-quality-optimizer-evidence/0.1",
+        "optimizer_state_sha256": _torch_object_sha256(optimizer.state_dict()),
+        "active_parameter_names": sorted(model.active_names),
+        "parameter_group_count": len(optimizer.param_groups),
+        "update_count": EPOCHS * len(rows),
+    }
+    _write(output / "optimizer-evidence.json", optimizer_evidence)
     checkpoint_hash = state_dict_sha256(model.state_dict())
     identity = {"architecture_stage": MAPPING[variant][0], "implementation_variant": variant,
                 "experimental_arm": MAPPING[variant][1], "target_type": MAPPING[variant][2]}
@@ -130,8 +157,14 @@ def _train(rows: list[dict], variant: str, seed: int, output: Path, dataset_hash
                 "trained_path": "trained.pt", "trained_file_sha256": _file_hash(trained_path),
                 "trained_state_dict_sha256": checkpoint_hash,
                 "optimizer_state_path": "optimizer-state.pt", "optimizer_state_file_sha256": _file_hash(optimizer_path),
+                "optimizer_state_sha256": _torch_object_sha256(optimizer.state_dict()),
+                "optimizer_evidence_path": "optimizer-evidence.json",
+                "optimizer_evidence_file_sha256": _file_hash(output / "optimizer-evidence.json"),
                 "training_report_path": "training-report.json", "training_report_file_sha256": _file_hash(output / "training-report.json"),
                 "checkpoint_policy": config["checkpoint_policy"],
+                "training_execution_mode": "TRAINED_IN_RUN",
+                "checkpoint_origin_run_hash": None, "reuse_source_manifest_hash": None,
+                "deterministic_training_replay_status": "CANONICAL_DETERMINISTIC",
                 "active_parameter_names": sorted(model.active_names),
                 "dormant_parameter_names": sorted(name for name, p in model.named_parameters() if not p.requires_grad)}
     _write(output / "checkpoint-manifest.json", manifest)
@@ -170,7 +203,8 @@ def _evaluate(row: dict, variant: str, seed: int, model: LockedPlanner, checkpoi
         "task_id": row["task_id"], "split": "validation", "initial_state": row["initial"],
         "goal": row["goal"], "gold_actions": gold, "predicted_actions": predicted,
         "gold_plan_length": len(gold), "predicted_plan_length": len(predicted),
-        "terminal_end_produced": terminal, "plan_generation_success": failure not in {"PLAN_NO_END", "PLAN_PARSE_ERROR", "PLAN_UNKNOWN_REF"},
+        "terminal_end_produced": terminal,
+        "plan_generation_success": evidence["generation_failure"] is None,
         "action_parse_valid": parse_valid, "action_applicability": applicable,
         "generated_action_count": generated, "action_attempt_count": attempted,
         "applicable_action_count": applied, "nonempty_plan": generated > 0,
@@ -266,6 +300,13 @@ def validate_evaluation(root: Path) -> dict:
         raise ValueError("CANONICAL_TRAIN_SPLIT_MISMATCH")
     if config["diagnostic_complete"] and config["eval_task_ids"] != expected_eval:
         raise ValueError("CANONICAL_EVAL_SPLIT_MISMATCH")
+    if config["diagnostic_complete"] and (
+        config["training_execution_mode"] != "TRAINED_IN_RUN"
+        or config["checkpoint_origin_run_hash"] is not None
+        or config["reuse_source_manifest_hash"] is not None
+        or config["deterministic_training_replay_status"] != "CANONICAL_DETERMINISTIC"
+    ):
+        raise ValueError("COMPLETE_RUN_TRAINING_PROVENANCE_MISMATCH")
     if config["evaluator_source_files"] != source_identity()["evaluator_source_files"] or config["evaluator_source_sha256"] != source_identity()["evaluator_source_sha256"]:
         raise ValueError("EVALUATOR_SOURCE_STALE")
     expected_dataset_manifest = {"dataset_hash": canonical["dataset_hash"], "train_task_ids": expected_train, "eval_task_ids": config["eval_task_ids"]}
@@ -282,6 +323,9 @@ def validate_evaluation(root: Path) -> dict:
     expected = {(v, s, t) for v in config["variants"] for s in config["seeds"] for t in config["eval_task_ids"]}
     if set(keys) != expected:
         raise ValueError("TASK_RESULT_COVERAGE_MISMATCH")
+    expected_order = [(v, s, t) for v in config["variants"] for s in config["seeds"] for t in config["eval_task_ids"]]
+    if keys != expected_order:
+        raise ValueError("TASK_RESULT_CANONICAL_ORDER_MISMATCH")
     for row in rows:
         if (row["architecture_stage"], row["implementation_variant"], row["experimental_arm"], row["target_type"]) != (MAPPING[row["variant"]][0], row["variant"], MAPPING[row["variant"]][1], MAPPING[row["variant"]][2]):
             raise ValueError("VARIANT_MAPPING_MISMATCH")
@@ -292,6 +336,8 @@ def validate_evaluation(root: Path) -> dict:
             run_dir = root / "training-runs" / variant / f"seed-{seed}"
             checkpoint = json.loads((run_dir / "checkpoint-manifest.json").read_bytes())
             training_config = json.loads((run_dir / "training-config.json").read_bytes())
+            validate_schema("toy_quality_checkpoint_manifest.schema.json", checkpoint)
+            validate_schema("toy_quality_training_config.schema.json", training_config)
             if _file_hash(run_dir / "training-config.json") != checkpoint["config_hash"]:
                 raise ValueError("TRAINING_CONFIG_HASH_MISMATCH")
             if training_config["variant_identity"] != config["variant_mapping"][variant] or training_config["seed"] != seed or training_config["dataset_hash"] != canonical["dataset_hash"] or training_config["train_task_ids"] != expected_train or training_config["epochs"] != 3 or training_config["updates"] != 9 or training_config["optimizer"] != config["optimizer"] or training_config["checkpoint_policy"] != config["checkpoint_policy"]:
@@ -303,15 +349,50 @@ def validate_evaluation(root: Path) -> dict:
                 state = torch.load(path, map_location="cpu", weights_only=True)
                 if state_dict_sha256(state) != checkpoint[state_field]:
                     raise ValueError("CHECKPOINT_STATE_HASH_MISMATCH")
-            for path_field, hash_field in (("optimizer_state_path", "optimizer_state_file_sha256"), ("training_report_path", "training_report_file_sha256")):
+            for path_field, hash_field in (("optimizer_state_path", "optimizer_state_file_sha256"), ("optimizer_evidence_path", "optimizer_evidence_file_sha256"), ("training_report_path", "training_report_file_sha256")):
                 if _file_hash(run_dir / checkpoint[path_field]) != checkpoint[hash_field]:
                     raise ValueError("TRAINING_EVIDENCE_HASH_MISMATCH")
+            optimizer_state = torch.load(
+                run_dir / checkpoint["optimizer_state_path"], map_location="cpu", weights_only=True
+            )
+            if _torch_object_sha256(optimizer_state) != checkpoint["optimizer_state_sha256"]:
+                raise ValueError("OPTIMIZER_STATE_SEMANTIC_HASH_MISMATCH")
+            if len(optimizer_state.get("param_groups", [])) != 1 or len(
+                optimizer_state["param_groups"][0].get("params", [])
+            ) != len(checkpoint["active_parameter_names"]):
+                raise ValueError("OPTIMIZER_PARAMETER_GROUP_MISMATCH")
+            optimizer_evidence = json.loads(
+                (run_dir / checkpoint["optimizer_evidence_path"]).read_bytes()
+            )
+            validate_schema("toy_quality_optimizer_evidence.schema.json", optimizer_evidence)
+            if optimizer_evidence != {
+                "schema_version": "toy-quality-optimizer-evidence/0.1",
+                "optimizer_state_sha256": checkpoint["optimizer_state_sha256"],
+                "active_parameter_names": checkpoint["active_parameter_names"],
+                "parameter_group_count": 1,
+                "update_count": 9,
+            }:
+                raise ValueError("OPTIMIZER_EVIDENCE_SEMANTIC_MISMATCH")
             if checkpoint["seed"] != seed or checkpoint["variant_identity"] != config["variant_mapping"][variant] or checkpoint["train_task_ids"] != expected_train or checkpoint["updates"] != 9:
                 raise ValueError("CHECKPOINT_LINEAGE_MISMATCH")
+            training_report = json.loads((run_dir / checkpoint["training_report_path"]).read_bytes())
+            validate_schema("toy_quality_training_report.schema.json", training_report)
+            if training_report != {"schema_version": "toy-quality-training-report/0.1", "updates": 9, "final_checkpoint_selected_without_heldout": True}:
+                raise ValueError("TRAINING_REPORT_SEMANTIC_MISMATCH")
+            expected_mode = config["training_execution_mode"]
+            if checkpoint["training_execution_mode"] != expected_mode or checkpoint["checkpoint_origin_run_hash"] != config["checkpoint_origin_run_hash"] or checkpoint["reuse_source_manifest_hash"] != config["reuse_source_manifest_hash"] or checkpoint["deterministic_training_replay_status"] != config["deterministic_training_replay_status"]:
+                raise ValueError("CHECKPOINT_TRAINING_ORIGIN_MISMATCH")
             model = LockedPlanner(seed, variant).cpu()
+            canonical_initial = LockedPlanner(seed, variant).state_dict()
+            persisted_initial = torch.load(run_dir / "initialization.pt", map_location="cpu", weights_only=True)
+            if state_dict_sha256(canonical_initial) != state_dict_sha256(persisted_initial):
+                raise ValueError("CANONICAL_INITIALIZATION_MISMATCH")
             model.load_state_dict(torch.load(run_dir / "trained.pt", map_location="cpu", weights_only=True)); model.eval()
             if checkpoint["active_parameter_names"] != sorted(model.active_names) or checkpoint["dormant_parameter_names"] != sorted(name for name, parameter in model.named_parameters() if not parameter.requires_grad):
                 raise ValueError("PARAMETER_POLICY_MISMATCH")
+            trained_state = model.state_dict()
+            if any(not torch.equal(trained_state[name], persisted_initial[name]) for name in checkpoint["dormant_parameter_names"]):
+                raise ValueError("DORMANT_PARAMETER_CHANGED")
             loaded[(variant, seed)] = (model, checkpoint)
     for seed in config["seeds"]:
         initialization_hashes = {loaded[(variant, seed)][1]["initialization_state_dict_sha256"] for variant in config["variants"]}
@@ -339,6 +420,8 @@ def validate_evaluation(root: Path) -> dict:
     per_seed = json.loads((root / "per-seed-summary.json").read_bytes())
     validate_schema("toy_quality_per_seed_summary.schema.json", per_seed)
     recalculated = {f"{v}/seed-{s}": summarize([r for r in rows if r["variant"] == v and r["seed"] == s]) for v in config["variants"] for s in config["seeds"]}
+    if list(per_seed) != list(recalculated):
+        raise ValueError("PER_SEED_CANONICAL_ORDER_MISMATCH")
     if per_seed != recalculated:
         raise ValueError("SUMMARY_MISMATCH")
     aggregate = json.loads((root / "aggregate-summary.json").read_bytes())
@@ -360,6 +443,8 @@ def validate_evaluation(root: Path) -> dict:
     validate_schema("toy_quality_evaluation_manifest.schema.json", manifest)
     if manifest["evaluator_source_sha256"] != config["evaluator_source_sha256"]:
         raise ValueError("EVALUATOR_SOURCE_MANIFEST_MISMATCH")
+    if manifest["evaluator_version"] != config["evaluator_version"] or manifest["variants"] != config["variants"] or manifest["seeds"] != config["seeds"] or manifest["variant_mapping"] != config["variant_mapping"]:
+        raise ValueError("EVALUATION_MANIFEST_IDENTITY_MISMATCH")
     expected_artifacts = {"evaluation-config.json", "dataset-manifest.json", "task-results.jsonl", "per-seed-summary.json", "aggregate-summary.json", "paired-comparisons.json", "human-readable-examples.md"}
     if set(manifest["artifact_hashes"]) != expected_artifacts:
         raise ValueError("TOP_LEVEL_ARTIFACT_COVERAGE_MISMATCH")
@@ -387,7 +472,7 @@ def export_compact(root: Path, destination: Path, implementation_commit: str | N
     """Generate the two reviewable reference artifacts exclusively from a validated run."""
     validate_evaluation(root)
     config = json.loads((root / "evaluation-config.json").read_bytes())
-    if not config["diagnostic_complete"] or tuple(config["variants"]) != VARIANTS or tuple(config["seeds"]) != SEEDS or len(config["eval_task_ids"]) != 2:
+    if not config["diagnostic_complete"] or tuple(config["variants"]) != VARIANTS or tuple(config["seeds"]) != SEEDS or len(config["eval_task_ids"]) != 2 or config["training_execution_mode"] != "TRAINED_IN_RUN" or config["deterministic_training_replay_status"] != "CANONICAL_DETERMINISTIC" or config["reuse_source_manifest_hash"] is not None:
         raise ValueError("COMPACT_EXPORT_REQUIRES_COMPLETE_CANONICAL_RUN")
     per_seed = json.loads((root / "per-seed-summary.json").read_bytes())
     aggregate = json.loads((root / "aggregate-summary.json").read_bytes())
@@ -457,6 +542,18 @@ def run(
               "checkpoint_policy": "final_epoch_only_no_heldout_selection", "max_decoding_steps": MAX_STEPS,
               "dataset_manifest_hash": dataset["dataset_hash"], "diagnostic_complete": complete,
               "budget_version": "quality-v0.1-fixed-2026-07", "updates_per_run": EPOCHS * len(train_rows),
+              "training_execution_mode": "REUSED" if reuse_checkpoint_root is not None else "TRAINED_IN_RUN",
+              "checkpoint_origin_run_hash": (
+                  _file_hash(reuse_checkpoint_root / "evaluation-manifest.json")
+                  if reuse_checkpoint_root is not None else None
+              ),
+              "reuse_source_manifest_hash": (
+                  _file_hash(reuse_checkpoint_root / "evaluation-manifest.json")
+                  if reuse_checkpoint_root is not None else None
+              ),
+              "deterministic_training_replay_status": (
+                  "REUSED_VALIDATED" if reuse_checkpoint_root is not None else "CANONICAL_DETERMINISTIC"
+              ),
               **source_identity()}
     _write(output / "evaluation-config.json", config)
     _write(output / "dataset-manifest.json", {"dataset_hash": dataset["dataset_hash"], "train_task_ids": config["train_task_ids"], "eval_task_ids": config["eval_task_ids"]})
@@ -469,6 +566,7 @@ def run(
             else:
                 source = reuse_checkpoint_root / "training-runs" / variant / f"seed-{seed}"
                 manifest = json.loads((source / "checkpoint-manifest.json").read_bytes())
+                manifest = dict(manifest)
                 if manifest["variant_identity"] != config["variant_mapping"][variant] or manifest["seed"] != seed:
                     raise ValueError("REUSED_CHECKPOINT_IDENTITY_MISMATCH")
                 model = LockedPlanner(seed, variant).cpu()
@@ -479,6 +577,11 @@ def run(
                 if manifest["dataset_hash"] != dataset["dataset_hash"] or manifest["train_task_ids"] != config["train_task_ids"] or manifest["epochs"] != EPOCHS or manifest["updates"] != 9:
                     raise ValueError("REUSED_CHECKPOINT_LINEAGE_MISMATCH")
                 shutil.copytree(source, run_dir)
+                manifest.update({"training_execution_mode": "REUSED",
+                                 "checkpoint_origin_run_hash": config["checkpoint_origin_run_hash"],
+                                 "reuse_source_manifest_hash": config["reuse_source_manifest_hash"],
+                                 "deterministic_training_replay_status": "REUSED_VALIDATED"})
+                _write(run_dir / "checkpoint-manifest.json", manifest)
             for row in eval_rows:
                 evidence = output / "evidence" / variant / f"seed-{seed}" / row["task_id"]
                 result = _evaluate(row, variant, seed, model, checkpoint, evidence)
