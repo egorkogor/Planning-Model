@@ -1,7 +1,7 @@
 # Cognitive Planner — расширенная архитектура исходной гипотезы
 
-**Статус:** non-normative roadmap.  
-**Назначение:** зафиксировать архитектуру, выходящую за пределы узкого эксперимента Work Planner / BlocksWorld v1.21.  
+**Статус:** non-normative architecture roadmap; интерфейсы зафиксированы для перехода к experiment contracts.  
+**Назначение:** описать архитектуру, выходящую за пределы узкого эксперимента Work Planner / BlocksWorld v1.21.  
 **Важно:** документ не изменяет scientific lock, confirmatory protocol или контракты v1.21.
 
 ## 1. Исходная гипотеза
@@ -26,11 +26,12 @@
 Полная схема разделяет:
 
 1. смысл шага;
-2. привязку смысла к конкретным сущностям;
+2. привязку смысла к конкретным сущностям и инструменту;
 3. итоговую исполнимую команду;
-4. внешнее наблюдение;
-5. проверенное решение;
-6. план ответа.
+4. внешний результат исполнения;
+5. замороженный план;
+6. проверенное решение;
+7. план ответа.
 
 ### 2.1. LatentConceptStep
 
@@ -40,34 +41,62 @@ LatentConceptStep {
   step_type: REASON | ACTION | TOOL | ANSWER | END
   z_semantic: float[d]
   grounding_refs: unordered set<entity_id>
+  tool_ref?: canonical_tool_id
   source_observation_hash?: sha256
 }
 ```
 
 `z_semantic` — латентное смысловое представление шага. Размерность `384` используется в текущей архитектуре A3 как первая проверяемая конфигурация, но не является фундаментальным ограничением гипотезы.
 
-`grounding_refs` — отдельный ограниченный канал, связывающий общий смысл с конкретными объектами, инструментами или сущностями задачи.
+`grounding_refs` — отдельный ограниченный канал, связывающий общий смысл с конкретными сущностями задачи. `tool_ref` отдельно выбирает разрешённый инструмент для шага `TOOL`.
+
+#### Ограничения grounding_refs
 
 В первой версии `grounding_refs`:
 
-- являются неупорядоченным множеством canonical entity IDs;
+- являются семантически неупорядоченным множеством canonical entity IDs;
+- сериализуются в каноническом порядке и дедуплицируются;
 - не содержат оператор или тип действия;
 - не содержат отношения между объектами;
 - не содержат роли аргументов вроде `moving`, `support`, `source`, `target`;
 - не содержат произвольный текст;
 - не содержат готовый план или готовую команду;
-- имеют заранее зафиксированное максимальное количество элементов.
+- имеют заранее зафиксированное максимальное количество элементов;
+- являются точным минимальным множеством сущностей, необходимых текущему шагу;
+- не содержат лишних сущностей и не пропускают обязательные сущности.
+
+В контролируемом домене множество сравнивается с oracle entity set:
+
+- exact-set match;
+- oracle cardinality match;
+- missing-ref rate;
+- extra-ref rate;
+- predicted refs против oracle refs;
+- refs-only performance.
 
 Оператор, отношения и роли аргументов должны восстанавливаться из `z_semantic` и допустимых структурных контрактов.
+
+#### Ограничения tool_ref
+
+`tool_ref`:
+
+- отсутствует для `REASON`, `ACTION`, `ANSWER` и `END`;
+- обязателен и единственен для `TOOL`;
+- выбирается только из разрешённого canonical tool catalog;
+- не содержит аргументы, текст запроса, роли или готовый tool call;
+- проверяется отдельными zero/shuffled/wrong-tool interventions;
+- имеет одинаковый каталог и одинаковую информационную ёмкость во всех сравниваемых arms.
 
 ### 2.2. ResolvedActionStep
 
 ```text
 ResolvedActionStep {
   source_concept_step_id
-  action: typed action
-  args: ordered grounded references[]
+  action_or_tool: typed operator
+  ordered_args: grounded references[]
+  tool_ref?: canonical_tool_id
   resolution_status
+  step_hash
 }
 ```
 
@@ -87,7 +116,30 @@ ObservationEvent {
 }
 ```
 
-### 2.4. CompactReasoningSummary
+### 2.4. FrozenConceptPlan
+
+Open-loop планирование завершается отдельным артефактом:
+
+```text
+FrozenConceptPlan {
+  concept_step_hashes[]
+  resolved_action_step_hashes[]
+  planning_context_hash
+  planner_call_count: 1
+  freeze_status
+  plan_hash
+}
+```
+
+После freeze запрещены:
+
+- изменение шага;
+- suffix regeneration;
+- повторный вызов Planner;
+- замена `LatentConceptStep` или `ResolvedActionStep`;
+- использование Observation для изменения frozen suffix.
+
+### 2.5. CompactReasoningSummary
 
 Summary не является свободным текстовым Chain-of-Thought.
 
@@ -115,7 +167,7 @@ CompactReasoningSummary {
 - все элементы выводятся только из сохранённых и проверенных артефактов;
 - одинаковый набор входных артефактов должен давать byte-identical summary.
 
-### 2.5. VerifiedSolution
+### 2.6. VerifiedSolution
 
 ```text
 VerifiedSolution {
@@ -139,9 +191,9 @@ Reasoner temporary hidden state h_t
           ↓
 Semantic Bottleneck
           ↓
-step_type_t + z_t + grounding_refs_t
+step_type_t + z_t + grounding_refs_t + tool_ref_t
           ├→ Action Decoder / Tool Resolver
-          └→ Answer Verbalizer
+          └→ Answer Planner / Verbalizer после VerifiedSolution
 ```
 
 После создания `LatentConceptStep` downstream-модули не должны получать `h_t` или другие скрытые состояния Reasoner в обход `z_semantic` и разрешённых структурированных полей.
@@ -155,6 +207,7 @@ step_type_t + z_t + grounding_refs_t
 - `step_type`;
 - `z_semantic`;
 - ограниченные `grounding_refs`;
+- ограниченный `tool_ref` для TOOL;
 - публичный каталог сущностей или инструментов;
 - минимальные структурные ограничения формата.
 
@@ -175,14 +228,14 @@ A3b ограничивает не только выход текущего ша�
 Между шагами разрешено передавать только:
 
 - сохранённые `LatentConceptStep`;
-- публичное состояние задачи;
-- последний `ObservationEvent`, если он существует;
+- публичное состояние задачи согласно experiment contract;
+- последний `ObservationEvent` только в closed-loop;
 - неизменяемое task encoding;
 - явные позиционные и служебные признаки.
 
 Передача `h_t`, token-level hidden-state history или KV-cache между ConceptStep запрещена.
 
-### 3.3. Два варианта concept-level memory
+### 3.3. Варианты concept-level memory
 
 #### A3b-history — основной вариант
 
@@ -191,12 +244,10 @@ A3b ограничивает не только выход текущего ша�
 ```text
 [ConceptStep_1, ConceptStep_2, ..., ConceptStep_t]
 + PublicState
-+ Observation
++ разрешённая Observation
 → temporary h_(t+1)
 → ConceptStep_(t+1)
 ```
-
-Это основной вариант проверки concept-token гипотезы.
 
 #### A3b-recurrent — ablation
 
@@ -205,45 +256,67 @@ A3b ограничивает не только выход текущего ша�
 ```text
 ConceptStep_t
 + PublicState
-+ Observation
++ разрешённая Observation
 → ConceptStep_(t+1)
 ```
 
-Этот режим проверяет достаточность строгой рекуррентной памяти, но не является основным вариантом. Отрицательный результат A3b-recurrent не должен интерпретироваться как опровержение concept-level history.
+Отрицательный результат A3b-recurrent не должен интерпретироваться как опровержение concept-level history.
 
-## 4. Полный поток обработки
+#### A3b-no-history — обязательный контроль
 
 ```text
-Запрос / публичное состояние
-          ↓
-Task Encoder
-          ↓
-Latent Planner / Reasoner
-          ↓
-Semantic Bottleneck
-          ↓
-LatentConceptStep
-      ┌──────────────┴──────────────┐
-      ↓                             ↓
-Action Decoder / Resolver      Answer Verbalizer
-      ↓                             ↓
-ResolvedActionStep              Text span
-      ↓
-Executor
-      ↓
-ObservationEvent
-      ↓
-State Store
-      └→ следующий LatentConceptStep
+TaskEncoding
++ PublicState
++ position/service features
+→ ConceptStep_t
 ```
 
-Архитектура разделяет пять функций:
+Контроль получает тот же task context, public state, каталоги и вычислительный бюджет, но не получает concept history.
 
-- **Reasoner** определяет, что нужно понять или сделать дальше;
-- **Semantic Bottleneck** создаёт ограниченный `LatentConceptStep`;
-- **Grounding Head** выбирает конкретные сущности, но не кодирует оператор и роли;
-- **Executor** применяет структурированные действия и возвращает Observation;
-- **Verbalizer** переводит смысловые шаги ответа в естественный язык.
+#### Whole-history interventions
+
+Обязательны:
+
+- `zero-history`;
+- `shuffled-history` с сохранением длины, позиций и служебных метаданных;
+- `wrong-task-history` той же длины и совместимого формата;
+- `truncated-history` с заранее заданным окном;
+- `history-only` diagnostic там, где он содержательно допустим.
+
+Положительный результат A3b-history интерпретируется как польза concept history только при превосходстве над A3b-no-history и ожидаемой деградации в whole-history interventions.
+
+## 4. Фазовая архитектура
+
+Общий поток разделён на reasoning/planning, execution/verification и answer generation.
+
+```text
+Input / PublicState
+        ↓
+Task Encoder
+        ↓
+Reasoner + Semantic Bottleneck
+        ↓
+REASON / ACTION / TOOL ConceptSteps
+        ↓
+Action Decoder / Tool Resolver для ACTION/TOOL
+        ↓
+Open-loop: FrozenConceptPlan
+Closed-loop: исполнение → ObservationEvent → следующий ConceptStep
+        ↓
+SOLUTION_CHECK / verifier
+        ↓
+VerifiedSolution
+        ↓
+Answer Planner
+        ↓
+ANSWER ConceptSteps
+        ↓
+Frozen LLM Verbalizer
+        ↓
+Final answer
+```
+
+`ANSWER` ConceptStep не направляется в Verbalizer до появления `VerifiedSolution`.
 
 ## 5. Reasoning и Answer trajectories
 
@@ -255,19 +328,17 @@ State Store
 
 Answer trajectory не может начинаться напрямую из `START`, `REASON`, `ACTION`, `TOOL` или `ObservationEvent`.
 
-Сначала создаётся и проверяется `VerifiedSolution`.
-
 ```text
-Reasoning trajectory
+Reasoning/execution evidence
 → SOLUTION_CHECK
-→ VerifiedSolution или возврат к REASON
+→ VerifiedSolution или fail/возврат к REASON в closed-loop
 ```
 
 Для тривиальной задачи допускается немедленный `SOLUTION_CHECK`, но интерфейс `VerifiedSolution` всё равно обязателен.
 
 ### 5.3. Answer trajectory
 
-После появления `VerifiedSolution` Answer Planner строит отдельную последовательность `ANSWER` шагов. Каждый шаг задаёт смысл одного предложения или абзаца, а frozen LLM Verbalizer преобразует его в текст.
+После появления `VerifiedSolution` Answer Planner строит отдельную последовательность `ANSWER` шагов.
 
 ```text
 сначала решить
@@ -285,9 +356,45 @@ Answer Planner получает:
 
 Он не получает скрытые состояния Reasoner.
 
-## 6. Допустимые переходы
+## 6. Раздельные state machines
 
-Минимальная state machine:
+Единая state machine не используется, потому что open-loop планирование создаёт полный план до появления реальных Observation, а closed-loop создаёт новый шаг после Observation.
+
+### 6.1. Open-loop planning state machine
+
+```text
+START → REASON | ACTION | TOOL | SOLUTION_CHECK
+REASON → REASON | ACTION | TOOL | SOLUTION_CHECK
+ACTION → REASON | ACTION | TOOL | SOLUTION_CHECK
+TOOL → REASON | ACTION | TOOL | SOLUTION_CHECK
+SOLUTION_CHECK → FrozenConceptPlan | REASON
+FrozenConceptPlan → terminal planning state
+```
+
+Здесь `ACTION` и `TOOL` являются элементами ещё не исполненного плана. Реальный `ObservationEvent` во время planning отсутствует и не симулируется как внешний факт.
+
+### 6.2. Open-loop execution state machine
+
+```text
+FrozenConceptPlan
+→ execute ResolvedActionStep_1
+→ ObservationEvent_1
+→ execute ResolvedActionStep_2
+→ ObservationEvent_2
+→ ...
+→ final verifier
+→ VerifiedSolution | FailedEvaluation
+```
+
+Правила:
+
+- Observation логируется, но не передаётся Planner;
+- Observation не меняет frozen suffix;
+- Planner call count остаётся равен одному;
+- ошибка исполнения фиксируется fail-closed;
+- продолжение или остановка после ошибки задаётся до запуска execution contract.
+
+### 6.3. Closed-loop cognitive state machine
 
 ```text
 START → REASON | ACTION | TOOL | SOLUTION_CHECK
@@ -303,12 +410,10 @@ END → terminal
 
 Правила:
 
-- `ObservationEvent` и `VerifiedSolution` не являются `LatentConceptStep`;
-- `START → ANSWER` запрещено;
-- `REASON → ANSWER` запрещено;
+- `ObservationEvent`, `FrozenConceptPlan` и `VerifiedSolution` не являются `LatentConceptStep`;
+- `START → ANSWER` и `REASON → ANSWER` запрещены;
 - `ANSWER → ACTION/TOOL/REASON` запрещено в первой реализации;
-- после `ACTION` или `TOOL` следующий смысловой шаг создаётся только после фиксации Observation;
-- `END` завершает траекторию;
+- после `ACTION` или `TOOL` новый closed-loop ConceptStep создаётся только после Observation;
 - все переходы логируются и проверяются машинно.
 
 ## 7. Type-specific invariants
@@ -316,7 +421,8 @@ END → terminal
 ### REASON
 
 - `z_semantic` обязателен;
-- refs опциональны;
+- entity refs опциональны, но при наличии проходят exact-minimal-set проверку;
+- `tool_ref` отсутствует;
 - Action Decoder не вызывается;
 - Verbalizer вызывается только в диагностическом reconstruction-режиме;
 - готовая команда отсутствует.
@@ -324,21 +430,27 @@ END → terminal
 ### ACTION
 
 - `z_semantic` обязателен;
-- refs обязательны, кроме операторов без аргументов;
+- entity refs обязательны, кроме операторов без сущностных аргументов;
+- `tool_ref` отсутствует;
+- refs являются точным минимальным множеством сущностей действия;
 - вызывается Action Decoder;
-- должен появиться `ResolvedActionStep`;
-- в closed-loop после исполнения обязателен `ObservationEvent`.
+- должен появиться `ResolvedActionStep`.
 
 ### TOOL
 
-- действуют invariants ACTION;
-- дополнительно обязателен разрешённый tool ID;
+- `z_semantic` обязателен;
+- `tool_ref` обязателен и единственен;
+- entity refs содержат только точное минимальное множество сущностей, передаваемых инструменту;
+- текст запроса, роли аргументов и параметры не могут передаваться через refs/tool_ref;
+- должен появиться `ResolvedActionStep`;
 - результат или ошибка фиксируются в Observation.
 
 ### ANSWER
 
 - допускается только после `VerifiedSolution`;
 - `z_semantic` обязателен;
+- `grounding_refs` могут содержать только сущности, необходимые текущему answer span;
+- `tool_ref` отсутствует;
 - Action Decoder не вызывается;
 - Verbalizer обязателен;
 - ответный span связывается с source concept step.
@@ -346,12 +458,14 @@ END → terminal
 ### END
 
 - `grounding_refs` пусты;
+- `tool_ref` отсутствует;
 - Action Decoder и Verbalizer не вызываются;
 - после END новые шаги запрещены.
 
 ### source_observation_hash
 
-- в open-loop может отсутствовать;
+- в open-loop planning отсутствует;
+- в open-loop execution относится к execution evidence, а не к frozen planning step;
 - в closed-loop обязателен для первого ConceptStep после Observation;
 - должен точно ссылаться на Observation, вызвавшую следующий шаг.
 
@@ -360,18 +474,20 @@ END → terminal
 ### 8.1. Open-loop experimental mode
 
 ```text
-полный план создаётся заранее
-→ замораживается
-→ исполняется без изменений
+один Planner call
+→ полный FrozenConceptPlan
+→ исполнение без изменений
 ```
 
 Используется для чистого сравнения:
 
 ```text
-A2 vs A3a vs A3b-history vs A3b-recurrent
+A2
+vs A3a
+vs A3b-history
+vs A3b-recurrent
+vs A3b-no-history
 ```
-
-Replanning и suffix regeneration запрещены.
 
 Первая проверка A3b проводится именно в open-loop, чтобы не смешивать semantic/inter-step bottleneck с реакцией на среду.
 
@@ -385,9 +501,7 @@ LatentConceptStep
 → следующий LatentConceptStep
 ```
 
-Используется в задачах, где результат действия заранее неизвестен: инструменты, поиск, код, файлы и внешняя среда.
-
-В этом режиме replanning не скрывается и не считается нарушением. Он является явной частью архитектуры, а следующий шаг связывается с Observation.
+В этом режиме replanning является явной частью архитектуры. Каждый новый шаг связывается с Observation.
 
 Open-loop и closed-loop результаты нельзя смешивать в одном сравнении без отдельного протокола.
 
@@ -406,131 +520,90 @@ Open-loop и closed-loop результаты нельзя смешивать в
 
 ### Semantic Bottleneck
 
-Создаёт `step_type`, `z_semantic` и `grounding_refs`.
+Создаёт `step_type`, `z_semantic`, `grounding_refs` и при необходимости `tool_ref`.
 
-`Step-Type Router` является prediction head внутри Semantic Bottleneck, а не отдельным независимым маршрутизатором.
+`Step-Type Router`, Grounding Head и Tool Head являются prediction heads внутри Semantic Bottleneck, а не независимыми обходными маршрутизаторами.
 
 ### Grounding Head
 
-Выбирает неупорядоченное множество сущностей из разрешённого каталога.
+Выбирает точное минимальное неупорядоченное множество сущностей из разрешённого каталога. Предсказание канонизируется и дедуплицируется.
 
-Grounding Head не имеет права кодировать:
+### Tool Head
 
-- оператор;
-- роли аргументов;
-- отношения;
-- произвольный текст;
-- готовую команду.
+Для шага `TOOL` выбирает ровно один `tool_ref` из разрешённого каталога. Не создаёт параметры или текст вызова.
 
 ### Action Decoder / Tool Resolver
 
-Для `ACTION` и `TOOL` преобразует `LatentConceptStep` в `ResolvedActionStep`.
-
-Получает только:
-
-- `step_type`;
-- `z_semantic`;
-- ограниченные refs;
-- каталог сущностей/инструментов;
-- структурный контракт действий.
+Преобразует `LatentConceptStep` в `ResolvedActionStep` и получает только разрешённые поля bottleneck и структурный контракт.
 
 ### Verbalizer Adapter
 
-Преобразует `z_semantic` и разрешённые refs в soft/virtual tokens либо другое входное представление для frozen LLM.
+Преобразует `z_semantic` и разрешённые grounding-поля в soft/virtual tokens либо другое входное представление для frozen LLM.
 
 ### Frozen LLM Verbalizer
 
-Формулирует предложение, абзац или пояснение. Verbalizer не имеет права менять план, создавать новую reasoning trajectory или обращаться к скрытым состояниям Reasoner.
+Формулирует предложение, абзац или пояснение. Не имеет права менять план, создавать новую reasoning trajectory или обращаться к скрытым состояниям Reasoner.
 
-### Executor and State Store
+### Executor, State Store и Verifier
 
-Исполняет действия, проверяет переходы состояния, сохраняет Observation и фактическую траекторию выполнения.
+Исполняют frozen или closed-loop действия, сохраняют Observation, проверяют переходы состояния и создают `VerifiedSolution` либо типизированный failure.
 
 ## 10. Два режима Verbalizer
 
 ### 10.1. Strict reconstruction mode
-
-Используется для проверки, действительно ли смысл содержится в `z_semantic`.
 
 Вход:
 
 ```text
 z_semantic
 + ограниченные grounding_refs
++ tool_ref только для TOOL
 + минимальная инструкция по формату
 ```
 
-Verbalizer не получает:
-
-- полный исходный вопрос;
-- reasoning history;
-- `CompactReasoningSummary`;
-- скрытое состояние Reasoner;
-- полный verified result, позволяющий заново решить задачу.
+Verbalizer не получает полный исходный вопрос, reasoning history, summary, скрытое состояние или полный verified result.
 
 Обязательные контроли:
 
-- правильный `z_semantic` при правильных refs;
-- нулевой `z_semantic` при правильных refs;
-- shuffled/wrong-task `z_semantic` при правильных refs;
-- правильный `z_semantic` с shuffled/wrong-task refs;
-- неправильный `step_type`;
+- correct/zero/shuffled/wrong-task `z_semantic` при правильном grounding;
+- correct `z_semantic` с shuffled/wrong-task refs;
+- exact oracle refs против predicted refs;
 - refs-only без `z_semantic`;
-- `z_semantic` без refs там, где refs обязательны.
+- `z_semantic` без refs там, где refs обязательны;
+- correct/zero/shuffled/wrong-tool `tool_ref`;
+- неправильный `step_type`.
 
 ### 10.2. Contextual production mode
 
 Используется только после проверки reconstruction mode.
 
-Вход:
-
 ```text
 z_semantic
-+ grounding_refs
++ grounding_refs/tool_ref
 + исходный запрос
 + уже сформированный ответ
 + разрешённый фактический контекст
 ```
 
-Этот режим оптимизирует качество текста, но сам по себе не доказывает, что Verbalizer использует latent-вектор.
+Этот режим оптимизирует качество текста, но сам по себе не доказывает использование latent-вектора.
 
 ## 11. Type-specific оценка Verbalizer
 
 ### ACTION / TOOL
 
-Проверяются:
-
-- правильный оператор;
-- правильные аргументы и их роли;
-- применимость;
-- отсутствие новых сущностей;
-- соответствие Observation после исполнения.
+Проверяются оператор, аргументы и роли, применимость, отсутствие новых сущностей и соответствие Observation.
 
 ### REASON
 
-Проверяются:
-
-- правильное утверждение или промежуточный вывод;
-- причинная связь с предыдущими ConceptStep;
-- отсутствие неподтверждённых фактов;
-- чувствительность к intervention по `z_semantic`.
+Проверяются промежуточный вывод, причинная связь с предыдущими ConceptStep, отсутствие неподтверждённых фактов и чувствительность к interventions.
 
 ### ANSWER
 
-Проверяются:
-
-- покрытие требуемой части ответа;
-- фактическая согласованность с `VerifiedSolution`;
-- отсутствие новых неподтверждённых утверждений;
-- корректный порядок answer-step.
+Проверяются покрытие требуемой части ответа, согласованность с `VerifiedSolution`, отсутствие новых утверждений и порядок answer-step.
 
 ### END
 
-Проверяются:
-
-- корректное завершение;
-- отсутствие лишнего содержательного текста;
-- отсутствие последующих шагов.
+Проверяются корректное завершение, отсутствие содержательного текста и отсутствие последующих шагов.
 
 ## 12. Что считается мыслью на разных этапах
 
@@ -545,24 +618,24 @@ z_semantic
 → target z
 ```
 
-Успех здесь доказывает, что такой semantic feedback причинно полезен в ограниченном домене. Он не доказывает, что найдено универсальное представление человеческой мысли.
+Успех доказывает причинную полезность такого semantic feedback в ограниченном домене, но не универсальное представление человеческой мысли.
 
-Точная идентичность объектов передаётся через отдельно проверяемый grounding-канал.
+Точная идентичность сущностей и инструмента передаётся через отдельно проверяемые grounding-каналы.
 
 ### Stage 3–4: learned ConceptStep representation
 
-На следующих этапах `z_semantic` должен обучаться не только на заранее заданной метке, но и на совокупности сигналов:
+`z_semantic` должен обучаться на совокупности сигналов:
 
-- правильности действия или результата;
-- предсказании следующего состояния;
-- реконструкции смысла шага;
-- согласованности reasoning trajectory;
-- информационном bottleneck;
-- контрастивных и intervention-контролях.
+- правильность действия или результата;
+- предсказание следующего состояния;
+- реконструкция смысла шага;
+- согласованность reasoning trajectory;
+- информационный bottleneck;
+- контрастивные и intervention-контроли.
 
 ## 13. Граница одного ConceptStep
 
-Фраза «одно предложение или абзац» является инженерной гипотезой, а не фиксированным свойством.
+Фраза «одно предложение или абзац» является инженерной гипотезой.
 
 Первая реализация использует:
 
@@ -582,156 +655,105 @@ Boundary head не входит в первый MVP.
 задача → полный frozen plan → исполнение
 ```
 
-**Критерий завершения:** модель обучается, выдаёт многошаговый план, один раз вызывается, не перепланирует и воспроизводимо достигает цели на toy-задачах.
+**Критерий завершения:** один Planner call создаёт воспроизводимый многошаговый план, который исполняется без replanning.
 
 ### Этап 2A — A3a: latent feedback
 
-Каждый шаг дополнительно выдаёт `z_semantic`, который влияет на следующий шаг, но действие и latent могут предсказываться параллельно из одного decoder hidden state, а обычная autoregressive history сохраняется.
+Сравниваются A2, правильный feedback, zero, shuffled и random-code parameter-matched control.
 
-Основные сравнения:
-
-- A2;
-- A3a с правильным latent feedback;
-- zero feedback;
-- shuffled feedback;
-- random-code parameter-matched control.
-
-**Критерий завершения:** A3a проходит заранее зафиксированный experiment contract, а вмешательства в semantic feedback дают ожидаемое изменение качества.
+**Критерий завершения:** A3a проходит заранее зафиксированный experiment contract, а interventions дают ожидаемое изменение качества.
 
 ### Этап 2B — A3b: semantic и inter-step bottleneck
-
-Проверяется более сильная исходная гипотеза:
-
-```text
-concept history + PublicState → temporary h_t
-h_t → LatentConceptStep_t
-LatentConceptStep_t → ResolvedActionStep_t / text_t
-```
 
 Сравниваются:
 
 - A3a;
 - A3b-history;
 - A3b-recurrent;
-- A3b refs-only;
-- A3b z-only там, где допустимо;
-- controls с capacity-matched grounding.
+- A3b-no-history;
+- A3b-zero/shuffled/wrong-task-history;
+- refs-only и z-only там, где допустимо;
+- oracle refs и predicted refs;
+- capacity-matched grounding controls.
 
-Обязательные независимые interventions:
-
-- zero/shuffled/wrong-task `z_semantic` при сохранённых refs;
-- shuffled/wrong-task refs при сохранённом `z_semantic`;
-- refs-only без `z_semantic`;
-- неправильный `step_type`;
-- удаление `source_observation_hash` в closed-loop режиме.
-
-**Критерий завершения:** A3b-history проходит experiment contract, сохраняет установленную долю качества A3a, а intervention каждого канала причинно меняет только ожидаемую часть поведения.
+**Критерий завершения:** A3b-history проходит experiment contract, превосходит no-history контроль и демонстрирует ожидаемую causal sensitivity к history, `z_semantic`, refs, tool_ref и `step_type`.
 
 ### Этап 3 — Verbalizer MVP
 
 Проверяется декодируемость отдельной мысли в strict reconstruction mode.
 
-**Критерий завершения:** type-specific метрики проходят заранее зафиксированные пороги, а вмешательства по `z`, refs и типу шага дают ожидаемую деградацию.
-
 ### Этап 4 — разделение Reasoning и Answer
 
 Добавляются `SOLUTION_CHECK`, `VerifiedSolution` и отдельная answer trajectory.
 
-**Критерий завершения:** разделённая система не уступает по правильности решения и проходит пороги по фактической согласованности, покрытию решения, отсутствию новых утверждений и устойчивости answer-plan.
-
 ### Этап 5 — полный сравнительный эксперимент
 
-Эксперименты расширяются последовательно:
+Домены расширяются последовательно:
 
-1. BlocksWorld — механика и причинность каналов;
-2. один текстовый домен — простая символическая математика или логика;
-3. один интерактивный домен — инструменты или небольшие изменения кода;
+1. BlocksWorld;
+2. один текстовый домен;
+3. один интерактивный домен;
 4. затем широкое сравнение.
-
-Сравниваются:
-
-- Direct LLM;
-- текстовый Chain-of-Thought;
-- текстовый план;
-- A2;
-- A3a;
-- A3b-history;
-- A3b-recurrent;
-- A3b + Verbalizer;
-- A3b + отдельные reasoning и answer trajectories.
 
 ## 15. Experiment contract перед каждым этапом
 
-Этот roadmap не задаёт числовые границы GO/STOP. Они не должны выбираться после просмотра результатов.
+Числовые границы GO/STOP не выбираются после просмотра результатов.
 
-До начала реализации или запуска каждого этапа создаётся отдельный versioned experiment contract, который фиксирует:
+До реализации или запуска фиксируются:
 
-- primary hypothesis;
-- primary metric;
+- primary hypothesis и primary metric;
 - evaluation unit;
-- baselines;
-- ablations и interventions;
+- baselines, ablations и interventions;
 - threshold или non-inferiority margin;
 - seeds и split policy;
 - STOP/GO rule;
-- критерии технической валидности;
+- техническая валидность;
 - checkpoint-selection rule;
 - training-data matching;
-- parameter-count matching;
-- active-parameter reporting;
+- parameter-count и active-parameter matching/reporting;
 - FLOPs и token-budget matching;
-- одинаковый доступ к task context;
-- одинаковый каталог сущностей и инструментов;
-- допустимую вычислительную стоимость;
+- одинаковый доступ к task context и PublicState;
+- одинаковые entity/tool catalogs;
+- правила канонизации и capacity grounding-каналов;
+- oracle/predicted grounding evaluation;
+- допустимая вычислительная стоимость;
 - список неблокирующего backlog.
-
-Фразы вроде «существенная доля качества», «существенно ухудшается» и «устойчивое улучшение» считаются placeholders до появления experiment contract и не могут использоваться как основание для GO.
 
 ## 16. Основные метрики
 
-- достижение правильного результата задачи;
+- правильный результат задачи;
 - валидность и исполнимость действий;
-- перенос на новые структуры и длины задач;
-- польза semantic feedback: A3a против A2 и controls;
-- сохранение качества через semantic/inter-step bottleneck: A3b-history против A3a;
-- A3b-history против A3b-recurrent;
-- causal sensitivity к замене `z_semantic`;
-- causal sensitivity к замене `grounding_refs`;
+- перенос на новые структуры и длины;
+- A3a против A2 и controls;
+- A3b-history против A3a, recurrent и no-history;
+- causal sensitivity к whole-history interventions;
+- causal sensitivity к `z_semantic`, refs, tool_ref и `step_type`;
+- exact/minimal grounding quality;
 - refs-only performance;
-- независимость каналов `z_semantic`, refs и `step_type`;
-- восстанавливаемость смысла latent-вектора Verbalizer;
-- соответствие текста фактическому решению;
-- отсутствие вымышленных фактов;
-- стоимость обучения и инференса;
-- стабильность между seeds и повторными запусками.
+- качество strict reconstruction;
+- соответствие текста проверенному решению;
+- стоимость и стабильность между seeds.
 
 ## 17. Ограничения первой реализации
 
-- Не утверждается, что один вектор всегда равен одному человеческому понятию.
-- Размерность 384 и граница «одно предложение или абзац» являются проверяемыми инженерными выборами.
-- Текст Verbalizer не считается доказательством содержания latent-вектора без strict reconstruction и intervention-контролей.
-- Текущий A3 target является supervised semantic proxy, а не доказанной универсальной мыслью.
-- BlocksWorld проверяет механику и причинную полезность semantic feedback, но не доказывает перенос на общий reasoning.
-- Grounding refs являются отдельным ограниченным каналом и проверяются отдельно от semantics.
-- A3b-recurrent является ablation, а не единственной реализацией concept-level memory.
-- Переход к каждому следующему этапу выполняется только после выполнения критерия предыдущего этапа.
+- Один вектор не объявляется человеческим понятием.
+- Размерность 384 и граница шага являются проверяемыми инженерными выборами.
+- Текущий A3 target является supervised semantic proxy.
+- BlocksWorld не доказывает перенос на общий reasoning.
+- Grounding является отдельным ограниченным каналом.
+- A3b-recurrent — ablation, а не единственная реализация памяти.
+- Open-loop и closed-loop являются разными экспериментальными режимами.
 
 ## 18. Правило остановки разработки
 
-Для каждого этапа заранее фиксируются:
+Для каждого этапа заранее фиксируются одна гипотеза, обязательные controls, ограниченный набор BLOCKER-критериев, количественный GO/STOP и неблокирующий backlog.
 
-1. одна основная гипотеза;
-2. обязательные baselines, ablations и interventions;
-3. ограниченный набор BLOCKER-критериев;
-4. количественный критерий GO / STOP в отдельном experiment contract;
-5. backlog улучшений, которые не блокируют текущий MVP.
-
-Для ближайшей разработки действуют границы:
+Для ближайшей разработки:
 
 - текущий A2 PR не расширяется до A3;
 - A3a реализуется отдельным PR;
-- A3b начинается только после технической проверки A3a;
-- Verbalizer начинается только после проверки причинной роли `z_semantic`;
-- closed-loop режим не смешивается с open-loop экспериментом;
-- после фиксации этого roadmap широкое архитектурное ревью прекращается;
-- новые идеи переносятся в backlog или отдельный versioned experiment contract и не возобновляют ревью A2/A3a.
+- A3b начинается после технической проверки A3a;
+- Verbalizer начинается после проверки причинной роли `z_semantic`;
+- closed-loop не смешивается с open-loop;
+- после этой фиксации широкое архитектурное ревью прекращается;
+- новые идеи переходят в backlog или отдельный versioned experiment contract.
