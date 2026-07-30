@@ -31,8 +31,9 @@
 4. исходное и предполагаемое состояние планирования;
 5. внешний результат исполнения;
 6. замороженный план;
-7. проверенное решение;
-8. план ответа.
+7. фактическую execution trace;
+8. проверенное решение;
+9. план ответа.
 
 ### 2.1. LatentConceptStep
 
@@ -49,6 +50,21 @@ LatentConceptStep {
 ```
 
 `z_semantic` — латентное смысловое представление шага. Размерность `384` используется в текущей архитектуре A3 как первая проверяемая конфигурация, но не является фундаментальным ограничением гипотезы.
+
+#### Каноническая сериализация z_semantic
+
+До реализации или запуска experiment contract фиксирует:
+
+- `dtype` и точную `shape`;
+- byte order;
+- перевод в CPU и contiguous layout перед сериализацией;
+- запрет `NaN`, `+Inf` и `-Inf`;
+- exact-byte либо заранее определённое quantized representation;
+- параметры quantization, если она используется;
+- каноническое кодирование tensor metadata;
+- domain separator и полный набор полей, покрываемых `step_hash`.
+
+Одинаковая serialization policy применяется ко всем сравниваемым arms. Изменение policy после просмотра результатов запрещено. `step_hash` вычисляется только из канонических байтов объекта.
 
 `grounding_refs` связывает общий смысл с конкретными сущностями. `tool_ref` отдельно выбирает разрешённый инструмент для шага `TOOL`.
 
@@ -180,6 +196,8 @@ FrozenConceptPlan {
 }
 ```
 
+Последним `LatentConceptStep` замороженного плана является `END`.
+
 После freeze запрещены:
 
 - изменение шага;
@@ -188,7 +206,34 @@ FrozenConceptPlan {
 - замена `LatentConceptStep` или `ResolvedActionStep`;
 - использование Observation для изменения frozen suffix.
 
-### 2.7. CompactReasoningSummary
+### 2.7. ExecutionTrace
+
+Open-loop execution создаёт отдельный lineage-артефакт:
+
+```text
+ExecutionTrace {
+  source_frozen_plan_hash
+  ordered_action_step_hashes[]
+  ordered_observation_hashes[]
+  execution_policy_hash
+  initial_state_hash
+  final_state_hash
+  failure_status
+  execution_trace_hash
+}
+```
+
+Правила:
+
+- `source_frozen_plan_hash` обязан ссылаться на исполняемый `FrozenConceptPlan`;
+- порядок action и observation hashes совпадает с фактическим порядком исполнения;
+- каждый action принадлежит frozen plan;
+- каждый Observation ссылается на соответствующий исполненный action;
+- `execution_policy_hash` фиксирует stop/continue policy при ошибке;
+- Observation не меняет frozen suffix и не возвращается Planner;
+- `execution_trace_hash` охватывает весь объект в канонической сериализации.
+
+### 2.8. CompactReasoningSummary
 
 Summary не является свободным текстовым Chain-of-Thought.
 
@@ -214,12 +259,12 @@ CompactReasoningSummary {
 - все элементы выводятся только из сохранённых и проверенных артефактов;
 - одинаковые входные артефакты дают byte-identical summary.
 
-### 2.8. VerifiedSolution
+### 2.9. VerifiedSolution
 
 ```text
 VerifiedSolution {
   source_mode: OPEN_LOOP | CLOSED_LOOP
-  source_frozen_plan_hash?: sha256
+  source_execution_trace_hash?: sha256
   source_trajectory_hash?: sha256
   source_concept_step_hashes[]
   source_action_step_hashes[]
@@ -236,10 +281,11 @@ VerifiedSolution {
 
 Правила lineage:
 
-- в open-loop обязателен `source_frozen_plan_hash`;
+- в open-loop обязателен `source_execution_trace_hash`;
 - в closed-loop обязателен `source_trajectory_hash`;
 - один из этих двух источников обязателен, одновременное заполнение запрещено;
-- все action/observation hashes должны принадлежать указанному plan/trajectory;
+- open-loop trace обязана ссылаться на исходный `FrozenConceptPlan`;
+- все action/observation hashes должны принадлежать указанной trace или trajectory;
 - `evaluation_hash` связывает verifier, критерии и фактическое execution evidence;
 - `solution_hash` охватывает весь объект в канонической сериализации.
 
@@ -371,10 +417,11 @@ REASON / ACTION / TOOL ConceptSteps
         ↓
 Action Decoder / Tool Resolver
         ↓
-Open-loop: PLAN_CHECK → FREEZE_CHECK → FrozenConceptPlan
+Open-loop: END → PLAN_CHECK → FREEZE_CHECK → FrozenConceptPlan
 Closed-loop: execution → ObservationEvent → следующий ConceptStep
         ↓
-Execution evidence
+Open-loop: ExecutionTrace
+Closed-loop: typed trajectory
         ↓
 SOLUTION_CHECK / verifier
         ↓
@@ -401,14 +448,17 @@ Final answer
 
 ### 5.2. PLAN_CHECK и FREEZE_CHECK
 
-`PLAN_CHECK` проверяет до исполнения:
+`PLAN_CHECK` запускается только после `END` и проверяет до исполнения:
 
 - валидность state machine planning-фазы;
 - разрешимость всех `ACTION/TOOL` в `ResolvedActionStep`;
 - допустимость grounding;
 - отсутствие запрещённых каналов;
 - соответствие planning-state policy;
-- наличие `END` или другого контрактного завершения плана.
+- наличие ровно одного терминального `END`;
+- отсутствие содержательных шагов после `END`.
+
+`PLAN_CHECK` является внешним терминальным валидатором. Он не возвращает управление Planner и не запускает repair-loop.
 
 `FREEZE_CHECK` проверяет:
 
@@ -423,7 +473,7 @@ Final answer
 ### 5.3. SOLUTION_CHECK
 
 ```text
-Execution evidence
+ExecutionTrace или closed-loop trajectory
 → SOLUTION_CHECK
 → VerifiedSolution | FailedEvaluation
 ```
@@ -449,16 +499,26 @@ Execution evidence
 ### 6.1. Open-loop planning state machine
 
 ```text
-START → REASON | ACTION | TOOL | PLAN_CHECK
-REASON → REASON | ACTION | TOOL | PLAN_CHECK
-ACTION → REASON | ACTION | TOOL | PLAN_CHECK
-TOOL → REASON | ACTION | TOOL | PLAN_CHECK
-PLAN_CHECK → FREEZE_CHECK | REASON
+START → REASON | ACTION | TOOL | END
+REASON → REASON | ACTION | TOOL | END
+ACTION → REASON | ACTION | TOOL | END
+TOOL → REASON | ACTION | TOOL | END
+END → PLAN_CHECK
+PLAN_CHECK → FREEZE_CHECK | FailedPlanCheck
 FREEZE_CHECK → FrozenConceptPlan | FailedPlanCheck
 FrozenConceptPlan → terminal planning state
+FailedPlanCheck → terminal failure state
 ```
 
-`ACTION` и `TOOL` здесь являются элементами ещё не исполненного плана. Реальный `ObservationEvent` отсутствует.
+Правила:
+
+- `END` обязателен и создаётся внутри единственного Planner call;
+- после `END` Planner больше не вызывается;
+- `PLAN_CHECK` и `FREEZE_CHECK` являются внешними fail-closed gates;
+- возврат `PLAN_CHECK → REASON` запрещён;
+- самокоррекция допустима только внутри исходной генерации до выдачи `END`;
+- `ACTION` и `TOOL` являются элементами ещё не исполненного плана;
+- реальный `ObservationEvent` во время planning отсутствует.
 
 ### 6.2. Open-loop execution state machine
 
@@ -469,6 +529,7 @@ FrozenConceptPlan
 → execute ResolvedActionStep_2
 → ObservationEvent_2
 → ...
+→ ExecutionTrace
 → SOLUTION_CHECK
 → VerifiedSolution | FailedEvaluation
 ```
@@ -479,7 +540,8 @@ FrozenConceptPlan
 - Observation не меняет frozen suffix;
 - Planner call count остаётся равен одному;
 - ошибка исполнения фиксируется fail-closed;
-- продолжение или остановка после ошибки фиксируется до запуска.
+- продолжение или остановка после ошибки фиксируется до запуска;
+- `ExecutionTrace` создаётся до `SOLUTION_CHECK` и является обязательным open-loop evidence artifact.
 
 ### 6.3. Closed-loop cognitive state machine
 
@@ -531,7 +593,7 @@ END → terminal
 - refs содержат точное минимальное множество сущностей инструмента;
 - текст запроса, роли и параметры не передаются через refs/tool_ref;
 - должен появиться `ResolvedActionStep`;
-- результат или ошибка фиксируются в Observation.
+- результат или ошибка фиксируются в Observation при исполнении.
 
 ### ANSWER
 
@@ -546,10 +608,12 @@ END → terminal
 
 ### END
 
+- `z_semantic` использует заранее зафиксированное terminal representation либо нулевой canonical vector согласно contract;
 - `grounding_refs` пусты;
 - `tool_ref` отсутствует;
 - Action Decoder и Verbalizer не вызываются;
-- после END новые шаги запрещены.
+- после END новые planning steps запрещены;
+- в open-loop `END` непосредственно запускает внешний `PLAN_CHECK`.
 
 ### source_observation_hash
 
@@ -564,8 +628,11 @@ END → terminal
 
 ```text
 один Planner call
-→ полный FrozenConceptPlan
+→ полный план с terminal END
+→ PLAN_CHECK / FREEZE_CHECK
+→ FrozenConceptPlan
 → исполнение без изменений
+→ ExecutionTrace
 ```
 
 Используется для сравнения:
@@ -579,6 +646,17 @@ vs A3b-no-history
 ```
 
 Planning-state mode одинаков для всех arms.
+
+#### Ограничение open-loop TOOL
+
+В open-loop допускаются только:
+
+- детерминированные и полностью симулируемые tool effects;
+- либо заранее замороженные tool outcomes, чей hash зафиксирован до planning.
+
+Запрещён open-loop план, если последующий шаг зависит от неизвестного runtime-результата инструмента. Такие задачи выполняются только в closed-loop.
+
+Реальный tool outcome не используется для изменения frozen suffix.
 
 ### 8.2. Closed-loop cognitive mode
 
@@ -627,11 +705,15 @@ Replanning является явной частью архитектуры. Open
 
 ### Plan Checker / Freeze Checker
 
-Проверяют структурную валидность и создают `FrozenConceptPlan`, но не подтверждают фактическое решение.
+Проверяют структурную валидность и создают `FrozenConceptPlan`, но не подтверждают фактическое решение и не возвращают управление Planner.
 
-### Executor, State Store и Solution Verifier
+### Executor и Execution Trace Builder
 
-Исполняют действия, сохраняют Observation и создают `VerifiedSolution` либо типизированный failure.
+Исполняют frozen actions, сохраняют Observation и создают `ExecutionTrace` либо типизированный failure.
+
+### State Store и Solution Verifier
+
+В closed-loop сохраняют trajectory; в обоих режимах проверяют execution evidence и создают `VerifiedSolution` либо типизированный failure.
 
 ### Answer Planner
 
@@ -731,7 +813,7 @@ Boundary head не входит в первый MVP.
 
 ### Этап 1 — A2: структурированный Planner
 
-Один Planner call создаёт воспроизводимый многошаговый frozen plan, который исполняется без replanning.
+Один Planner call создаёт воспроизводимый многошаговый frozen plan с terminal `END`, который исполняется без replanning.
 
 ### Этап 2A — A3a: latent feedback
 
@@ -788,6 +870,9 @@ Boundary head не входит в первый MVP.
 - planning-state mode и transition function hash;
 - одинаковые entity/tool catalogs;
 - grounding capacity и oracle/predicted evaluation;
+- canonical tensor serialization policy для `z_semantic` и `step_hash`;
+- open-loop tool policy и hashes замороженных outcomes, если применимо;
+- execution policy и `execution_policy_hash`;
 - answer-history policy;
 - lineage requirements;
 - допустимая вычислительная стоимость;
@@ -810,7 +895,7 @@ Boundary head не входит в первый MVP.
 - качество strict reconstruction;
 - answer-concept-history против autoregressive-cache и no-history;
 - соответствие текста проверенному решению;
-- полнота lineage;
+- полнота lineage и ExecutionTrace;
 - стоимость и стабильность между seeds.
 
 ## 17. Ограничения первой реализации
@@ -824,6 +909,7 @@ Boundary head не входит в первый MVP.
 - Open-loop и closed-loop — разные экспериментальные режимы.
 - PlanningState является предсказанным rollout, а не фактическим состоянием среды.
 - PLAN_CHECK не равен SOLUTION_CHECK.
+- Open-loop tool plan не может зависеть от неизвестного runtime outcome.
 
 ## 18. Правило остановки разработки
 
