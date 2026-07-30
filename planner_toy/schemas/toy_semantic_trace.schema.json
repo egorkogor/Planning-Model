@@ -2,20 +2,30 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "toy-semantic-trace/1.0",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema_version", "variant", "feedback_source", "feedback_applied", "config_hash", "checkpoint_manifest_hash", "checkpoint_file_hash", "planner_request_hash", "work_plan_artifact_hash", "latent_path", "latent_file_sha256", "steps"],
   "properties": {
     "schema_version": {"const": "toy-semantic-trace/1.0"},
     "variant": {"enum": ["A3", "A4"]},
     "feedback_source": {"const": "predicted"},
     "feedback_applied": {"type": "boolean"},
-    "config_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "checkpoint_manifest_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "checkpoint_file_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "planner_request_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "work_plan_artifact_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "latent_path": {"const": "semantic-latents.f32"},
-    "latent_file_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "steps": {"type": "array", "items": {"type": "object"}}
+    "config_hash": {"$ref": "#/$defs/hash"}, "checkpoint_manifest_hash": {"$ref": "#/$defs/hash"}, "checkpoint_file_hash": {"$ref": "#/$defs/hash"}, "planner_request_hash": {"$ref": "#/$defs/hash"}, "work_plan_artifact_hash": {"$ref": "#/$defs/hash"},
+    "latent_path": {"const": "semantic-latents.f32"}, "latent_file_sha256": {"$ref": "#/$defs/hash"},
+    "steps": {"type": "array", "minItems": 1, "maxItems": 17, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["step_index", "action", "args", "z_sha256", "latent_norm", "source", "previous_z_sha256"],
+      "properties": {
+        "step_index": {"type": "integer", "minimum": 0},
+        "action": {"enum": ["PICK_UP", "UNSTACK", "PUT_DOWN", "STACK", "END"]},
+        "args": {"type": "array", "maxItems": 2, "items": {"type": "string"}},
+        "z_sha256": {"$ref": "#/$defs/hash"}, "latent_norm": {"type": "number", "minimum": 0},
+        "source": {"const": "predicted"}, "previous_z_sha256": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/hash"}]}
+      }
+    }}
   },
-  "additionalProperties": false
+  "$defs": {"hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}},
+  "allOf": [
+    {"if": {"properties": {"variant": {"const": "A3"}}}, "then": {"properties": {"feedback_applied": {"const": true}}}},
+    {"if": {"properties": {"variant": {"const": "A4"}}}, "then": {"properties": {"feedback_applied": {"const": false}}}}
+  ]
 }

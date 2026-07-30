@@ -7,19 +7,30 @@
         "additionalProperties": false,
         "properties": {
           "finite": {
-            "const": true
+            "type": "boolean"
+          },
+          "grad_present": {
+            "type": "boolean"
+          },
+          "gradient_norm": {
+            "minimum": 0,
+            "type": [
+              "number",
+              "null"
+            ]
           },
           "nonzero": {
-            "const": true
+            "type": "boolean"
           }
         },
         "required": [
+          "grad_present",
           "finite",
-          "nonzero"
+          "nonzero",
+          "gradient_norm"
         ],
         "type": "object"
       },
-      "minProperties": 1,
       "type": "object"
     },
     "active_parameter_names": {
@@ -30,13 +41,30 @@
       "type": "array",
       "uniqueItems": true
     },
+    "allowed_no_gradient_parameter_names": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
     "config_hash": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
     },
+    "expected_gradient_parameter_names": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
     "optimizer_state_file_sha256": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
+    },
+    "optimizer_state_matches_expected_gradient_set": {
+      "const": true
     },
     "optimizer_state_parameter_names": {
       "items": {
@@ -58,9 +86,6 @@
     },
     "state_all_finite_nonzero": {
       "const": true
-    },
-    "state_matches_active_set": {
-      "const": true
     }
   },
   "required": [
@@ -69,11 +94,13 @@
     "active_parameter_names",
     "optimizer_state_parameter_names",
     "active_gradient_evidence",
-    "state_matches_active_set",
     "state_all_finite_nonzero",
     "optimizer_state_path",
     "optimizer_state_file_sha256",
-    "optimizer_state_sha256"
+    "optimizer_state_sha256",
+    "expected_gradient_parameter_names",
+    "allowed_no_gradient_parameter_names",
+    "optimizer_state_matches_expected_gradient_set"
   ],
   "title": "toy-optimizer-evidence/1.0",
   "type": "object"

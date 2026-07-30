@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import struct
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +28,27 @@ from .training import optimizer_state_sha256, state_dict_sha256, train
 ACTION_NAMES = tuple(ACTION_RANK)
 ROOT = Path(__file__).parents[1]
 DEV = {"seed": 17, "split": "development", "stage": "PLANNER_ONLY", "arm": "PLANNER_A2_RAW"}
+FAILURE_CODES = frozenset(
+    {
+        "PLAN_NO_END",
+        "PLAN_PARSE_ERROR",
+        "PLAN_UNKNOWN_REF",
+        "PLAN_GENERATION_ERROR",
+        "EXECUTOR_PRECONDITION_FAILED",
+        "GOAL_NOT_ACHIEVED",
+        "LATENT_NONFINITE",
+        "LATENT_ZERO_NORM",
+        "LATENT_DIMENSION",
+        "SEMANTIC_TRACE_MISSING",
+        "SEMANTIC_TRACE_LENGTH",
+        "VARIANT_MISMATCH",
+    }
+)
+PRESERVED_GENERATION_CODES = FAILURE_CODES - {
+    "EXECUTOR_PRECONDITION_FAILED",
+    "GOAL_NOT_ACHIEVED",
+    "PLAN_GENERATION_ERROR",
+}
 
 
 def file_hash(path: Path) -> str:
@@ -45,11 +68,14 @@ class A2Planner:
     model: LockedPlanner
     calls: int = 0
     semantic_steps: list[torch.Tensor] | None = None
+    injected_failure: str | None = None
 
     def plan(self, row: dict) -> list[list[str]]:
         if self.calls:
             raise RuntimeError("replanning is forbidden")
         self.calls += 1
+        if self.injected_failure in {"LATENT_NONFINITE", "LATENT_ZERO_NORM", "LATENT_DIMENSION"}:
+            raise ValueError(self.injected_failure)
         action_ids, arg1_ids, arg2_ids = [4] * 17, [0] * 17, [0] * 17
         decoded: list[list[str]] = []
         self.semantic_steps = []
@@ -157,6 +183,7 @@ def _config(row: dict, dataset: dict, *, variant: str = "A2") -> dict:
             "eps": 1e-8,
             "weight_decay": 0.01,
             "gradient_clip_norm": 1.0,
+            "semantic_loss_weight": 1.0 if variant in {"A3", "A4"} else 0.0,
         },
         "architecture": {
             "d_model": 256,
@@ -214,12 +241,12 @@ def validate_lineage(
     """Validate files, hashes, profile constraints, and replay semantics end to end."""
     task_hash = canonical_task_hash(task)
     variant = config.get("variant", "A2")
-    for artifact in (request, checkpoint, work_plan, episode, evaluation):
+    for artifact in (request, checkpoint, work_plan, manifest, episode, evaluation, *attempts):
         if artifact is not None and artifact.get("variant", "A2") != variant:
             raise ValueError("VARIANT_MISMATCH")
     if variant == "A2" and semantic_trace is not None:
         raise ValueError("A2_SEMANTIC_ARTIFACT_FORBIDDEN")
-    if variant in {"A3", "A4"}:
+    if variant in {"A3", "A4"} and work_plan is not None:
         if semantic_trace is None:
             raise ValueError("SEMANTIC_TRACE_MISSING")
         if semantic_trace.get("variant") != variant:
@@ -228,16 +255,22 @@ def validate_lineage(
             raise ValueError("A3_INFERENCE_FEEDBACK_NOT_PREDICTED")
         if variant == "A4" and semantic_trace.get("feedback_applied") is not False:
             raise ValueError("A4_FEEDBACK_APPLIED")
-        if work_plan is None or len(semantic_trace.get("steps", [])) != len(work_plan["steps"]):
+        if len(semantic_trace.get("steps", [])) != len(work_plan["steps"]):
             raise ValueError("SEMANTIC_TRACE_LENGTH")
         if [row.get("step_index") for row in semantic_trace["steps"]] != list(
             range(len(work_plan["steps"]))
         ):
             raise ValueError("SEMANTIC_TRACE_ORDER")
+        if semantic_trace.get("config_hash") != request["config_hash"]:
+            raise ValueError("SEMANTIC_TRACE_CONFIG_MISMATCH")
         if semantic_trace.get("work_plan_artifact_hash") != work_plan["plan_artifact_hash"]:
             raise ValueError("SEMANTIC_TRACE_PLAN_MISMATCH")
         if semantic_trace.get("checkpoint_manifest_hash") != request["checkpoint_manifest_hash"]:
             raise ValueError("SEMANTIC_TRACE_CHECKPOINT_MISMATCH")
+        if semantic_trace.get("checkpoint_file_hash") != checkpoint["model_file_sha256"]:
+            raise ValueError("SEMANTIC_TRACE_CHECKPOINT_MISMATCH")
+        if semantic_trace.get("planner_request_hash") != request["request_hash"]:
+            raise ValueError("SEMANTIC_TRACE_REQUEST_MISMATCH")
         latent_path = root / semantic_trace.get("latent_path", "")
         if not latent_path.is_file() or file_hash(latent_path) != semantic_trace.get(
             "latent_file_sha256"
@@ -245,15 +278,14 @@ def validate_lineage(
             raise ValueError("SEMANTIC_LATENT_FILE_MISMATCH")
         if latent_path.stat().st_size != len(work_plan["steps"]) * 384 * 4:
             raise ValueError("LATENT_DIMENSION")
-        import math
-
         payload = latent_path.read_bytes()
         previous = None
         for index, (trace_step, plan_step) in enumerate(
             zip(semantic_trace["steps"], work_plan["steps"], strict=True)
         ):
             if (trace_step.get("action"), trace_step.get("args")) != (
-                plan_step["action"], plan_step["args"]
+                plan_step["action"],
+                plan_step["args"],
             ) or trace_step.get("previous_z_sha256") != previous:
                 raise ValueError("SEMANTIC_TRACE_STEP_MISMATCH")
             if not (0.999 <= trace_step.get("latent_norm", 0) <= 1.001):
@@ -261,9 +293,14 @@ def validate_lineage(
             chunk = payload[index * 1536 : (index + 1) * 1536]
             if "sha256:" + hashlib.sha256(chunk).hexdigest() != trace_step.get("z_sha256"):
                 raise ValueError("SEMANTIC_STEP_HASH")
-            values = __import__("struct").unpack("<384f", chunk)
+            values = struct.unpack("<384f", chunk)
             if not all(math.isfinite(value) for value in values):
                 raise ValueError("LATENT_NONFINITE")
+            actual_norm = math.sqrt(sum(value * value for value in values))
+            if not 0.999 <= actual_norm <= 1.001:
+                raise ValueError("LATENT_NORM")
+            if not math.isclose(trace_step["latent_norm"], actual_norm, rel_tol=0, abs_tol=1e-6):
+                raise ValueError("LATENT_NORM_EVIDENCE_MISMATCH")
             previous = trace_step.get("z_sha256")
     if request["task_id"] != task["task_id"] or request["canonical_task_hash"] != task_hash:
         raise ValueError("request task mismatch")
@@ -284,6 +321,19 @@ def validate_lineage(
     )
     if state_dict_sha256(persisted_state) != checkpoint["state_dict_sha256"]:
         raise ValueError("checkpoint state_dict mismatch")
+    if variant in {"A3", "A4"} and work_plan is not None:
+        replay_model = LockedPlanner(17, variant)
+        replay_model.load_state_dict(persisted_state)
+        replay_model.eval()
+        replay_planner = A2Planner(replay_model)
+        replay_raw = replay_planner.plan(task)
+        if replay_raw != [[step["action"], *step["args"]] for step in work_plan["steps"]]:
+            raise ValueError("CHECKPOINT_PLAN_REPLAY_MISMATCH")
+        reproduced = b"".join(
+            struct.pack("<384f", *z.tolist()) for z in (replay_planner.semantic_steps or [])
+        )
+        if reproduced != payload:
+            raise ValueError("CHECKPOINT_LATENT_REPLAY_MISMATCH")
     if file_hash(root / checkpoint["config_path"]) != checkpoint["config_hash"]:
         raise ValueError("checkpoint config mismatch")
     if file_hash(root / checkpoint["training_report_path"]) != checkpoint["training_report_hash"]:
@@ -327,12 +377,33 @@ def validate_lineage(
         if report.get(field) != expected:
             raise ValueError(f"training report {field} mismatch")
     optimizer_evidence = json.loads((root / checkpoint["optimizer_evidence_path"]).read_bytes())
+    audit_model = LockedPlanner(17, variant)
+    inventory_active = set(audit_model.active_names)
+    allowed_no_gradient = (
+        {name for name in inventory_active if name.startswith("semantic.latent_feedback.")}
+        if variant == "A4"
+        else set()
+    )
+    expected_gradient = inventory_active - allowed_no_gradient
+    evidence = optimizer_evidence.get("active_gradient_evidence", {})
+    if set(evidence) != inventory_active:
+        raise ValueError("gradient evidence active set mismatch")
     if (
-        optimizer_evidence.get("config_hash") != request["config_hash"]
-        or not optimizer_evidence.get("state_matches_active_set")
-        or not optimizer_evidence.get("state_all_finite_nonzero")
+        set(optimizer_evidence.get("active_parameter_names", [])) != inventory_active
+        or set(optimizer_evidence.get("expected_gradient_parameter_names", [])) != expected_gradient
+        or set(optimizer_evidence.get("allowed_no_gradient_parameter_names", []))
+        != allowed_no_gradient
+        or set(optimizer_evidence.get("optimizer_state_parameter_names", [])) != expected_gradient
+        or not optimizer_evidence.get("optimizer_state_matches_expected_gradient_set")
     ):
-        raise ValueError("optimizer evidence semantics mismatch")
+        raise ValueError("optimizer gradient policy mismatch")
+    for name in expected_gradient:
+        row = evidence[name]
+        if not (row.get("grad_present") and row.get("finite") and row.get("nonzero")):
+            raise ValueError("required active gradient missing")
+    for name in allowed_no_gradient:
+        if evidence[name].get("grad_present"):
+            raise ValueError("A4 allowed-no-gradient policy mismatch")
     if (
         checkpoint["optimizer_evidence_hash"] != report["optimizer_evidence_hash"]
         or checkpoint["optimizer_state_path"] != report["optimizer_state_path"]
@@ -346,7 +417,6 @@ def validate_lineage(
         != checkpoint["optimizer_state_file_sha256"]
     ):
         raise ValueError("optimizer state file mismatch")
-    audit_model = LockedPlanner(17, variant)
     audit_parameters = [
         parameter for parameter in audit_model.parameters() if parameter.requires_grad
     ]
@@ -371,6 +441,23 @@ def validate_lineage(
         or checkpoint["runtime"] != config["runtime"]
     ):
         raise ValueError("checkpoint provenance mismatch")
+    expected_feedback = (
+        "none" if variant == "A2" else "teacher-forced-current-step-target-shifted-to-next-position"
+    )
+    from .semantic import DIMENSION, TARGET_CONFIG_SHA256, TARGET_SOURCE
+
+    if (
+        checkpoint.get("variant") != variant
+        or report.get("variant") != variant
+        or report.get("feedback_source") != expected_feedback
+        or report.get("latent_dimension") != DIMENSION
+        or report.get("semantic_loss_weight") != config["training"]["semantic_loss_weight"]
+        or report.get("latent_target_source")
+        != (TARGET_SOURCE if variant in {"A3", "A4"} else None)
+        or report.get("latent_target_config_hash")
+        != (TARGET_CONFIG_SHA256 if variant in {"A3", "A4"} else None)
+    ):
+        raise ValueError("training variant semantics mismatch")
     bindings = _common(
         task,
         request["config_hash"],
@@ -558,6 +645,8 @@ def validate_lineage(
 def validate_run_directory(root: Path, task: dict) -> None:
     """Reload every emitted lineage artifact and validate the on-disk chain."""
 
+    from jsonschema import Draft202012Validator, ValidationError
+
     def load(name):
         return json.loads((root / name).read_bytes())
 
@@ -565,39 +654,88 @@ def validate_run_directory(root: Path, task: dict) -> None:
     attempt_path = root / "attempt-log.jsonl"
     attempts = [json.loads(line) for line in attempt_path.read_text().splitlines()]
     work_plan = load(manifest["work_plan_path"]) if manifest["work_plan_path"] else None
+    semantic_trace = (
+        load("semantic-trace.json") if (root / "semantic-trace.json").is_file() else None
+    )
+    persisted = {
+        "toy_development_config": load("development-config.json"),
+        "toy_checkpoint_manifest": load("checkpoint-manifest.json"),
+        "toy_planner_request": load("planner-request.json"),
+        "toy_episode_plan_manifest": manifest,
+        "toy_episode_log": load("episode-log.json"),
+        "toy_evaluation_result": load("evaluation-result.json"),
+        "toy_optimizer_evidence": load("model/optimizer-evidence.json"),
+        "toy_training_report": load("model/training-report.json"),
+        "toy_run_result": load("run-result.json"),
+    }
+    if work_plan is not None:
+        persisted["toy_work_plan"] = work_plan
+    if semantic_trace is not None:
+        persisted["toy_semantic_trace"] = semantic_trace
+    schema_root = Path(__file__).with_name("schemas")
+    try:
+        for schema_name, artifact in persisted.items():
+            schema = json.loads((schema_root / f"{schema_name}.schema.json").read_bytes())
+            Draft202012Validator(schema).validate(artifact)
+        attempt_schema = json.loads((schema_root / "toy_attempt_log.schema.json").read_bytes())
+        for attempt in attempts:
+            Draft202012Validator(attempt_schema).validate(attempt)
+    except ValidationError as error:
+        raise ValueError(f"RUNTIME_SCHEMA_INVALID: {error.message}") from error
+    request = persisted["toy_planner_request"]
+    config = persisted["toy_development_config"]
+    checkpoint = persisted["toy_checkpoint_manifest"]
+    evaluation = persisted["toy_evaluation_result"]
+    result = persisted["toy_run_result"]
     validate_lineage(
         root=root,
         task=task,
-        request=load("planner-request.json"),
-        config=load("development-config.json"),
-        checkpoint=load("checkpoint-manifest.json"),
+        request=request,
+        config=config,
+        checkpoint=checkpoint,
         work_plan=work_plan,
         manifest=manifest,
         attempts=attempts,
         episode=load("episode-log.json"),
         evaluation=load("evaluation-result.json"),
-        semantic_trace=(
-            load("semantic-trace.json") if (root / "semantic-trace.json").is_file() else None
-        ),
+        semantic_trace=semantic_trace,
     )
+    artifacts = sorted(
+        path for path in root.rglob("*") if path.is_file() and path.name != "run-result.json"
+    )
+    expected_replay = toy_hash(
+        "run_files", {str(path.relative_to(root)): file_hash(path) for path in artifacts}
+    )
+    if artifact_hash(result, "run_result_hash") != result["run_result_hash"]:
+        raise ValueError("run result hash mismatch")
+    if (
+        result["replay_hash"] != expected_replay
+        or result["variant"] != config["variant"]
+        or result["success"] != evaluation["success"]
+        or result["failure_code"] != evaluation["failure_code"]
+        or result["planner_call_count"] != 1
+        or result["tensor_count"] != 177
+        or result["config_hash"] != request["config_hash"]
+        or result["request_hash"] != request["request_hash"]
+        or result["checkpoint_manifest_hash"] != request["checkpoint_manifest_hash"]
+        or result["checkpoint_file_hash"] != checkpoint["model_file_sha256"]
+        or result["evaluation_result_hash"] != evaluation["evaluation_result_hash"]
+    ):
+        raise ValueError("run result semantics mismatch")
 
 
 def verify_replay(root: Path, task: dict) -> None:
     """Recompute the complete non-circular run hash after all files are durable."""
     validate_run_directory(root, task)
-    result = json.loads((root / "run-result.json").read_bytes())
-    artifacts = sorted(
-        path for path in root.rglob("*") if path.is_file() and path.name != "run-result.json"
-    )
-    expected = toy_hash(
-        "run_files", {str(path.relative_to(root)): file_hash(path) for path in artifacts}
-    )
-    if result["replay_hash"] != expected:
-        raise ValueError("run replay hash mismatch")
 
 
-def run(output: Path, *, variant: str = "A2", failure_mode: str | None = None,
-        reuse_from: Path | None = None) -> dict:
+def run(
+    output: Path,
+    *,
+    variant: str = "A2",
+    failure_mode: str | None = None,
+    reuse_from: Path | None = None,
+) -> dict:
     if output.exists() and any(output.iterdir()):
         raise ValueError("output directory must be clean")
     output.mkdir(parents=True, exist_ok=True)
@@ -667,7 +805,12 @@ def run(output: Path, *, variant: str = "A2", failure_mode: str | None = None,
     model = LockedPlanner(17, variant)
     model.load_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=True))
     model.eval()
-    planner = A2Planner(model)
+    planner = A2Planner(
+        model,
+        injected_failure=failure_mode
+        if failure_mode in {"LATENT_NONFINITE", "LATENT_ZERO_NORM", "LATENT_DIMENSION"}
+        else None,
+    )
     work_plan = None
     generation_failure_code = None
     try:
@@ -704,8 +847,9 @@ def run(output: Path, *, variant: str = "A2", failure_mode: str | None = None,
         artifact = {k: v for k, v in work_plan.items() if k != "plan_artifact_hash"}
         work_plan["plan_artifact_hash"] = toy_hash("plan_artifact", artifact)
     except (RuntimeError, ValueError) as error:
+        code = str(error)
         generation_failure_code = (
-            str(error) if str(error).startswith("PLAN_") else "PLAN_GENERATION_ERROR"
+            code if code in PRESERVED_GENERATION_CODES else "PLAN_GENERATION_ERROR"
         )
         events, success = [], False
     execution_failure_code = None
@@ -714,6 +858,7 @@ def run(output: Path, *, variant: str = "A2", failure_mode: str | None = None,
     plan_path = "results/development/plans/work-plan.json" if work_plan else None
     manifest = {
         "schema_version": "toy-episode-plan-manifest/1.0",
+        "variant": variant,
         **downstream,
         **DEV,
         "confirmatory": False,
@@ -734,6 +879,7 @@ def run(output: Path, *, variant: str = "A2", failure_mode: str | None = None,
             attempts.append(
                 {
                     "schema_version": "toy-attempt-log/1.0",
+                    "variant": variant,
                     **downstream,
                     **DEV,
                     "confirmatory": False,
@@ -805,34 +951,53 @@ def run(output: Path, *, variant: str = "A2", failure_mode: str | None = None,
         previous = None
         for index, (step, z) in enumerate(zip(work_plan["steps"], latents, strict=True)):
             z_hash = "sha256:" + hashlib.sha256(z.numpy().tobytes()).hexdigest()
-            entries.append({"step_index": index, "action": step["action"], "args": step["args"],
-                            "z_sha256": z_hash, "latent_norm": float(z.norm()),
-                            "source": "predicted", "previous_z_sha256": previous})
+            entries.append(
+                {
+                    "step_index": index,
+                    "action": step["action"],
+                    "args": step["args"],
+                    "z_sha256": z_hash,
+                    "latent_norm": float(z.norm()),
+                    "source": "predicted",
+                    "previous_z_sha256": previous,
+                }
+            )
             previous = z_hash
-        semantic_trace = {"schema_version": "toy-semantic-trace/1.0", "variant": variant,
-                          "feedback_source": "predicted", "feedback_applied": variant == "A3",
-                          "config_hash": config_hash,
-                          "checkpoint_manifest_hash": checkpoint_manifest_hash,
-                          "checkpoint_file_hash": checkpoint["model_file_sha256"],
-                          "planner_request_hash": request["request_hash"],
-                          "work_plan_artifact_hash": work_plan["plan_artifact_hash"],
-                          "latent_path": "semantic-latents.f32",
-                          "latent_file_sha256": file_hash(latent_path), "steps": entries}
+        semantic_trace = {
+            "schema_version": "toy-semantic-trace/1.0",
+            "variant": variant,
+            "feedback_source": "predicted",
+            "feedback_applied": variant == "A3",
+            "config_hash": config_hash,
+            "checkpoint_manifest_hash": checkpoint_manifest_hash,
+            "checkpoint_file_hash": checkpoint["model_file_sha256"],
+            "planner_request_hash": request["request_hash"],
+            "work_plan_artifact_hash": work_plan["plan_artifact_hash"],
+            "latent_path": "semantic-latents.f32",
+            "latent_file_sha256": file_hash(latent_path),
+            "steps": entries,
+        }
         _write(output / "semantic-trace.json", semantic_trace)
-    validate_run_directory(output, row)
-    _write(output / "training-summary.json", training)
     artifacts = sorted(p for p in output.rglob("*") if p.is_file())
     replay_hash = toy_hash(
         "run_files", {str(p.relative_to(output)): file_hash(p) for p in artifacts}
     )
     result = {
+        "schema_version": "toy-run-result/1.0",
         "success": success,
         "planner_call_count": 1,
         "tensor_count": training["tensor_count"],
         "failure_code": outcome_failure_code,
         "variant": variant,
         "replay_hash": replay_hash,
+        "config_hash": config_hash,
+        "request_hash": request["request_hash"],
+        "checkpoint_manifest_hash": checkpoint_manifest_hash,
+        "checkpoint_file_hash": checkpoint["model_file_sha256"],
+        "evaluation_result_hash": evaluation["evaluation_result_hash"],
+        "run_result_hash": "",
     }
+    result["run_result_hash"] = artifact_hash(result, "run_result_hash")
     _write(output / "run-result.json", result)
     verify_replay(output, row)
     return result

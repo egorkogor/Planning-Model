@@ -82,7 +82,7 @@ def test_real_training_active_and_dormant_policy(tmp_path) -> None:
     assert report["optimizer_nonzero_state"] is True
     assert report["optimizer_betas"] == [0.9, 0.95]
     assert report["active_gradients_all_finite_nonzero"] is True
-    assert report["optimizer_state_matches_active_set"] is True
+    assert report["optimizer_state_matches_expected_gradient_set"] is True
     assert report["optimizer_state_all_finite_nonzero"] is True
 
 

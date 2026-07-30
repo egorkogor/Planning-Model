@@ -4,7 +4,13 @@ import torch
 
 from planner_toy.dataset import generate
 from planner_toy.model import LockedPlanner, canonical_task_encoding
-from planner_toy.semantic import DIMENSION, target_for_step, targets
+from planner_toy.semantic import (
+    DIMENSION,
+    TARGET_CONFIG_SHA256,
+    target_config_sha256,
+    target_for_step,
+    targets,
+)
 from planner_toy.training import labels, train
 
 
@@ -62,12 +68,18 @@ def test_inventory_masks_and_a2_dormancy() -> None:
     assert models["A4"].semantic.latent_feedback.linear1.weight.requires_grad
 
 
-def test_toy_targets_are_limited_normalized_and_deterministic() -> None:
+def test_toy_targets_are_seeded_normalized_and_config_bound() -> None:
     step = ["UNSTACK", "b0", "b1"]
-    assert torch.equal(target_for_step(step), target_for_step(step))
-    assert target_for_step(step).shape == (DIMENSION,)
-    assert torch.allclose(target_for_step(step).norm(), torch.tensor(1.0), atol=1e-6)
-    assert not torch.equal(target_for_step(step), target_for_step(["PUT_DOWN", "b0"]))
+    first = target_for_step(step, seed=17)
+    assert torch.equal(first, target_for_step(step, seed=17))
+    assert not torch.equal(first, target_for_step(step, seed=18))
+    assert not torch.equal(first, target_for_step(["PUT_DOWN", "b0"], seed=17))
+    assert first.shape == (DIMENSION,) and torch.isfinite(first).all()
+    assert torch.allclose(first.norm(), torch.tensor(1.0), atol=1e-6)
+    assert TARGET_CONFIG_SHA256 == target_config_sha256(17)
+    assert TARGET_CONFIG_SHA256 != target_config_sha256(18)
+    # Target bytes are transitively bound because their digest input contains this config hash.
+    assert torch.equal(first, target_for_step(step, seed=17))
 
 
 def test_a3_and_a4_training_gradient_policy(tmp_path) -> None:
@@ -81,8 +93,9 @@ def test_a3_and_a4_training_gradient_policy(tmp_path) -> None:
         path = tmp_path / variant / "config.json"
         path.parent.mkdir()
         path.write_bytes(canonical_bytes(config) + b"\n")
-        model, report = train(row, tmp_path / variant / "model", config=config,
-                              config_hash=file_hash(path))
+        model, report = train(
+            row, tmp_path / variant / "model", config=config, config_hash=file_hash(path)
+        )
         assert report["component_losses"]["semantic"] >= 0
         assert report["latent_norm_mean"] == 1.0
         assert model.heads.latent.weight.grad is not None

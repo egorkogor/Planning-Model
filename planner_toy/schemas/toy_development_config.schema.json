@@ -112,6 +112,12 @@
         "learning_rate": {
           "const": 0.0003
         },
+        "semantic_loss_weight": {
+          "enum": [
+            0.0,
+            1.0
+          ]
+        },
         "steps": {
           "const": 30
         },
@@ -125,7 +131,8 @@
         "adamw_betas",
         "eps",
         "weight_decay",
-        "gradient_clip_norm"
+        "gradient_clip_norm",
+        "semantic_loss_weight"
       ],
       "type": "object"
     },
