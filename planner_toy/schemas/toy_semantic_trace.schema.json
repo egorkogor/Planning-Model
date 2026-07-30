@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "toy-semantic-trace/1.0",
+  "type": "object",
+  "required": ["schema_version", "variant", "feedback_source", "feedback_applied", "config_hash", "checkpoint_manifest_hash", "checkpoint_file_hash", "planner_request_hash", "work_plan_artifact_hash", "latent_path", "latent_file_sha256", "steps"],
+  "properties": {
+    "schema_version": {"const": "toy-semantic-trace/1.0"},
+    "variant": {"enum": ["A3", "A4"]},
+    "feedback_source": {"const": "predicted"},
+    "feedback_applied": {"type": "boolean"},
+    "config_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "checkpoint_manifest_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "checkpoint_file_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "planner_request_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "work_plan_artifact_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "latent_path": {"const": "semantic-latents.f32"},
+    "latent_file_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "steps": {"type": "array", "items": {"type": "object"}}
+  },
+  "additionalProperties": false
+}

@@ -20,7 +20,7 @@ from .canonical import (
 )
 from .dataset import generate, task_from_row
 from .domain import ACTION_RANK, apply_action, goal_satisfied, validate_state
-from .model import LockedA2, canonical_task_encoding
+from .model import LockedPlanner, canonical_task_encoding
 from .training import optimizer_state_sha256, state_dict_sha256, train
 
 ACTION_NAMES = tuple(ACTION_RANK)
@@ -42,8 +42,9 @@ def jsonl_bytes(rows: list[dict]) -> bytes:
 
 @dataclass
 class A2Planner:
-    model: LockedA2
+    model: LockedPlanner
     calls: int = 0
+    semantic_steps: list[torch.Tensor] | None = None
 
     def plan(self, row: dict) -> list[list[str]]:
         if self.calls:
@@ -51,6 +52,8 @@ class A2Planner:
         self.calls += 1
         action_ids, arg1_ids, arg2_ids = [4] * 17, [0] * 17, [0] * 17
         decoded: list[list[str]] = []
+        self.semantic_steps = []
+        feedback = torch.zeros(1, 17, 384)
         encoded = canonical_task_encoding(row)
         for index in range(17):
             with torch.no_grad():
@@ -59,7 +62,13 @@ class A2Planner:
                     torch.tensor([action_ids]),
                     torch.tensor([arg1_ids]),
                     torch.tensor([arg2_ids]),
+                    semantic_feedback=feedback if self.model.variant in {"A3", "A4"} else None,
                 )
+            if logits.z_semantic is not None:
+                z = logits.z_semantic[0, index].detach().clone()
+                self.semantic_steps.append(z)
+                if index + 1 < 17:
+                    feedback[0, index + 1] = z
             action_id = int(logits.action[0, index].argmax())
             if action_id == 4:
                 return decoded + [["END"]]
@@ -134,10 +143,12 @@ def _git_commit() -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def _config(row: dict, dataset: dict) -> dict:
+def _config(row: dict, dataset: dict, *, variant: str = "A2") -> dict:
+    if variant not in {"A2", "A3", "A4"}:
+        raise ValueError("VARIANT_UNSUPPORTED")
     return {
         "schema_version": "toy-development-config/1.0",
-        "variant": "A2",
+        "variant": variant,
         **DEV,
         "training": {
             "steps": 30,
@@ -198,16 +209,69 @@ def validate_lineage(
     attempts: list[dict],
     episode: dict,
     evaluation: dict,
+    semantic_trace: dict | None = None,
 ) -> None:
     """Validate files, hashes, profile constraints, and replay semantics end to end."""
     task_hash = canonical_task_hash(task)
+    variant = config.get("variant", "A2")
+    for artifact in (request, checkpoint, work_plan, episode, evaluation):
+        if artifact is not None and artifact.get("variant", "A2") != variant:
+            raise ValueError("VARIANT_MISMATCH")
+    if variant == "A2" and semantic_trace is not None:
+        raise ValueError("A2_SEMANTIC_ARTIFACT_FORBIDDEN")
+    if variant in {"A3", "A4"}:
+        if semantic_trace is None:
+            raise ValueError("SEMANTIC_TRACE_MISSING")
+        if semantic_trace.get("variant") != variant:
+            raise ValueError("VARIANT_MISMATCH")
+        if variant == "A3" and semantic_trace.get("feedback_source") != "predicted":
+            raise ValueError("A3_INFERENCE_FEEDBACK_NOT_PREDICTED")
+        if variant == "A4" and semantic_trace.get("feedback_applied") is not False:
+            raise ValueError("A4_FEEDBACK_APPLIED")
+        if work_plan is None or len(semantic_trace.get("steps", [])) != len(work_plan["steps"]):
+            raise ValueError("SEMANTIC_TRACE_LENGTH")
+        if [row.get("step_index") for row in semantic_trace["steps"]] != list(
+            range(len(work_plan["steps"]))
+        ):
+            raise ValueError("SEMANTIC_TRACE_ORDER")
+        if semantic_trace.get("work_plan_artifact_hash") != work_plan["plan_artifact_hash"]:
+            raise ValueError("SEMANTIC_TRACE_PLAN_MISMATCH")
+        if semantic_trace.get("checkpoint_manifest_hash") != request["checkpoint_manifest_hash"]:
+            raise ValueError("SEMANTIC_TRACE_CHECKPOINT_MISMATCH")
+        latent_path = root / semantic_trace.get("latent_path", "")
+        if not latent_path.is_file() or file_hash(latent_path) != semantic_trace.get(
+            "latent_file_sha256"
+        ):
+            raise ValueError("SEMANTIC_LATENT_FILE_MISMATCH")
+        if latent_path.stat().st_size != len(work_plan["steps"]) * 384 * 4:
+            raise ValueError("LATENT_DIMENSION")
+        import math
+
+        payload = latent_path.read_bytes()
+        previous = None
+        for index, (trace_step, plan_step) in enumerate(
+            zip(semantic_trace["steps"], work_plan["steps"], strict=True)
+        ):
+            if (trace_step.get("action"), trace_step.get("args")) != (
+                plan_step["action"], plan_step["args"]
+            ) or trace_step.get("previous_z_sha256") != previous:
+                raise ValueError("SEMANTIC_TRACE_STEP_MISMATCH")
+            if not (0.999 <= trace_step.get("latent_norm", 0) <= 1.001):
+                raise ValueError("LATENT_NORM")
+            chunk = payload[index * 1536 : (index + 1) * 1536]
+            if "sha256:" + hashlib.sha256(chunk).hexdigest() != trace_step.get("z_sha256"):
+                raise ValueError("SEMANTIC_STEP_HASH")
+            values = __import__("struct").unpack("<384f", chunk)
+            if not all(math.isfinite(value) for value in values):
+                raise ValueError("LATENT_NONFINITE")
+            previous = trace_step.get("z_sha256")
     if request["task_id"] != task["task_id"] or request["canonical_task_hash"] != task_hash:
         raise ValueError("request task mismatch")
     if file_hash(root / "development-config.json") != request["config_hash"]:
         raise ValueError("config file mismatch")
     if json.loads((root / "development-config.json").read_bytes()) != config:
         raise ValueError("config content mismatch")
-    if config != _config(task, generate(17)):
+    if config != _config(task, generate(17), variant=variant):
         raise ValueError("config provenance mismatch")
     if file_hash(root / "checkpoint-manifest.json") != request["checkpoint_manifest_hash"]:
         raise ValueError("checkpoint manifest file mismatch")
@@ -282,7 +346,7 @@ def validate_lineage(
         != checkpoint["optimizer_state_file_sha256"]
     ):
         raise ValueError("optimizer state file mismatch")
-    audit_model = LockedA2(17)
+    audit_model = LockedPlanner(17, variant)
     audit_parameters = [
         parameter for parameter in audit_model.parameters() if parameter.requires_grad
     ]
@@ -512,6 +576,9 @@ def validate_run_directory(root: Path, task: dict) -> None:
         attempts=attempts,
         episode=load("episode-log.json"),
         evaluation=load("evaluation-result.json"),
+        semantic_trace=(
+            load("semantic-trace.json") if (root / "semantic-trace.json").is_file() else None
+        ),
     )
 
 
@@ -529,13 +596,14 @@ def verify_replay(root: Path, task: dict) -> None:
         raise ValueError("run replay hash mismatch")
 
 
-def run(output: Path, *, failure_mode: str | None = None, reuse_from: Path | None = None) -> dict:
+def run(output: Path, *, variant: str = "A2", failure_mode: str | None = None,
+        reuse_from: Path | None = None) -> dict:
     if output.exists() and any(output.iterdir()):
         raise ValueError("output directory must be clean")
     output.mkdir(parents=True, exist_ok=True)
     dataset = generate(17)
     row = next(r for r in dataset["train"] if len(r["oracle_work_plan"]) > 1)
-    expected_config = _config(row, dataset)
+    expected_config = _config(row, dataset, variant=variant)
     if reuse_from is None:
         config = expected_config
         _write(output / "development-config.json", config)
@@ -545,6 +613,7 @@ def run(output: Path, *, failure_mode: str | None = None, reuse_from: Path | Non
         checkpoint_path = output / "model/trained.pt"
         checkpoint = {
             "schema_version": "toy-checkpoint-manifest/1.0",
+            "variant": variant,
             **DEV,
             "model_path": "model/trained.pt",
             "model_file_sha256": file_hash(checkpoint_path),
@@ -584,6 +653,7 @@ def run(output: Path, *, failure_mode: str | None = None, reuse_from: Path | Non
     common = _common(row, config_hash, checkpoint_manifest_hash, checkpoint["model_file_sha256"])
     request = {
         "schema_version": "toy-planner-request/1.0",
+        "variant": variant,
         "request_id": "toy-request-0001",
         **common,
         **DEV,
@@ -594,7 +664,7 @@ def run(output: Path, *, failure_mode: str | None = None, reuse_from: Path | Non
     request["request_hash"] = artifact_hash(request, "request_hash")
     _write(output / "planner-request.json", request)
     downstream = {**common, "planner_request_hash": request["request_hash"]}
-    model = LockedA2(17)
+    model = LockedPlanner(17, variant)
     model.load_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=True))
     model.eval()
     planner = A2Planner(model)
@@ -617,6 +687,7 @@ def run(output: Path, *, failure_mode: str | None = None, reuse_from: Path | Non
         ]
         work_plan = {
             "schema_version": "toy-work-plan/1.0",
+            "variant": variant,
             **downstream,
             **DEV,
             "state_hash": state_hash(row["initial"]),
@@ -687,6 +758,7 @@ def run(output: Path, *, failure_mode: str | None = None, reuse_from: Path | Non
         outcome_failure_code = "GOAL_NOT_ACHIEVED"
     episode = {
         "schema_version": "toy-episode-log/1.0",
+        "variant": variant,
         **downstream,
         **DEV,
         "episode_plan_manifest_hash": manifest["manifest_hash"],
@@ -706,6 +778,7 @@ def run(output: Path, *, failure_mode: str | None = None, reuse_from: Path | Non
     _write(output / "episode-log.json", episode)
     evaluation = {
         "schema_version": "toy-evaluation-result/1.0",
+        "variant": variant,
         **downstream,
         **DEV,
         "confirmatory": False,
@@ -722,6 +795,30 @@ def run(output: Path, *, failure_mode: str | None = None, reuse_from: Path | Non
     }
     evaluation["evaluation_result_hash"] = artifact_hash(evaluation, "evaluation_result_hash")
     _write(output / "evaluation-result.json", evaluation)
+    if variant in {"A3", "A4"} and work_plan is not None:
+        import struct
+
+        latent_path = output / "semantic-latents.f32"
+        latents = planner.semantic_steps or []
+        latent_path.write_bytes(b"".join(struct.pack("<384f", *z.tolist()) for z in latents))
+        entries = []
+        previous = None
+        for index, (step, z) in enumerate(zip(work_plan["steps"], latents, strict=True)):
+            z_hash = "sha256:" + hashlib.sha256(z.numpy().tobytes()).hexdigest()
+            entries.append({"step_index": index, "action": step["action"], "args": step["args"],
+                            "z_sha256": z_hash, "latent_norm": float(z.norm()),
+                            "source": "predicted", "previous_z_sha256": previous})
+            previous = z_hash
+        semantic_trace = {"schema_version": "toy-semantic-trace/1.0", "variant": variant,
+                          "feedback_source": "predicted", "feedback_applied": variant == "A3",
+                          "config_hash": config_hash,
+                          "checkpoint_manifest_hash": checkpoint_manifest_hash,
+                          "checkpoint_file_hash": checkpoint["model_file_sha256"],
+                          "planner_request_hash": request["request_hash"],
+                          "work_plan_artifact_hash": work_plan["plan_artifact_hash"],
+                          "latent_path": "semantic-latents.f32",
+                          "latent_file_sha256": file_hash(latent_path), "steps": entries}
+        _write(output / "semantic-trace.json", semantic_trace)
     validate_run_directory(output, row)
     _write(output / "training-summary.json", training)
     artifacts = sorted(p for p in output.rglob("*") if p.is_file())
@@ -733,6 +830,7 @@ def run(output: Path, *, failure_mode: str | None = None, reuse_from: Path | Non
         "planner_call_count": 1,
         "tensor_count": training["tensor_count"],
         "failure_code": outcome_failure_code,
+        "variant": variant,
         "replay_hash": replay_hash,
     }
     _write(output / "run-result.json", result)

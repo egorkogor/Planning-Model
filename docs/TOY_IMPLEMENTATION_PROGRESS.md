@@ -41,6 +41,48 @@
   wrapping model bytes in newly asserted provenance.
 - This is implementation evidence only. No sealed data was accessed, no confirmatory
   experiment was run, and P06/P07 are not claimed complete.
-- Remaining before A3: broaden training beyond the deliberately minimal toy task,
-  produce protocol-governed A2 pilot/freeze evidence, then implement and audit the
-  locked latent head/feedback path without changing scientific contracts.
+- Earlier A2 backlog was to broaden training and add the latent path; the bounded
+  development implementation status of that latent path is recorded below without
+  claiming protocol-governed confirmatory evidence.
+
+## A3 Latent Thought Feedback — DEVELOPMENT MVP
+
+- Реализован явный development-only выбор `A2`, `A3` и `A4` поверх общего
+  177-тензорного parameter inventory. A2 сохраняет нулевой semantic component и
+  dormant latent-параметры; A3 вычисляет `Linear(256→384)` с L2-нормализацией и
+  передаёт предыдущий predicted latent через
+  `Linear(384→512) → GELU → Linear(512→256) → LayerNorm`; A4 вычисляет тот же
+  путь, но обнуляет projection непосредственно перед ConceptPacker.
+- Training A3/A4 использует **ненормативный toy adapter**: детерминированный
+  seed-17 вектор размерности 384 строится только из типизированной сигнатуры
+  текущего BlocksWorld action (`action`, `arg1`, `arg2`), нормализуется и
+  обучается cosine-distance loss. Adapter не получает будущие шаги, конечное
+  состояние или полный план через latent channel и не является предлагаемым
+  общим способом supervision человеческих мыслей.
+- На inference A3 использует только собственный predicted latent предыдущей
+  позиции. Позиция 0 нулевая; один Planner call формирует frozen многошаговый
+  WorkPlan, после чего Executor не перепланирует. Отдельные binary latent и JSON
+  semantic-trace artifacts связываются с config, checkpoint, request и WorkPlan и
+  проверяются fail-closed runtime validator-ом.
+- Технические sensitivity tests проверяют изменение hidden/logits A3 при controlled
+  latent substitution, инвариантность A2/A4 и отсутствие влияния будущего latent
+  на прошлую позицию. Это доказывает наличие вычислительного канала, но **не**
+  улучшение reasoning или качества решения.
+- Не реализованы Verbalizer, естественный язык, отдельная Answer trajectory,
+  closed-loop agent, A5 и A3r. BlocksWorld не доказывает перенос на общий
+  reasoning; MVP не является confirmatory experiment и не изменяет scientific
+  lock или нормативные v1.21 contracts.
+- Backlog вне scope: внешне зафиксированный общий semantic-target artifact,
+  полноценные A5/A3r controls, статистические сравнения между seeds и задачами,
+  FLOPs measurement и protocol-governed confirmatory design.
+
+### CPU wheel installation smoke path
+
+Изолированная поддерживаемая установка ML extra использует официальный CPU index:
+
+```bash
+python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu \
+  'planner-llm-mvp-stage1[ml] @ file:///absolute/path/to/wheel.whl'
+```
+
+Smoke import/inference выполняется вне repository root без `PYTHONPATH`.

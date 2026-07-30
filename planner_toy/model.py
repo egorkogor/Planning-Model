@@ -57,18 +57,27 @@ def _inventory() -> dict:
         return yaml.safe_load(handle)
 
 
-class LockedA2(nn.Module):
-    """A2 whose 177 state tensors are constructed directly from the locked inventory."""
+VARIANTS = ("A2", "A3", "A4")
 
-    def __init__(self, seed: int = SEED):
+
+class LockedPlanner(nn.Module):
+    """Development planner with one inventory and explicit A2/A3/A4 activation masks."""
+
+    def __init__(self, seed: int = SEED, variant: str = "A2"):
         super().__init__()
+        if variant not in VARIANTS:
+            raise ValueError(f"unsupported development variant: {variant}")
+        self.variant = variant
         validate_torch_runtime()
         contract = _inventory()
         self.inventory = contract["tensors"]
         for item in self.inventory:
             _install(self, item["name"], item["shape"])
         self.reset_parameters(seed)
-        active = {x["name"] for x in self.inventory if "A2" in x["active_arms"]}
+        # A4 computes the exact A3 path. Its semantic-feedback zero makes the
+        # projection task-gradient zero by design; the semantic head is trained.
+        arm = "A3" if variant in {"A3", "A4"} else "A2"
+        active = {x["name"] for x in self.inventory if arm in x["active_arms"]}
         for name, parameter in self.named_parameters():
             parameter.requires_grad_(name in active)
         self.active_names = frozenset(active)
@@ -147,8 +156,27 @@ class LockedA2(nn.Module):
             x, (256,), self.task_encoder.final_norm.weight, self.task_encoder.final_norm.bias, 1e-5
         )
 
+    def latent(self, hidden: torch.Tensor) -> torch.Tensor:
+        raw = F.linear(hidden, self.heads.latent.weight, self.heads.latent.bias)
+        if not torch.isfinite(raw).all():
+            raise ValueError("LATENT_NONFINITE")
+        if torch.any(torch.linalg.vector_norm(raw, dim=-1) == 0):
+            raise ValueError("LATENT_ZERO_NORM")
+        return F.normalize(raw, dim=-1)
+
+    def project_semantic(self, z: torch.Tensor) -> torch.Tensor:
+        if z.shape[-1] != 384:
+            raise ValueError("LATENT_DIMENSION")
+        if not torch.isfinite(z).all():
+            raise ValueError("LATENT_NONFINITE")
+        module = self.semantic.latent_feedback
+        projected = F.linear(F.gelu(F.linear(z, module.linear1.weight, module.linear1.bias)),
+                             module.linear2.weight, module.linear2.bias)
+        return F.layer_norm(projected, (256,), module.norm.weight, module.norm.bias, 1e-5)
+
     def forward(
-        self, encoded: TaskEncoding, actions: torch.Tensor, arg1: torch.Tensor, arg2: torch.Tensor
+        self, encoded: TaskEncoding, actions: torch.Tensor, arg1: torch.Tensor, arg2: torch.Tensor,
+        *, semantic_feedback: torch.Tensor | None = None,
     ) -> SimpleNamespace:
         memory = self.encode(encoded)
         steps = actions.shape[1]
@@ -166,6 +194,19 @@ class LockedA2(nn.Module):
         x = action_part + self.concept_packer.step_position_embedding.weight[pos]
         x = x + F.linear(r1, self.concept_packer.previous_arg1_projection.weight)
         x = x + F.linear(r2, self.concept_packer.previous_arg2_projection.weight)
+        semantic_component = torch.zeros_like(x)
+        projected_semantic = None
+        if self.variant in {"A3", "A4"}:
+            if semantic_feedback is None:
+                semantic_feedback = torch.zeros((*x.shape[:2], 384), device=x.device)
+            projected_semantic = self.project_semantic(semantic_feedback)
+            # Position zero has no predecessor under every mode.
+            projected_semantic = projected_semantic.clone()
+            projected_semantic[:, 0] = 0
+            semantic_component = projected_semantic
+            if self.variant == "A4":
+                semantic_component = torch.zeros_like(projected_semantic)
+        x = x + semantic_component
         x = F.layer_norm(
             x,
             (256,),
@@ -191,7 +232,18 @@ class LockedA2(nn.Module):
         action_logits = F.linear(x, self.heads.action.weight, self.heads.action.bias)
         arg1_logits = (x @ self.heads.arg1_pointer.weight) @ refs.transpose(1, 2)
         arg2_logits = (x @ self.heads.arg2_pointer.weight) @ refs.transpose(1, 2)
-        return SimpleNamespace(action=action_logits, arg1=arg1_logits, arg2=arg2_logits)
+        z_semantic = self.latent(x) if self.variant in {"A3", "A4"} else None
+        return SimpleNamespace(action=action_logits, arg1=arg1_logits, arg2=arg2_logits,
+                               hidden=x, z_semantic=z_semantic,
+                               projected_semantic=projected_semantic,
+                               semantic_component=semantic_component)
+
+
+class LockedA2(LockedPlanner):
+    """Backward-compatible spelling for the unchanged A2 baseline."""
+
+    def __init__(self, seed: int = SEED):
+        super().__init__(seed, "A2")
 
 
 @dataclass(frozen=True)

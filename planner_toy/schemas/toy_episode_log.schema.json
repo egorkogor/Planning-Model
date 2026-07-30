@@ -82,6 +82,13 @@
         "GOAL_NOT_ACHIEVED",
         null
       ]
+    },
+    "variant": {
+      "enum": [
+        "A2",
+        "A3",
+        "A4"
+      ]
     }
   },
   "required": [
@@ -104,7 +111,8 @@
     "goal_success",
     "plan_generation_status",
     "terminal_error",
-    "planner_request_hash"
+    "planner_request_hash",
+    "variant"
   ],
   "title": "toy-episode-log/1.0",
   "type": "object"

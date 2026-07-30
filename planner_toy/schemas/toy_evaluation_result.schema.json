@@ -86,6 +86,13 @@
     },
     "task_id": {
       "type": "string"
+    },
+    "variant": {
+      "enum": [
+        "A2",
+        "A3",
+        "A4"
+      ]
     }
   },
   "required": [
@@ -110,7 +117,8 @@
     "confirmatory",
     "sealed_data",
     "planner_request_hash",
-    "episode_log_hash"
+    "episode_log_hash",
+    "variant"
   ],
   "title": "toy-evaluation-result/1.0",
   "type": "object"

@@ -106,6 +106,13 @@
     },
     "training_report_path": {
       "const": "model/training-report.json"
+    },
+    "variant": {
+      "enum": [
+        "A2",
+        "A3",
+        "A4"
+      ]
     }
   },
   "required": [
@@ -132,7 +139,8 @@
     "initialization_file_sha256",
     "optimizer_state_path",
     "optimizer_state_file_sha256",
-    "optimizer_state_sha256"
+    "optimizer_state_sha256",
+    "variant"
   ],
   "title": "toy-checkpoint-manifest/1.0",
   "type": "object"
