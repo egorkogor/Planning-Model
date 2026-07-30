@@ -1,8 +1,10 @@
 # Cognitive Planner — расширенная архитектура исходной гипотезы
 
-**Статус:** non-normative architecture roadmap; интерфейсы зафиксированы для перехода к experiment contracts.  
+**Статус:** Non-normative roadmap with proposed interfaces. No interface becomes binding until adopted through a separate versioned experiment contract.
 **Назначение:** описать архитектуру, выходящую за пределы узкого эксперимента Work Planner / BlocksWorld v1.21.  
 **Важно:** документ не изменяет scientific lock, confirmatory protocol или контракты v1.21.
+
+Предлагаемые здесь интерфейсы являются архитектурными кандидатами; сам документ не делает их нормативными. Implementation и experiment obligations возникают только после принятия отдельного versioned contract. Scientific lock, confirmatory protocol и нормативные контракты v1.21 имеют приоритет над этим roadmap.
 
 ## 1. Исходная гипотеза
 
@@ -677,14 +679,14 @@ END → terminal
 Используется для сравнения:
 
 ```text
-A2
-vs A3a
-vs A3b-history
-vs A3b-recurrent
-vs A3b-no-history
+A2-structured-baseline
+vs A3a-codebook / A3a-zero / A3a-shuffled / A3a-foreign
+vs A3s-semantic-target / A3s-zero / A3s-shuffled / A3s-foreign
 ```
 
 Planning-state mode одинаков для всех arms.
+
+`A3b-history`, `A3b-recurrent`, `A3b-no-history` и их history interventions рассматриваются только после прохождения Stage 2A semantic gate.
 
 #### Ограничение open-loop TOOL
 
@@ -723,8 +725,9 @@ Replanning является явной частью архитектуры. Open
 
 Создаёт временное внутреннее состояние шага.
 
-- A3a сохраняет обычную autoregressive hidden history, а `z_semantic` является дополнительным feedback-каналом.
-- A3b использует только concept-level memory между шагами.
+- `A3a-codebook` — implemented technical channel prototype: он сохраняет существующую autoregressive history, а latent является дополнительным feedback-каналом. `A3a-zero`, `A3a-shuffled` и `A3a-foreign` являются controls того же codebook family.
+- Планируемое семейство `A3s-*` использует semantic target и ту же разрешённую history policy в Stage 2A.
+- Семейство `A3b-*` использует concept-level inter-step bottleneck и остаётся gated до прохождения Stage 2A semantic gate.
 
 ### Semantic Bottleneck
 
@@ -732,7 +735,7 @@ Replanning является явной частью архитектуры. Open
 
 ### Grounding Head
 
-Выбирает точное минимальное множество сущностей. Предсказание канонизируется и дедуплицируется.
+Выбирает canonical grounding set согласно domain-specific experiment contract. Exact-minimal-set обязателен только в контролируемых доменах с однозначным gold. В текстовых и интерактивных доменах contract использует equivalence classes, set-valued gold, admissibility rules и partial-credit policy. Канонизация и дедупликация применяются во всех доменах.
 
 ### Tool Head
 
@@ -845,15 +848,20 @@ Boundary head не входит в первый MVP.
 
 Один Planner call создаёт воспроизводимый многошаговый frozen plan с terminal `END`, который исполняется без replanning.
 
-### Этап 2A — A3a: latent feedback
+### Этап 2A — A3a codebook family и A3s semantic-target family
 
-Сравниваются A2, правильный feedback, zero, shuffled и random-code parameter-matched control.
+Этап содержит две разные проверки:
+
+1. A3a codebook family: `A3a-codebook`, `A3a-zero`, `A3a-shuffled`, `A3a-foreign` сравниваются с `A2-structured-baseline`.
+2. A3s semantic target and controls: `A3s-semantic-target`, `A3s-zero`, `A3s-shuffled`, `A3s-foreign` сравниваются между собой и с `A3a-codebook`.
+
+`A3a-codebook` уже является random-codebook arm. Дополнительный codebook arm не является обязательным и допускается только по predeclared причине: другой seed, independent code assignment или capacity-matched comparison.
 
 ### Этап 2B — A3b: semantic и inter-step bottleneck
 
 Сравниваются:
 
-- A3a;
+- `A3a-codebook` и прошедший gate `A3s-semantic-target` как Stage 2A baselines;
 - A3b-history;
 - A3b-recurrent;
 - A3b-no-history;
@@ -915,8 +923,11 @@ Boundary head не входит в первый MVP.
 - правильный результат задачи;
 - валидность и исполнимость действий;
 - перенос на новые структуры и длины;
-- A3a против A2 и controls;
-- A3b-history против A3a, recurrent и no-history;
+- `A3a-codebook` против `A2-structured-baseline`;
+- `A3a-codebook` против `A3a-zero`, `A3a-shuffled`, `A3a-foreign`;
+- `A3s-semantic-target` против `A3a-codebook`;
+- `A3s-semantic-target` против `A3s-zero`, `A3s-shuffled`, `A3s-foreign`;
+- `A3b-history` против прошедших Stage 2A baselines, `A3b-recurrent` и `A3b-no-history` только после semantic gate;
 - causal sensitivity к whole-history interventions;
 - initial-state-only против deterministic rollout;
 - causal sensitivity к `z_semantic`, refs, tool_ref и `step_type`;
@@ -947,9 +958,11 @@ Boundary head не входит в первый MVP.
 
 Для ближайшей разработки:
 
-- текущий A2 PR не расширяется до A3;
-- A3a реализуется отдельным PR;
-- claim-bearing A3b начинается только после Stage 2A semantic gate;
+- A2, implementation A3 и implementation A4 уже реализованы;
+- current implementation A3 соответствует `A3a-codebook`;
+- implementation A4 соответствует `A3a-zero`;
+- следующий claim-bearing шаг — versioned Stage 2A experiment contract и evaluation;
+- claim-bearing `A3b-*` gated до прохождения Stage 2A semantic gate;
 - Verbalizer начинается после проверки причинной роли `z_semantic`;
 - closed-loop не смешивается с open-loop;
 - после этой фиксации широкое архитектурное ревью прекращается;
@@ -968,9 +981,15 @@ implementation A3
 → technical latent channel prototype
 ```
 
-Текущая реализация показывает только, что latent path технически существует, predicted latent передаётся следующей позиции, pipeline сохраняет и проверяет latent artifacts, а controlled substitution может изменить downstream computation. Реализация канала сама по себе не доказывает causal use. Для причинного вывода нужны заранее зафиксированные сравнения с zero feedback, shuffled feedback, foreign/wrong-task feedback и другими interventions.
+Evidence текущей реализации разделяется на три уровня.
 
-Current tests не доказывают улучшение task quality, осмысленную semantic geometry, преимущество concept-level reasoning или общую гипотезу. Более того, A2 уже передаёт previous action и previous argument references через structured channel, поэтому A3a-codebook частично повторно кодирует уже доступную информацию.
+**Техническое наличие канала.** Реализация показывает, что latent path вычисляется, predicted latent передаётся следующей позиции, а artifacts сохраняются и валидируются.
+
+**Локальная computational causal sensitivity.** Текущие controlled substitution tests показывают, что изменение latent может изменить hidden state и logits A3, A2 и A4 сохраняют ожидаемую инвариантность, а будущий latent не влияет на прошлые позиции. Это evidence локальной вычислительной причинной чувствительности latent path, но не evidence его полезности на уровне задачи.
+
+**Task-level causal usefulness.** Current tests не показывают рост task success, улучшение plan quality или action validity, structural generalization, semantic usefulness либо преимущество над codebook/zero/shuffled/foreign controls. Task-level causal usefulness устанавливается только Stage 2A evaluation с predeclared interventions и metrics. Для этого требуются конкретные arms `A3a-zero`, `A3a-shuffled`, `A3a-foreign`, semantic family controls и другие заранее зафиксированные interventions.
+
+Кроме того, A2 уже передаёт previous action и previous argument references через structured channel, поэтому `A3a-codebook` частично повторно кодирует уже доступную информацию.
 
 ## 20. Canonical arm and stage registry
 
@@ -1040,7 +1059,7 @@ VerbalizationTrace {
 }
 ```
 
-`FrozenAnswerPlan` создаётся после `VerifiedSolution`, а `source_summary_hash` обязан совпадать с hash внутри него. Verbalizer не создаёт следующий AnswerConceptStep и не меняет `FrozenAnswerPlan`. Каждый span связан ровно с одним `ANSWER` step; final answer является канонической конкатенацией spans. Contextual production не используется как доказательство causal use `z_semantic`.
+`FrozenAnswerPlan` создаётся после `VerifiedSolution`, а `source_summary_hash` обязан совпадать с hash внутри него. Verbalizer не создаёт следующий AnswerConceptStep и не меняет `FrozenAnswerPlan`. Каждый span связан ровно с одним `ANSWER` step; final answer является канонической конкатенацией spans. Contextual production не используется как доказательство task-level causal usefulness `z_semantic`.
 
 ## 23. Versioned Stage 2A experiment contract
 
@@ -1057,7 +1076,7 @@ VerbalizationTrace {
 Обязательные условия gate:
 
 - held-out evaluation и несколько predeclared seeds;
-- A2, A3a-codebook, A3a-zero, shuffled feedback и foreign/wrong-task feedback;
+- `A2-structured-baseline`, `A3a-codebook`, `A3a-zero`, `A3a-shuffled`, `A3a-foreign`;
 - настоящий semantic-target arm;
 - semantic target против codebook, zero и shuffled/foreign;
 - task success, action validity и plan executability;
