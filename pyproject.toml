@@ -19,6 +19,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ml = [
+  "torch==2.12.0+cpu",
+  "PyYAML==6.0.3",
+]
 dev = [
   "pytest>=8.3,<10",
   "ruff>=0.6,<1",
@@ -29,7 +33,10 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/planner_llm_mvp"]
+packages = ["src/planner_llm_mvp", "planner_toy", "scripts"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"docs/architecture/planner_module_inventory_v1.yaml" = "planner_toy/planner_module_inventory_v1.yaml"
 
 [tool.pytest.ini_options]
 addopts = "-q"

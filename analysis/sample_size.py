@@ -4,11 +4,13 @@ Normative simulations preserve the paired-binary outcome space. They never add a
 continuous effect to a binary difference. Each generated pair is one of
 (0,0), (0,1), (1,0), or (1,1), so differences are always -1, 0, or 1.
 """
+
 from __future__ import annotations
 
 import math
-from statistics import fmean, stdev
-from typing import Any, Iterable
+from collections.abc import Iterable
+from statistics import stdev
+from typing import Any
 
 import numpy as np
 from scipy.stats import beta
@@ -17,7 +19,6 @@ from analysis.decision_gates import (
     clustered_stage1a_bootstrap,
     hierarchical_planner_bootstrap,
     paired_task_bootstrap,
-    paired_tost,
 )
 
 CONSERVATIVE_DISCORDANCE = 0.10
@@ -40,7 +41,7 @@ def _validate_pair(row: dict[str, Any]) -> tuple[int, int]:
 
 
 def _pair_differences(rows: Iterable[dict[str, Any]]) -> list[float]:
-    return [float(l - r) for l, r in (_validate_pair(row) for row in rows)]
+    return [float(left - right) for left, right in (_validate_pair(row) for row in rows)]
 
 
 def _flatten_pairs(requirement: dict[str, Any]) -> list[dict[str, Any]]:
@@ -59,7 +60,10 @@ def final_analysis_units(requirement: dict[str, Any]) -> list[float]:
     if kind == "PLANNER_HIERARCHICAL":
         return [x for rows in requirement["seed_groups"].values() for x in _pair_differences(rows)]
     if kind == "STAGE1A_CLUSTERED":
-        return [float(np.mean(_pair_differences(rows))) for rows in requirement["task_clusters"].values()]
+        return [
+            float(np.mean(_pair_differences(rows)))
+            for rows in requirement["task_clusters"].values()
+        ]
     if kind == "TASK_PAIRED":
         return _pair_differences(requirement["pairs"])
     raise ValueError(f"unsupported sample-size analysis_type: {kind}")
@@ -80,9 +84,17 @@ def paired_sd(requirement_or_differences: dict[str, Any] | list[float]) -> float
 def _observed_effect(requirement: dict[str, Any]) -> float:
     kind = requirement["analysis_type"]
     if kind == "PLANNER_HIERARCHICAL":
-        return float(np.mean([np.mean(_pair_differences(rows)) for rows in requirement["seed_groups"].values()]))
+        return float(
+            np.mean(
+                [np.mean(_pair_differences(rows)) for rows in requirement["seed_groups"].values()]
+            )
+        )
     if kind == "STAGE1A_CLUSTERED":
-        return float(np.mean([np.mean(_pair_differences(rows)) for rows in requirement["task_clusters"].values()]))
+        return float(
+            np.mean(
+                [np.mean(_pair_differences(rows)) for rows in requirement["task_clusters"].values()]
+            )
+        )
     return float(np.mean(_pair_differences(requirement["pairs"])))
 
 
@@ -174,10 +186,14 @@ def _draw_requirement(
     raise ValueError(f"unsupported sample-size analysis_type: {kind}")
 
 
-def _estimate_ci(dataset: dict[str, Any], *, resamples: int, seed: int) -> tuple[float, float, float]:
+def _estimate_ci(
+    dataset: dict[str, Any], *, resamples: int, seed: int
+) -> tuple[float, float, float]:
     kind = dataset["analysis_type"]
     if kind == "PLANNER_HIERARCHICAL":
-        return hierarchical_planner_bootstrap(dataset["seed_groups"], resamples=resamples, seed=seed)
+        return hierarchical_planner_bootstrap(
+            dataset["seed_groups"], resamples=resamples, seed=seed
+        )
     if kind == "STAGE1A_CLUSTERED":
         return clustered_stage1a_bootstrap(dataset["task_clusters"], resamples=resamples, seed=seed)
     if kind == "TASK_PAIRED":
@@ -229,7 +245,9 @@ def _passes_component(
     raise ValueError(component)
 
 
-def binomial_power_lower_bound(passed: int, simulations: int, confidence_level: float = 0.95) -> float:
+def binomial_power_lower_bound(
+    passed: int, simulations: int, confidence_level: float = 0.95
+) -> float:
     """Exact one-sided Clopper-Pearson lower confidence bound for simulated power."""
     if simulations < 1 or not 0 <= passed <= simulations:
         raise ValueError("invalid simulated-power counts")
@@ -276,8 +294,11 @@ def _requirement_n(
         for sim in range(simulations):
             dataset = _draw_requirement(requirement, n, rng, effect)
             passed += _passes_component(
-                component, dataset, minimum_effect_gate=minimum_effect_gate,
-                half_width=half_width, ci_resamples=ci_resamples,
+                component,
+                dataset,
+                minimum_effect_gate=minimum_effect_gate,
+                half_width=half_width,
+                ci_resamples=ci_resamples,
                 seed=seed + 100_000 * (sim + 1) + n,
             )
         lower = binomial_power_lower_bound(passed, simulations, power_confidence_level)
@@ -316,11 +337,18 @@ def calculate_components_from_structured_requirements(
     out: dict[str, int] = {}
     for offset, component in enumerate(sorted(requested)):
         out[component] = _requirement_n(
-            requirements[component], component, design_effect=design_effect,
-            minimum_effect_gate=minimum_effect_gate, half_width=half_width,
-            target_power=target_power, simulations=simulations,
-            ci_resamples=ci_resamples, seed=seed + offset, minimum_n=minimum_n,
-            round_multiple=round_multiple, maximum_n=maximum_n,
+            requirements[component],
+            component,
+            design_effect=design_effect,
+            minimum_effect_gate=minimum_effect_gate,
+            half_width=half_width,
+            target_power=target_power,
+            simulations=simulations,
+            ci_resamples=ci_resamples,
+            seed=seed + offset,
+            minimum_n=minimum_n,
+            round_multiple=round_multiple,
+            maximum_n=maximum_n,
             power_confidence_level=power_confidence_level,
             power_confirmation_points=power_confirmation_points,
         )
@@ -329,9 +357,16 @@ def calculate_components_from_structured_requirements(
     return out
 
 
-def calculate_components_from_requirements(requirements: dict[str, list[float]], **kwargs: Any) -> dict[str, int]:
+def calculate_components_from_requirements(
+    requirements: dict[str, list[float]], **kwargs: Any
+) -> dict[str, int]:
     """Non-normative closed-form compatibility helper for legacy toy fixtures."""
-    expected = {"primary_ci", "primary_power", "current_vs_shuffled_power", "equivalence_TOST_power"}
+    expected = {
+        "primary_ci",
+        "primary_power",
+        "current_vs_shuffled_power",
+        "equivalence_TOST_power",
+    }
     if set(requirements) != expected:
         raise ValueError("requirement set mismatch")
     half_width = float(kwargs.get("half_width", 0.025))
@@ -341,13 +376,31 @@ def calculate_components_from_requirements(requirements: dict[str, list[float]],
     round_multiple = int(kwargs.get("round_multiple", 50))
     from scipy.stats import norm
 
-    z975, z95, z90 = float(norm.ppf(.975)), float(norm.ppf(.95)), float(norm.ppf(.90))
+    z975, z95, z90 = float(norm.ppf(0.975)), float(norm.ppf(0.95)), float(norm.ppf(0.90))
     sds = {name: paired_sd(values) for name, values in requirements.items()}
     out = {
-        "primary_ci": max(_round_up((z975 * sds["primary_ci"] / half_width) ** 2, round_multiple), _round_up(minimum_n, round_multiple)),
-        "primary_power": max(_round_up(((z975 + z90) * sds["primary_power"] / target_effect) ** 2, round_multiple), _round_up(minimum_n, round_multiple)),
-        "current_vs_shuffled_power": max(_round_up(((z975 + z90) * sds["current_vs_shuffled_power"] / target_effect) ** 2, round_multiple), _round_up(minimum_n, round_multiple)),
-        "equivalence_TOST_power": max(_round_up(((z95 + z90) * sds["equivalence_TOST_power"] / equivalence_margin) ** 2, round_multiple), _round_up(minimum_n, round_multiple)),
+        "primary_ci": max(
+            _round_up((z975 * sds["primary_ci"] / half_width) ** 2, round_multiple),
+            _round_up(minimum_n, round_multiple),
+        ),
+        "primary_power": max(
+            _round_up(((z975 + z90) * sds["primary_power"] / target_effect) ** 2, round_multiple),
+            _round_up(minimum_n, round_multiple),
+        ),
+        "current_vs_shuffled_power": max(
+            _round_up(
+                ((z975 + z90) * sds["current_vs_shuffled_power"] / target_effect) ** 2,
+                round_multiple,
+            ),
+            _round_up(minimum_n, round_multiple),
+        ),
+        "equivalence_TOST_power": max(
+            _round_up(
+                ((z95 + z90) * sds["equivalence_TOST_power"] / equivalence_margin) ** 2,
+                round_multiple,
+            ),
+            _round_up(minimum_n, round_multiple),
+        ),
         "minimum_n": _round_up(minimum_n, round_multiple),
     }
     out["selected_n"] = max(out.values())
@@ -371,8 +424,12 @@ def calculate_components(
     rows = {
         "primary_ci": _round_up((z975 * sd / half_width) ** 2, round_multiple),
         "primary_power": _round_up(((z975 + z90) * sd / target_effect) ** 2, round_multiple),
-        "current_vs_shuffled_power": _round_up(((z975 + z90) * sd / target_effect) ** 2, round_multiple),
-        "equivalence_TOST_power": _round_up(((z95 + z90) * sd / equivalence_margin) ** 2, round_multiple),
+        "current_vs_shuffled_power": _round_up(
+            ((z975 + z90) * sd / target_effect) ** 2, round_multiple
+        ),
+        "equivalence_TOST_power": _round_up(
+            ((z95 + z90) * sd / equivalence_margin) ** 2, round_multiple
+        ),
         "minimum_n": _round_up(minimum_n, round_multiple),
     }
     rows["selected_n"] = max(rows.values())

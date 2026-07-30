@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "arm": {
+      "const": "PLANNER_A2_RAW"
+    },
+    "config_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "config_path": {
+      "const": "development-config.json"
+    },
+    "confirmatory": {
+      "const": false
+    },
+    "initialization_file_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "initialization_path": {
+      "const": "model/initialization.pt"
+    },
+    "initialization_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "inventory_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "model_file_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "model_path": {
+      "pattern": "^model/trained\\.pt$",
+      "type": "string"
+    },
+    "optimizer_evidence_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "optimizer_evidence_path": {
+      "const": "model/optimizer-evidence.json"
+    },
+    "optimizer_state_file_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "optimizer_state_path": {
+      "const": "model/optimizer-state.pt"
+    },
+    "optimizer_state_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "runtime": {
+      "additionalProperties": false,
+      "properties": {
+        "cuda_available": {
+          "const": false
+        },
+        "device": {
+          "const": "cpu"
+        },
+        "torch_cuda_version": {
+          "type": "null"
+        },
+        "torch_version": {
+          "pattern": "^2\\.12\\.0(?:\\+cpu)?$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "torch_version",
+        "torch_cuda_version",
+        "cuda_available",
+        "device"
+      ],
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "toy-checkpoint-manifest/1.0"
+    },
+    "sealed_data": {
+      "const": false
+    },
+    "seed": {
+      "const": 17
+    },
+    "split": {
+      "const": "development"
+    },
+    "stage": {
+      "const": "PLANNER_ONLY"
+    },
+    "state_dict_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "training_report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "training_report_path": {
+      "const": "model/training-report.json"
+    }
+  },
+  "required": [
+    "schema_version",
+    "model_path",
+    "model_file_sha256",
+    "state_dict_sha256",
+    "config_path",
+    "config_hash",
+    "inventory_sha256",
+    "initialization_sha256",
+    "training_report_path",
+    "training_report_hash",
+    "runtime",
+    "confirmatory",
+    "sealed_data",
+    "optimizer_evidence_path",
+    "optimizer_evidence_hash",
+    "seed",
+    "split",
+    "stage",
+    "arm",
+    "initialization_path",
+    "initialization_file_sha256",
+    "optimizer_state_path",
+    "optimizer_state_file_sha256",
+    "optimizer_state_sha256"
+  ],
+  "title": "toy-checkpoint-manifest/1.0",
+  "type": "object"
+}

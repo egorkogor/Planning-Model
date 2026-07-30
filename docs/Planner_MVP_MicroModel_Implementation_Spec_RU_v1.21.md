@@ -1,6 +1,6 @@
 # Planner MVP и MicroPlanner — нормативная спецификация
 
-**Версия:** 1.16
+**Версия:** 1.21
 **Дата:** 27 июля 2026
 **Статус:** исполняемая спецификация архивного эксперимента **Work Planner / BlocksWorld**.
 **Stage 1:** `Planner_LLM_Stage1_Operator_Runbook_v2.21_RU.md`.
