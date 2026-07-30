@@ -86,3 +86,13 @@ python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu \
 ```
 
 Smoke import/inference выполняется вне repository root без `PYTHONPATH`.
+
+## Development Quality Evaluation v0.1
+
+Реализован runner и завершена development-only held-out диагностика существующих
+`A2-structured-baseline`, `A3a-codebook` и `A3a-zero` с seeds 17, 29 и 43.
+Фактические результаты и конкретные планы находятся в
+[`evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md`](evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md).
+Это диагностический результат текущего toy BlocksWorld split, не confirmatory evidence,
+не доказательство semantic reasoning и **не прохождение Stage 2A semantic gate**.
+`A3a-shuffled`, `A3a-foreign` и семейство `A3s` остаются future work; `A3b` остаётся gated.

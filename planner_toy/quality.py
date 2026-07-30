@@ -1,0 +1,331 @@
+# ruff: noqa: E501, E702
+"""Development-only held-out quality evaluation for the existing toy planners."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import statistics
+from collections import Counter
+from pathlib import Path
+
+import torch
+import torch.nn.functional as F
+from jsonschema import Draft202012Validator
+
+from .canonical import canonical_bytes, sha256
+from .dataset import generate
+from .domain import apply_action, goal_satisfied, validate_state
+from .e2e import A2Planner, parse_work_plan
+from .model import LockedPlanner, canonical_task_encoding
+from .semantic import targets
+from .training import ACTIONS, labels, state_dict_sha256
+
+VERSION = "development-quality-evaluation/0.1"
+SEEDS = (17, 29, 43)
+VARIANTS = ("A2", "A3", "A4")
+MAPPING = {
+    "A2": ("STAGE_1", "A2-structured-baseline", "NONE"),
+    "A3": ("STAGE_2A", "A3a-codebook", "DETERMINISTIC_ACTION_SIGNATURE_CODEBOOK"),
+    "A4": ("STAGE_2A", "A3a-zero", "DETERMINISTIC_ACTION_SIGNATURE_CODEBOOK"),
+}
+EPOCHS = 3
+MAX_STEPS = 17
+
+
+def _write(path: Path, value: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(canonical_bytes(value) + b"\n")
+
+
+def _file_hash(path: Path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _train(rows: list[dict], variant: str, seed: int, output: Path) -> tuple[LockedPlanner, str]:
+    """Train in canonical task order, with no evaluation inputs or selection."""
+    torch.use_deterministic_algorithms(True)
+    torch.set_num_threads(1)
+    model = LockedPlanner(seed, variant).cpu()
+    optimizer = torch.optim.AdamW(
+        [p for p in model.parameters() if p.requires_grad], lr=3e-4,
+        betas=(0.9, 0.95), eps=1e-8, weight_decay=0.01,
+    )
+    for _ in range(EPOCHS):
+        for row in sorted(rows, key=lambda item: item["task_id"]):
+            action, arg1, arg2 = labels(row)
+            valid = len(row["oracle_work_plan"])
+            target = targets(row)
+            shifted = torch.cat([torch.zeros_like(target[:, :1]), target[:, :-1]], 1)
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(
+                canonical_task_encoding(row), action, arg1, arg2,
+                semantic_feedback=shifted if variant in {"A3", "A4"} else None,
+            )
+            flat = action[:, :valid].flatten()
+            loss = F.cross_entropy(logits.action[:, :valid].flatten(0, 1), flat)
+            one = flat != ACTIONS["END"]
+            two = (flat == ACTIONS["UNSTACK"]) | (flat == ACTIONS["STACK"])
+            if one.any():
+                loss += F.cross_entropy(logits.arg1[:, :valid].flatten(0, 1)[one], arg1[:, :valid].flatten()[one])
+            if two.any():
+                loss += F.cross_entropy(logits.arg2[:, :valid].flatten(0, 1)[two], arg2[:, :valid].flatten()[two])
+            if variant in {"A3", "A4"}:
+                loss += (1 - (logits.z_semantic[:, :valid] * target[:, :valid]).sum(-1)).mean()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], 1.0)
+            optimizer.step()
+    output.mkdir(parents=True, exist_ok=True)
+    torch.save(model.state_dict(), output / "trained.pt")
+    checkpoint_hash = state_dict_sha256(model.state_dict())
+    _write(output / "checkpoint-manifest.json", {
+        "variant": variant, "seed": seed, "checkpoint_hash": checkpoint_hash,
+        "policy": "final_epoch_only_no_heldout_selection", "epochs": EPOCHS,
+    })
+    return model, checkpoint_hash
+
+
+def _evaluate(row: dict, variant: str, seed: int, model: LockedPlanner, checkpoint: str) -> dict:
+    planner = A2Planner(model)
+    raw: list[list[str]] = []
+    failure = None
+    try:
+        raw = planner.plan({k: v for k, v in row.items() if k != "oracle_work_plan"})
+    except ValueError as error:
+        failure = str(error)
+    terminal = bool(raw and raw[-1] == ["END"])
+    parse_valid = False
+    actions: tuple[tuple[str, ...], ...] = ()
+    if failure is None:
+        try:
+            actions = parse_work_plan(raw, row["blocks"])
+            parse_valid = True
+        except ValueError as error:
+            failure = str(error)
+    state = validate_state(tuple(row["blocks"]), tuple(tuple(x) for x in row["initial"]))
+    trace = []
+    applicable = []
+    if parse_valid:
+        for index, action in enumerate(actions):
+            before = [list(x) for x in state]
+            try:
+                state = apply_action(tuple(row["blocks"]), state, action)
+                applicable.append(True)
+                trace.append({"step": index, "action": list(action), "applicable": True,
+                              "state_before": before, "state_after": [list(x) for x in state]})
+            except ValueError as error:
+                applicable.append(False)
+                trace.append({"step": index, "action": list(action), "applicable": False,
+                              "error": str(error), "state_before": before, "state_after": before})
+                failure = "EXECUTOR_PRECONDITION_FAILED"
+                break
+    executable = parse_valid and all(applicable)
+    reached = executable and goal_satisfied(state, tuple(tuple(x) for x in row["goal"]))
+    if failure is None and not reached:
+        failure = "GOAL_NOT_ACHIEVED"
+    gold = row["oracle_work_plan"][:-1]
+    predicted = raw[:-1] if terminal else raw
+    return {
+        "variant": variant, "experimental_arm": MAPPING[variant][1], "seed": seed,
+        "task_id": row["task_id"], "split": "validation", "initial_state": row["initial"],
+        "goal": row["goal"], "gold_actions": gold, "predicted_actions": predicted,
+        "gold_plan_length": len(gold), "predicted_plan_length": len(predicted),
+        "terminal_end_produced": terminal, "plan_generation_success": failure not in {"PLAN_NO_END", "PLAN_PARSE_ERROR", "PLAN_UNKNOWN_REF"},
+        "action_parse_valid": parse_valid, "action_applicability": applicable,
+        "full_plan_executable": executable, "goal_reached": reached,
+        "exact_plan_match": predicted == gold, "planner_call_count": planner.calls,
+        "model_forward_count": len(planner.semantic_steps or predicted) + (1 if terminal else 0),
+        "checkpoint_hash": checkpoint, "failure_code": failure,
+        "execution_trace": trace, "final_state": [list(x) for x in state],
+    }
+
+
+def summarize(rows: list[dict]) -> dict:
+    n = len(rows)
+    applicability = [x for row in rows for x in row["action_applicability"]]
+    return {
+        "heldout_task_count": n, "success_count": sum(r["goal_reached"] for r in rows),
+        "task_success_rate": sum(r["goal_reached"] for r in rows) / n,
+        "plan_generation_success_rate": sum(r["plan_generation_success"] for r in rows) / n,
+        "end_rate": sum(r["terminal_end_produced"] for r in rows) / n,
+        "fully_executable_plan_rate": sum(r["full_plan_executable"] for r in rows) / n,
+        "action_parse_valid_rate": sum(r["action_parse_valid"] for r in rows) / n,
+        "action_applicable_rate": sum(applicability) / len(applicability) if applicability else 0.0,
+        "exact_plan_match_rate": sum(r["exact_plan_match"] for r in rows) / n,
+        "mean_predicted_plan_length": statistics.mean(r["predicted_plan_length"] for r in rows),
+        "median_predicted_plan_length": statistics.median(r["predicted_plan_length"] for r in rows),
+        "mean_gold_plan_length": statistics.mean(r["gold_plan_length"] for r in rows),
+        "mean_absolute_plan_length_difference": statistics.mean(abs(r["predicted_plan_length"] - r["gold_plan_length"]) for r in rows),
+        "failure_code_distribution": dict(sorted(Counter(r["failure_code"] or "NONE" for r in rows).items())),
+    }
+
+
+def paired(rows: list[dict], first: str, second: str) -> dict:
+    index = {(r["variant"], r["seed"], r["task_id"]): r for r in rows}
+    pairs = [(index[(first, s, t)], index[(second, s, t)]) for s in sorted({r["seed"] for r in rows}) for t in sorted({r["task_id"] for r in rows})]
+    return {"first": first, "second": second, "pair_count": len(pairs),
+            "both_succeed": sum(a["goal_reached"] and b["goal_reached"] for a, b in pairs),
+            "only_first_succeeds": sum(a["goal_reached"] and not b["goal_reached"] for a, b in pairs),
+            "only_second_succeeds": sum(not a["goal_reached"] and b["goal_reached"] for a, b in pairs),
+            "both_fail": sum(not a["goal_reached"] and not b["goal_reached"] for a, b in pairs)}
+
+
+def _breakdowns(rows: list[dict]) -> dict:
+    out = {}
+    for label, low, high in (("1-2", 1, 2), ("3-4", 3, 4), ("5+", 5, 10**9)):
+        subset = [r for r in rows if low <= r["gold_plan_length"] <= high]
+        if subset:
+            summary = summarize(subset)
+            out[label] = {k: summary[k] for k in ("heldout_task_count", "task_success_rate", "fully_executable_plan_rate", "mean_predicted_plan_length", "failure_code_distribution")}
+    return out
+
+
+def validate_evaluation(root: Path) -> dict:
+    config = json.loads((root / "evaluation-config.json").read_bytes())
+    Draft202012Validator(json.loads((Path(__file__).with_name("schemas") / "toy_quality_evaluation.schema.json").read_bytes())).validate(config)
+    rows = [json.loads(line) for line in (root / "task-results.jsonl").read_text().splitlines()]
+    keys = [(r["variant"], r["seed"], r["task_id"]) for r in rows]
+    if len(keys) != len(set(keys)) or set(config["train_task_ids"]) & set(config["eval_task_ids"]):
+        raise ValueError("DUPLICATE_OR_SPLIT_OVERLAP")
+    expected = {(v, s, t) for v in config["variants"] for s in config["seeds"] for t in config["eval_task_ids"]}
+    if set(keys) != expected:
+        raise ValueError("TASK_RESULT_COVERAGE_MISMATCH")
+    for row in rows:
+        if row["experimental_arm"] != MAPPING[row["variant"]][1]:
+            raise ValueError("VARIANT_MAPPING_MISMATCH")
+    per_seed = json.loads((root / "per-seed-summary.json").read_bytes())
+    recalculated = {f"{v}/seed-{s}": summarize([r for r in rows if r["variant"] == v and r["seed"] == s]) for v in config["variants"] for s in config["seeds"]}
+    if per_seed != recalculated:
+        raise ValueError("SUMMARY_MISMATCH")
+    comparisons = [paired(rows, a, b) for a, b in (("A3", "A2"), ("A4", "A2"), ("A3", "A4")) if a in config["variants"] and b in config["variants"]]
+    if json.loads((root / "paired-comparisons.json").read_bytes()) != comparisons:
+        raise ValueError("PAIRED_MISMATCH")
+    manifest = json.loads((root / "evaluation-manifest.json").read_bytes())
+    for name, digest in manifest["artifact_hashes"].items():
+        if _file_hash(root / name) != digest:
+            raise ValueError("ARTIFACT_HASH_MISMATCH")
+    replay = sha256(manifest)
+    if (root / "replay-hash.txt").read_text().strip() != replay:
+        raise ValueError("REPLAY_HASH_MISMATCH")
+    return {"valid": True, "task_results": len(rows), "replay_hash": replay}
+
+
+def export_compact(root: Path, destination: Path, implementation_commit: str) -> None:
+    """Generate the two reviewable reference artifacts exclusively from a validated run."""
+    validate_evaluation(root)
+    config = json.loads((root / "evaluation-config.json").read_bytes())
+    per_seed = json.loads((root / "per-seed-summary.json").read_bytes())
+    aggregate = json.loads((root / "aggregate-summary.json").read_bytes())
+    comparisons = json.loads((root / "paired-comparisons.json").read_bytes())
+    rows = [json.loads(line) for line in (root / "task-results.jsonl").read_text().splitlines()]
+    compact = {
+        "status": "development-only-diagnostic",
+        "implementation_commit": implementation_commit,
+        "evaluator_version": VERSION,
+        "dataset_hash": config["dataset_manifest_hash"],
+        "train_task_count": len(config["train_task_ids"]),
+        "heldout_task_count": len(config["eval_task_ids"]),
+        "seeds": config["seeds"],
+        "training_budget": {"epochs": config["epochs"], "updates_per_run": config["epochs"] * len(config["train_task_ids"]), "checkpoint_policy": config["checkpoint_policy"]},
+        "per_seed": per_seed, "aggregate": aggregate, "paired_comparisons": comparisons,
+        "observed_failure_codes": sorted({r["failure_code"] for r in rows if r["failure_code"]}),
+        "replay_hash": (root / "replay-hash.txt").read_text().strip(),
+    }
+    data = destination / "data" / "a2_a3_a4_heldout_summary.json"
+    _write(data, compact)
+    lines = [
+        "# Диагностика качества A2/A3/A4 на held-out задачах", "",
+        "> Development-only diagnostic. Это не confirmatory experiment, не прохождение Stage 2A semantic gate, не доказательство semantic reasoning или superiority A3 и не разрешение A3b.", "",
+        f"- Implementation commit at generation: `{implementation_commit}`",
+        f"- Evaluator: `{VERSION}`", f"- Dataset hash: `{config['dataset_manifest_hash']}`",
+        f"- Train tasks: {len(config['train_task_ids'])}; held-out tasks: {len(config['eval_task_ids'])}",
+        f"- Seeds: {', '.join(map(str, config['seeds']))}",
+        f"- Budget: {config['epochs']} epochs × {len(config['train_task_ids'])} canonical train tasks = {config['epochs'] * len(config['train_task_ids'])} updates/run; final checkpoint only", "",
+        "## Variant × seed", "", "| Variant | Seed | Success | Rate | Executable | Action applicable | Mean predicted length |", "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for key, summary in per_seed.items():
+        variant, seed = key.split("/seed-")
+        lines.append(f"| {MAPPING[variant][1]} | {seed} | {summary['success_count']}/{summary['heldout_task_count']} | {summary['task_success_rate']:.3f} | {summary['fully_executable_plan_rate']:.3f} | {summary['action_applicable_rate']:.3f} | {summary['mean_predicted_plan_length']:.2f} |")
+    lines += ["", "## Aggregate", "", "```json", json.dumps(aggregate, ensure_ascii=False, indent=2, sort_keys=True), "```", "", "## Paired comparisons", "", "```json", json.dumps(comparisons, ensure_ascii=False, indent=2, sort_keys=True), "```", "", "## Детерминированно выбранные примеры", "", (root / "human-readable-examples.md").read_text(), "", "## Ограничения", "", "Все failures включены в denominator. Hyperparameters не подбирались после просмотра held-out результата. A3a-shuffled, A3a-foreign, A3s, A3b и Verbalizer не реализованы.", "", "## Воспроизведение", "", "```bash", "python -m scripts.run_toy_quality_evaluation --output-dir .quality-eval", "python -m scripts.run_toy_quality_evaluation --output-dir .quality-eval --validate-only", "```", ""]
+    report = destination / "A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text("\n".join(lines))
+
+
+def run(
+    output: Path,
+    *,
+    variants=VARIANTS,
+    seeds=SEEDS,
+    max_eval_tasks: int | None = None,
+    reuse_checkpoint_root: Path | None = None,
+) -> dict:
+    if output.exists() and any(output.iterdir()):
+        raise ValueError("output directory must be clean")
+    output.mkdir(parents=True, exist_ok=True)
+    dataset = generate(17)
+    train_rows = sorted(dataset["train"], key=lambda r: r["task_id"])
+    eval_rows = sorted(dataset["validation"], key=lambda r: r["task_id"])
+    if max_eval_tasks is not None:
+        eval_rows = eval_rows[:max_eval_tasks]
+    variants, seeds = tuple(variants), tuple(seeds)
+    complete = variants == VARIANTS and seeds == SEEDS and max_eval_tasks is None and reuse_checkpoint_root is None
+    config = {"schema_version": VERSION, "evaluator_version": VERSION, "variants": list(variants), "seeds": list(seeds),
+              "variant_mapping": {v: {"architecture_stage": MAPPING[v][0], "implementation_variant": v, "experimental_arm": MAPPING[v][1], "target_type": MAPPING[v][2]} for v in variants},
+              "train_task_ids": [r["task_id"] for r in train_rows], "eval_task_ids": [r["task_id"] for r in eval_rows],
+              "epochs": EPOCHS, "optimizer": {"name": "AdamW", "learning_rate": 3e-4, "betas": [0.9, .95], "eps": 1e-8, "weight_decay": .01, "gradient_clip_norm": 1.0},
+              "checkpoint_policy": "final_epoch_only_no_heldout_selection", "max_decoding_steps": MAX_STEPS,
+              "dataset_manifest_hash": dataset["dataset_hash"], "diagnostic_complete": complete}
+    _write(output / "evaluation-config.json", config)
+    _write(output / "dataset-manifest.json", {"dataset_hash": dataset["dataset_hash"], "train_task_ids": config["train_task_ids"], "eval_task_ids": config["eval_task_ids"]})
+    rows = []
+    for variant in variants:
+        for seed in seeds:
+            run_dir = output / "training-runs" / variant / f"seed-{seed}"
+            if reuse_checkpoint_root is None:
+                model, checkpoint = _train(train_rows, variant, seed, run_dir)
+            else:
+                source = reuse_checkpoint_root / "training-runs" / variant / f"seed-{seed}"
+                manifest = json.loads((source / "checkpoint-manifest.json").read_bytes())
+                if manifest["variant"] != variant or manifest["seed"] != seed:
+                    raise ValueError("REUSED_CHECKPOINT_IDENTITY_MISMATCH")
+                model = LockedPlanner(seed, variant).cpu()
+                model.load_state_dict(torch.load(source / "trained.pt", map_location="cpu", weights_only=True))
+                checkpoint = state_dict_sha256(model.state_dict())
+                if checkpoint != manifest["checkpoint_hash"]:
+                    raise ValueError("REUSED_CHECKPOINT_HASH_MISMATCH")
+                run_dir.mkdir(parents=True, exist_ok=True)
+                _write(run_dir / "checkpoint-manifest.json", manifest)
+            rows.extend(_evaluate(row, variant, seed, model, checkpoint) for row in eval_rows)
+    rows.sort(key=lambda r: (r["variant"], r["seed"], r["task_id"]))
+    (output / "task-results.jsonl").write_bytes(b"".join(canonical_bytes(r) + b"\n" for r in rows))
+    per_seed = {f"{v}/seed-{s}": summarize([r for r in rows if r["variant"] == v and r["seed"] == s]) for v in variants for s in seeds}
+    aggregate = {v: {"mean_success_rate": statistics.mean(per_seed[f"{v}/seed-{s}"]["task_success_rate"] for s in seeds),
+                         "min_success_rate": min(per_seed[f"{v}/seed-{s}"]["task_success_rate"] for s in seeds), "max_success_rate": max(per_seed[f"{v}/seed-{s}"]["task_success_rate"] for s in seeds),
+                         "success_counts": {str(s): per_seed[f"{v}/seed-{s}"]["success_count"] for s in seeds},
+                         "mean_executability": statistics.mean(per_seed[f"{v}/seed-{s}"]["fully_executable_plan_rate"] for s in seeds),
+                         "mean_action_validity": statistics.mean(per_seed[f"{v}/seed-{s}"]["action_applicable_rate"] for s in seeds),
+                         "mean_plan_length_difference": statistics.mean(per_seed[f"{v}/seed-{s}"]["mean_absolute_plan_length_difference"] for s in seeds),
+                         "structural_breakdown": _breakdowns([r for r in rows if r["variant"] == v])} for v in variants}
+    comparisons = [paired(rows, a, b) for a, b in (("A3", "A2"), ("A4", "A2"), ("A3", "A4")) if a in variants and b in variants]
+    _write(output / "per-seed-summary.json", per_seed); _write(output / "aggregate-summary.json", aggregate); _write(output / "paired-comparisons.json", comparisons)
+    examples = _examples(rows, eval_rows, variants, seeds)
+    (output / "human-readable-examples.md").write_text(examples)
+    names = ["evaluation-config.json", "dataset-manifest.json", "task-results.jsonl", "per-seed-summary.json", "aggregate-summary.json", "paired-comparisons.json", "human-readable-examples.md"]
+    manifest = {"evaluator_version": VERSION, "seeds": list(seeds), "variants": list(variants), "variant_mapping": config["variant_mapping"], "artifact_hashes": {n: _file_hash(output / n) for n in names}}
+    _write(output / "evaluation-manifest.json", manifest)
+    (output / "replay-hash.txt").write_text(sha256(manifest) + "\n")
+    return validate_evaluation(output)
+
+
+def _examples(rows: list[dict], eval_rows: list[dict], variants, seeds) -> str:
+    lines = ["# Human-readable held-out examples", "", "Development diagnostic only; not a Stage 2A semantic gate.", ""]
+    seed = seeds[0]
+    index = {(r["variant"], r["task_id"]): r for r in rows if r["seed"] == seed}
+    for task in eval_rows[:5]:
+        lines += [f"## {task['task_id']} (seed {seed})", "", f"Initial state: `{json.dumps(task['initial'])}`", f"Goal: `{json.dumps(task['goal'])}`", f"Gold/reference plan: `{json.dumps(task['oracle_work_plan'][:-1])}`"]
+        for variant in variants:
+            r = index[(variant, task["task_id"])]
+            lines += [f"### {MAPPING[variant][1]}", f"Predicted plan: `{json.dumps(r['predicted_actions'])}`", f"Execution: `{json.dumps(r['execution_trace'])}`", f"Failure: `{r['failure_code']}`", f"Final state: `{json.dumps(r['final_state'])}`", f"Goal reached: `{str(r['goal_reached']).lower()}`"]
+        lines.append("")
+    return "\n\n".join(lines) + "\n"
