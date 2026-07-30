@@ -16,7 +16,7 @@ def main() -> None:
     parser.add_argument("--max-eval-tasks", type=int)
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--compact-dir", type=Path)
-    parser.add_argument("--implementation-commit", default="WORKTREE")
+    parser.add_argument("--implementation-commit")
     parser.add_argument("--skip-training", action="store_true")
     parser.add_argument("--reuse-checkpoint-root", type=Path)
     args = parser.parse_args()

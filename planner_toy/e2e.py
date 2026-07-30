@@ -69,11 +69,13 @@ class A2Planner:
     calls: int = 0
     semantic_steps: list[torch.Tensor] | None = None
     injected_failure: str | None = None
+    model_forward_count: int = 0
 
     def plan(self, row: dict) -> list[list[str]]:
         if self.calls:
             raise RuntimeError("replanning is forbidden")
         self.calls += 1
+        self.model_forward_count = 0
         if self.injected_failure in {"LATENT_NONFINITE", "LATENT_ZERO_NORM", "LATENT_DIMENSION"}:
             raise ValueError(self.injected_failure)
         action_ids, arg1_ids, arg2_ids = [4] * 17, [0] * 17, [0] * 17
@@ -83,6 +85,7 @@ class A2Planner:
         encoded = canonical_task_encoding(row)
         for index in range(17):
             with torch.no_grad():
+                self.model_forward_count += 1
                 logits = self.model(
                     encoded,
                     torch.tensor([action_ids]),
@@ -106,6 +109,119 @@ class A2Planner:
             decoded.append(step)
             action_ids[index], arg1_ids[index], arg2_ids[index] = action_id, arg1_id, arg2_id
         raise ValueError("PLAN_NO_END")
+
+
+def evaluate_frozen_plan(
+    *, row: dict, planner: A2Planner, output: Path, checkpoint_binding: dict
+) -> dict:
+    """Run one development inference through a persisted frozen-plan evidence chain.
+
+    Gold plan information is deliberately removed before the single Planner call.
+    The resulting WorkPlan is written before any action is given to the executor.
+    """
+    if output.exists() and any(output.iterdir()):
+        raise ValueError("evidence output directory must be clean")
+    output.mkdir(parents=True, exist_ok=True)
+    inference_row = {key: value for key, value in row.items() if key != "oracle_work_plan"}
+    request = {
+        "schema_version": "toy-quality-planner-request/1.0",
+        "variant": planner.model.variant,
+        "task_id": row["task_id"],
+        "task_hash": row["canonical_task_hash"],
+        "checkpoint_state_dict_sha256": checkpoint_binding["trained_state_dict_sha256"],
+        "oracle_fields_removed": ["oracle_work_plan"],
+        "teacher_forcing": False,
+        "target_latent": False,
+        "max_decoding_steps": 17,
+    }
+    _write(output / "planner-request.json", request)
+    raw = []
+    generation_failure = None
+    try:
+        raw = planner.plan(inference_row)
+        parsed = parse_work_plan(raw, row["blocks"])
+    except ValueError as error:
+        parsed = ()
+        generation_failure = str(error)
+    terminal_end = bool(raw and raw[-1] == ["END"])
+    work_plan = None
+    if generation_failure is None:
+        work_plan = {
+            "schema_version": "toy-work-plan/1.0",
+            "variant": planner.model.variant,
+            "task_id": row["task_id"],
+            "state_hash": state_hash(row["initial"]),
+            "steps": [
+                {"step_index": index, "action": step[0], "args": step[1:]}
+                for index, step in enumerate(raw)
+            ],
+        }
+        work_plan["plan_content_hash"] = toy_hash("quality_frozen_plan", work_plan)
+        _write(output / "work-plan.json", work_plan)  # freeze before execution
+    events, success, execution_failure = ([], False, None)
+    if work_plan is not None:
+        events, success, execution_failure = execute(row, parsed)
+    attempts = [
+        {
+            "step_index": event["index"], "candidate_action": event["action"],
+            "state_before_hash": event["before"], "state_after_hash": event["after"],
+            "status": event["status"], "error": event["error"], "replanning_observed": False,
+        }
+        for event in events
+    ]
+    _write(output / "attempt-log.jsonl", attempts, jsonl=True)
+    failure = generation_failure or execution_failure
+    if work_plan is not None and not success and failure is None:
+        failure = "GOAL_NOT_ACHIEVED"
+    manifest = {
+        "schema_version": "toy-quality-episode-plan-manifest/1.0",
+        "planner_call_count": planner.calls, "replanning_count": 0,
+        "model_forward_count": planner.model_forward_count,
+        "plan_status": "READY" if work_plan else "FAILED",
+        "work_plan_path": "work-plan.json" if work_plan else None,
+        "work_plan_hash": work_plan["plan_content_hash"] if work_plan else None,
+        "failure_code": generation_failure,
+    }
+    _write(output / "episode-plan-manifest.json", manifest)
+    final_hash = events[-1]["after"] if events else state_hash(row["initial"])
+    episode = {
+        "schema_version": "toy-quality-episode-log/1.0", "planner_calls": planner.calls,
+        "replanning_count": 0, "attempts_total": len(attempts),
+        "executed_length": sum(a["status"] == "APPLIED" for a in attempts),
+        "final_state_hash": final_hash, "goal_success": success, "terminal_error": failure,
+    }
+    _write(output / "episode-log.json", episode)
+    evaluation = {
+        "schema_version": "toy-quality-evaluation-result/1.0", "success": success,
+        "failure_code": failure, "planner_call_count": planner.calls,
+        "replanning_count": 0, "model_forward_count": planner.model_forward_count,
+        "attempt_log_hash": file_hash(output / "attempt-log.jsonl"),
+        "episode_log_hash": file_hash(output / "episode-log.json"),
+    }
+    _write(output / "evaluation-result.json", evaluation)
+    if planner.model.variant in {"A3", "A4"} and work_plan is not None:
+        trace = {
+            "schema_version": "toy-quality-semantic-trace/1.0",
+            "variant": planner.model.variant, "feedback_source": "predicted",
+            "feedback_applied": planner.model.variant == "A3",
+            "compute_then_zero": planner.model.variant == "A4",
+            "step_count": len(planner.semantic_steps or []),
+        }
+        _write(output / "semantic-trace.json", trace)
+    evidence_files = sorted(path for path in output.iterdir() if path.is_file())
+    evidence_hash = toy_hash(
+        "quality_evidence",
+        {path.name: file_hash(path) for path in evidence_files},
+    )
+    return {
+        "raw_output": raw, "parsed_actions": [list(action) for action in parsed],
+        "terminal_end": terminal_end, "generation_failure": generation_failure,
+        "execution_failure": execution_failure, "failure_code": failure,
+        "events": events, "goal_reached": success, "planner_call_count": planner.calls,
+        "replanning_count": 0, "model_forward_count": planner.model_forward_count,
+        "work_plan_hash": work_plan["plan_content_hash"] if work_plan else None,
+        "evidence_hash": evidence_hash,
+    }
 
 
 def parse_work_plan(raw: list[list[str]], blocks: list[str]) -> tuple[tuple[str, ...], ...]:
