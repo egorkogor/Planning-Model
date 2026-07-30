@@ -44,6 +44,16 @@ FAILURE_CODES = frozenset(
         "VARIANT_MISMATCH",
     }
 )
+
+
+class PlannerGenerationFailure(ValueError):
+    """Typed generation failure retaining inference evidence before termination."""
+
+    def __init__(self, code: str, partial_raw_output: list[list[str]], model_forward_count: int):
+        super().__init__(code)
+        self.code = code
+        self.partial_raw_output = partial_raw_output
+        self.model_forward_count = model_forward_count
 PRESERVED_GENERATION_CODES = FAILURE_CODES - {
     "EXECUTOR_PRECONDITION_FAILED",
     "GOAL_NOT_ACHIEVED",
@@ -70,6 +80,7 @@ class A2Planner:
     semantic_steps: list[torch.Tensor] | None = None
     injected_failure: str | None = None
     model_forward_count: int = 0
+    semantic_audit: list[dict] | None = None
 
     def plan(self, row: dict) -> list[list[str]]:
         if self.calls:
@@ -81,6 +92,7 @@ class A2Planner:
         action_ids, arg1_ids, arg2_ids = [4] * 17, [0] * 17, [0] * 17
         decoded: list[list[str]] = []
         self.semantic_steps = []
+        self.semantic_audit = []
         feedback = torch.zeros(1, 17, 384)
         encoded = canonical_task_encoding(row)
         for index in range(17):
@@ -98,6 +110,20 @@ class A2Planner:
                 self.semantic_steps.append(z)
                 if index + 1 < 17:
                     feedback[0, index + 1] = z
+                self.semantic_audit.append({
+                    "step_index": index,
+                    "projected_feedback_present": (
+                        getattr(logits, "projected_semantic", None) is not None
+                    ),
+                    "downstream_component_zero": bool(
+                        torch.all(
+                            getattr(logits, "semantic_component", torch.zeros(1, 17, 1))[
+                                0, index
+                            ]
+                            == 0
+                        )
+                    ),
+                })
             action_id = int(logits.action[0, index].argmax())
             if action_id == 4:
                 return decoded + [["END"]]
@@ -108,7 +134,7 @@ class A2Planner:
                 step.append(row["blocks"][arg2_id])
             decoded.append(step)
             action_ids[index], arg1_ids[index], arg2_ids[index] = action_id, arg1_id, arg2_id
-        raise ValueError("PLAN_NO_END")
+        raise PlannerGenerationFailure("PLAN_NO_END", decoded, self.model_forward_count)
 
 
 def evaluate_frozen_plan(
@@ -140,6 +166,10 @@ def evaluate_frozen_plan(
     try:
         raw = planner.plan(inference_row)
         parsed = parse_work_plan(raw, row["blocks"])
+    except PlannerGenerationFailure as error:
+        raw = error.partial_raw_output
+        parsed = ()
+        generation_failure = error.code
     except ValueError as error:
         parsed = ()
         generation_failure = str(error)
@@ -199,13 +229,33 @@ def evaluate_frozen_plan(
         "episode_log_hash": file_hash(output / "episode-log.json"),
     }
     _write(output / "evaluation-result.json", evaluation)
-    if planner.model.variant in {"A3", "A4"} and work_plan is not None:
+    if planner.model.variant in {"A3", "A4"}:
+        import struct
+
+        latents = planner.semantic_steps or []
+        latent_path = output / "semantic-latents.f32"
+        latent_path.write_bytes(b"".join(struct.pack("<384f", *z.tolist()) for z in latents))
+        previous = None
+        trace_steps = []
+        for index, z in enumerate(latents):
+            payload = struct.pack("<384f", *z.tolist())
+            digest = "sha256:" + hashlib.sha256(payload).hexdigest()
+            action = raw[index] if index < len(raw) else ["END"]
+            trace_steps.append({"step_index": index, "action": action[0], "args": action[1:],
+                                "z_sha256": digest, "previous_z_sha256": previous,
+                                "latent_norm": float(z.norm()), "source": "predicted"})
+            previous = digest
         trace = {
-            "schema_version": "toy-quality-semantic-trace/1.0",
+            "schema_version": "toy-semantic-trace/1.0",
             "variant": planner.model.variant, "feedback_source": "predicted",
             "feedback_applied": planner.model.variant == "A3",
             "compute_then_zero": planner.model.variant == "A4",
-            "step_count": len(planner.semantic_steps or []),
+            "checkpoint_file_hash": checkpoint_binding["trained_file_sha256"],
+            "planner_request_hash": file_hash(output / "planner-request.json"),
+            "work_plan_artifact_hash": work_plan["plan_content_hash"] if work_plan else None,
+            "latent_path": "semantic-latents.f32", "latent_file_sha256": file_hash(latent_path),
+            "steps": trace_steps,
+            "control_audit": planner.semantic_audit,
         }
         _write(output / "semantic-trace.json", trace)
     evidence_files = sorted(path for path in output.iterdir() if path.is_file())

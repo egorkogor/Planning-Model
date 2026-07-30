@@ -6,11 +6,14 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from jsonschema import ValidationError
 
+from planner_toy.canonical import sha256
 from planner_toy.e2e import A2Planner
 from planner_toy.model import LockedPlanner
 from planner_toy.quality import (
     MAPPING,
+    export_compact,
     paired,
     run,
     state_dict_sha256,
@@ -30,6 +33,17 @@ def copied_run(tmp_path, canonical_smoke):
     root = tmp_path / "run"
     shutil.copytree(canonical_smoke, root)
     return root
+
+
+def rehash_run(root, name):
+    manifest_path = root / "evaluation-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    import hashlib
+    manifest["artifact_hashes"][name] = (
+        "sha256:" + hashlib.sha256((root / name).read_bytes()).hexdigest()
+    )
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n")
+    (root / "replay-hash.txt").write_text(sha256(manifest) + "\n")
 
 
 def test_common_initialization_is_byte_identical() -> None:
@@ -151,7 +165,7 @@ def test_semantic_task_result_mutations_fail(tmp_path, canonical_smoke, field, v
     row = json.loads(path.read_text())
     row[field] = value
     path.write_text(json.dumps(row) + "\n")
-    with pytest.raises((ValueError, KeyError)):
+    with pytest.raises((ValueError, KeyError, ValidationError)):
         validate_evaluation(root)
 
 
@@ -176,3 +190,79 @@ def test_canonical_dataset_mutations_fail(tmp_path, canonical_smoke, field) -> N
     path.write_text(json.dumps(config))
     with pytest.raises(ValueError):
         validate_evaluation(root)
+
+
+def test_all_three_variant_real_smoke(tmp_path) -> None:
+    root = tmp_path / "all"
+    run(root, variants=("A2", "A3", "A4"), seeds=(17,), max_eval_tasks=1)
+    config = json.loads((root / "evaluation-config.json").read_text())
+    assert config["diagnostic_complete"] is False
+    rows = [json.loads(line) for line in (root / "task-results.jsonl").read_text().splitlines()]
+    assert {row["variant"] for row in rows} == {"A2", "A3", "A4"}
+    assert all(row["planner_call_count"] == 1 and row["replanning_count"] == 0 for row in rows)
+    assert not (root / rows[0]["evidence_root"] / "semantic-trace.json").exists()
+    for row in rows[1:]:
+        trace = json.loads((root / row["evidence_root"] / "semantic-trace.json").read_text())
+        assert trace["feedback_source"] == "predicted"
+        assert trace["feedback_applied"] == (row["variant"] == "A3")
+        assert trace["compute_then_zero"] == (row["variant"] == "A4")
+
+
+def test_incomplete_export_rejected(tmp_path, canonical_smoke) -> None:
+    with pytest.raises(ValueError, match="COMPLETE_CANONICAL"):
+        export_compact(canonical_smoke, tmp_path / "docs")
+
+
+def test_reuse_checkpoint_lineage_a2(tmp_path, canonical_smoke) -> None:
+    reused = tmp_path / "reused"
+    run(reused, variants=("A2",), seeds=(17,), max_eval_tasks=1,
+        reuse_checkpoint_root=canonical_smoke)
+    config = json.loads((reused / "evaluation-config.json").read_text())
+    assert config["diagnostic_complete"] is False
+    assert validate_evaluation(reused)["valid"]
+
+
+def test_self_consistent_markdown_claim_rejected(tmp_path, canonical_smoke) -> None:
+    root = copied_run(tmp_path, canonical_smoke)
+    path = root / "human-readable-examples.md"
+    path.write_text(path.read_text().replace("Goal reached: `false`", "Goal reached: `true`"))
+    rehash_run(root, "human-readable-examples.md")
+    with pytest.raises(ValueError, match="HUMAN_EXAMPLES"):
+        validate_evaluation(root)
+
+
+def test_self_consistent_dataset_manifest_rejected(tmp_path, canonical_smoke) -> None:
+    root = copied_run(tmp_path, canonical_smoke)
+    path = root / "dataset-manifest.json"
+    value = json.loads(path.read_text())
+    value["dataset_hash"] = "sha256:" + "0" * 64
+    path.write_text(json.dumps(value) + "\n")
+    rehash_run(root, "dataset-manifest.json")
+    with pytest.raises(ValueError, match="DATASET_MANIFEST"):
+        validate_evaluation(root)
+
+
+def test_plan_no_end_retains_partial_output() -> None:
+    from planner_toy.dataset import generate
+    from planner_toy.e2e import PlannerGenerationFailure
+    planner = A2Planner(_ScriptedModel([0]))
+    with pytest.raises(PlannerGenerationFailure) as caught:
+        planner.plan(generate()["validation"][0])
+    assert len(caught.value.partial_raw_output) == 17
+    assert caught.value.model_forward_count == 17
+
+
+def test_plan_no_end_persists_generation_failure_without_workplan(tmp_path) -> None:
+    from planner_toy.dataset import generate
+    from planner_toy.e2e import evaluate_frozen_plan
+    planner = A2Planner(_ScriptedModel([0]))
+    result = evaluate_frozen_plan(
+        row=generate()["validation"][0], planner=planner, output=tmp_path / "evidence",
+        checkpoint_binding={"trained_state_dict_sha256": "sha256:" + "0" * 64,
+                            "trained_file_sha256": "sha256:" + "1" * 64},
+    )
+    assert result["failure_code"] == "PLAN_NO_END"
+    assert len(result["raw_output"]) == 17
+    assert result["model_forward_count"] == 17
+    assert not (tmp_path / "evidence/work-plan.json").exists()
+    assert (tmp_path / "evidence/attempt-log.jsonl").read_text() == ""

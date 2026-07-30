@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import statistics
 import tempfile
 from collections import Counter
@@ -34,7 +35,7 @@ EPOCHS = 3
 MAX_STEPS = 17
 ROOT = Path(__file__).parents[1]
 SOURCE_FILES = (
-    "planner_toy/dataset.py", "planner_toy/domain.py", "planner_toy/e2e.py",
+    "planner_toy/canonical.py", "planner_toy/dataset.py", "planner_toy/domain.py", "planner_toy/e2e.py",
     "planner_toy/model.py", "planner_toy/quality.py", "planner_toy/semantic.py",
     "planner_toy/training.py", "planner_toy/schemas/toy_quality_evaluation.schema.json",
     "scripts/run_toy_quality_evaluation.py",
@@ -45,7 +46,12 @@ SOURCE_FILES = (
     "planner_toy/schemas/toy_quality_paired_comparison.schema.json",
     "planner_toy/schemas/toy_quality_per_seed_summary.schema.json",
     "planner_toy/schemas/toy_quality_structural_breakdown.schema.json",
+    "docs/architecture/planner_module_inventory_v1.yaml",
+    "docs/architecture/task_encoding_v1.yaml",
 )
+SOURCE_FILES = tuple(sorted(set(SOURCE_FILES) | {
+    str(path.relative_to(ROOT)) for path in (ROOT / "planner_toy/schemas").glob("toy_*.schema.json")
+}))
 
 
 def _write(path: Path, value: object) -> None:
@@ -243,8 +249,14 @@ def aggregate_summaries(per_seed: dict, rows: list[dict], variants, seeds) -> di
 
 
 def validate_evaluation(root: Path) -> dict:
+    torch.use_deterministic_algorithms(True)
+    torch.set_num_threads(1)
+    schema_root = Path(__file__).with_name("schemas")
+    def validate_schema(name: str, value) -> None:
+        Draft202012Validator(json.loads((schema_root / name).read_bytes())).validate(value)
+
     config = json.loads((root / "evaluation-config.json").read_bytes())
-    Draft202012Validator(json.loads((Path(__file__).with_name("schemas") / "toy_quality_evaluation.schema.json").read_bytes())).validate(config)
+    validate_schema("toy_quality_evaluation.schema.json", config)
     canonical = generate(17)
     expected_train = sorted(r["task_id"] for r in canonical["train"])
     expected_eval = sorted(r["task_id"] for r in canonical["validation"])
@@ -256,7 +268,14 @@ def validate_evaluation(root: Path) -> dict:
         raise ValueError("CANONICAL_EVAL_SPLIT_MISMATCH")
     if config["evaluator_source_files"] != source_identity()["evaluator_source_files"] or config["evaluator_source_sha256"] != source_identity()["evaluator_source_sha256"]:
         raise ValueError("EVALUATOR_SOURCE_STALE")
+    expected_dataset_manifest = {"dataset_hash": canonical["dataset_hash"], "train_task_ids": expected_train, "eval_task_ids": config["eval_task_ids"]}
+    dataset_manifest = json.loads((root / "dataset-manifest.json").read_bytes())
+    validate_schema("toy_quality_dataset_manifest.schema.json", dataset_manifest)
+    if dataset_manifest != expected_dataset_manifest:
+        raise ValueError("DATASET_MANIFEST_SEMANTIC_MISMATCH")
     rows = [json.loads(line) for line in (root / "task-results.jsonl").read_text().splitlines()]
+    for row in rows:
+        validate_schema("toy_quality_task_result.schema.json", row)
     keys = [(r["variant"], r["seed"], r["task_id"]) for r in rows]
     if len(keys) != len(set(keys)) or set(config["train_task_ids"]) & set(config["eval_task_ids"]):
         raise ValueError("DUPLICATE_OR_SPLIT_OVERLAP")
@@ -272,6 +291,11 @@ def validate_evaluation(root: Path) -> dict:
         for seed in config["seeds"]:
             run_dir = root / "training-runs" / variant / f"seed-{seed}"
             checkpoint = json.loads((run_dir / "checkpoint-manifest.json").read_bytes())
+            training_config = json.loads((run_dir / "training-config.json").read_bytes())
+            if _file_hash(run_dir / "training-config.json") != checkpoint["config_hash"]:
+                raise ValueError("TRAINING_CONFIG_HASH_MISMATCH")
+            if training_config["variant_identity"] != config["variant_mapping"][variant] or training_config["seed"] != seed or training_config["dataset_hash"] != canonical["dataset_hash"] or training_config["train_task_ids"] != expected_train or training_config["epochs"] != 3 or training_config["updates"] != 9 or training_config["optimizer"] != config["optimizer"] or training_config["checkpoint_policy"] != config["checkpoint_policy"]:
+                raise ValueError("TRAINING_CONFIG_SEMANTIC_MISMATCH")
             for name, field, state_field in (("initialization.pt", "initialization_file_sha256", "initialization_state_dict_sha256"), ("trained.pt", "trained_file_sha256", "trained_state_dict_sha256")):
                 path = run_dir / name
                 if _file_hash(path) != checkpoint[field]:
@@ -286,12 +310,20 @@ def validate_evaluation(root: Path) -> dict:
                 raise ValueError("CHECKPOINT_LINEAGE_MISMATCH")
             model = LockedPlanner(seed, variant).cpu()
             model.load_state_dict(torch.load(run_dir / "trained.pt", map_location="cpu", weights_only=True)); model.eval()
+            if checkpoint["active_parameter_names"] != sorted(model.active_names) or checkpoint["dormant_parameter_names"] != sorted(name for name, parameter in model.named_parameters() if not parameter.requires_grad):
+                raise ValueError("PARAMETER_POLICY_MISMATCH")
             loaded[(variant, seed)] = (model, checkpoint)
+    for seed in config["seeds"]:
+        initialization_hashes = {loaded[(variant, seed)][1]["initialization_state_dict_sha256"] for variant in config["variants"]}
+        if len(initialization_hashes) != 1:
+            raise ValueError("COMMON_INITIALIZATION_MISMATCH")
     for persisted in rows:
         evidence_root = root / persisted["evidence_root"]
-        required = {"planner-request.json", "attempt-log.jsonl", "episode-plan-manifest.json", "episode-log.json", "evaluation-result.json", "work-plan.json"}
+        required = {"planner-request.json", "attempt-log.jsonl", "episode-plan-manifest.json", "episode-log.json", "evaluation-result.json"}
+        if persisted["plan_generation_success"]:
+            required.add("work-plan.json")
         if persisted["variant"] in {"A3", "A4"}:
-            required.add("semantic-trace.json")
+            required.update({"semantic-trace.json", "semantic-latents.f32"})
         actual = {path.name for path in evidence_root.iterdir() if path.is_file()}
         if actual != required:
             raise ValueError("EVIDENCE_COVERAGE_MISMATCH")
@@ -305,15 +337,27 @@ def validate_evaluation(root: Path) -> dict:
         if reproduced != persisted:
             raise ValueError("SEMANTIC_REPLAY_MISMATCH")
     per_seed = json.loads((root / "per-seed-summary.json").read_bytes())
+    validate_schema("toy_quality_per_seed_summary.schema.json", per_seed)
     recalculated = {f"{v}/seed-{s}": summarize([r for r in rows if r["variant"] == v and r["seed"] == s]) for v in config["variants"] for s in config["seeds"]}
     if per_seed != recalculated:
         raise ValueError("SUMMARY_MISMATCH")
-    if json.loads((root / "aggregate-summary.json").read_bytes()) != aggregate_summaries(recalculated, rows, config["variants"], config["seeds"]):
+    aggregate = json.loads((root / "aggregate-summary.json").read_bytes())
+    validate_schema("toy_quality_aggregate_summary.schema.json", aggregate)
+    for value in aggregate.values():
+        validate_schema("toy_quality_structural_breakdown.schema.json", value["structural_breakdown"])
+    if aggregate != aggregate_summaries(recalculated, rows, config["variants"], config["seeds"]):
         raise ValueError("AGGREGATE_MISMATCH")
     comparisons = [paired(rows, a, b) for a, b in (("A3", "A2"), ("A4", "A2"), ("A3", "A4")) if a in config["variants"] and b in config["variants"]]
-    if json.loads((root / "paired-comparisons.json").read_bytes()) != comparisons:
+    persisted_comparisons = json.loads((root / "paired-comparisons.json").read_bytes())
+    for comparison in persisted_comparisons:
+        validate_schema("toy_quality_paired_comparison.schema.json", comparison)
+    if persisted_comparisons != comparisons:
         raise ValueError("PAIRED_MISMATCH")
+    selected_rows = [dataset_rows[task_id] for task_id in config["eval_task_ids"]]
+    if (root / "human-readable-examples.md").read_text() != _examples(rows, selected_rows, config["variants"], config["seeds"]):
+        raise ValueError("HUMAN_EXAMPLES_SEMANTIC_MISMATCH")
     manifest = json.loads((root / "evaluation-manifest.json").read_bytes())
+    validate_schema("toy_quality_evaluation_manifest.schema.json", manifest)
     if manifest["evaluator_source_sha256"] != config["evaluator_source_sha256"]:
         raise ValueError("EVALUATOR_SOURCE_MANIFEST_MISMATCH")
     expected_artifacts = {"evaluation-config.json", "dataset-manifest.json", "task-results.jsonl", "per-seed-summary.json", "aggregate-summary.json", "paired-comparisons.json", "human-readable-examples.md"}
@@ -323,6 +367,13 @@ def validate_evaluation(root: Path) -> dict:
         if _file_hash(root / name) != digest:
             raise ValueError("ARTIFACT_HASH_MISMATCH")
     for collection in ("checkpoint_manifest_hashes", "evidence_artifact_hashes"):
+        expected_paths = (
+            {str(path.relative_to(root)) for path in root.glob("training-runs/*/seed-*/*") if path.is_file()}
+            if collection == "checkpoint_manifest_hashes"
+            else {str(path.relative_to(root)) for path in root.glob("evidence/*/seed-*/*/*") if path.is_file()}
+        )
+        if set(manifest[collection]) != expected_paths:
+            raise ValueError("RECURSIVE_MANIFEST_COVERAGE_MISMATCH")
         for name, digest in manifest[collection].items():
             if _file_hash(root / name) != digest:
                 raise ValueError("RECURSIVE_ARTIFACT_HASH_MISMATCH")
@@ -336,6 +387,8 @@ def export_compact(root: Path, destination: Path, implementation_commit: str | N
     """Generate the two reviewable reference artifacts exclusively from a validated run."""
     validate_evaluation(root)
     config = json.loads((root / "evaluation-config.json").read_bytes())
+    if not config["diagnostic_complete"] or tuple(config["variants"]) != VARIANTS or tuple(config["seeds"]) != SEEDS or len(config["eval_task_ids"]) != 2:
+        raise ValueError("COMPACT_EXPORT_REQUIRES_COMPLETE_CANONICAL_RUN")
     per_seed = json.loads((root / "per-seed-summary.json").read_bytes())
     aggregate = json.loads((root / "aggregate-summary.json").read_bytes())
     comparisons = json.loads((root / "paired-comparisons.json").read_bytes())
@@ -355,6 +408,7 @@ def export_compact(root: Path, destination: Path, implementation_commit: str | N
         "observed_failure_codes": sorted({r["failure_code"] for r in rows if r["failure_code"]}),
         "replay_hash": (root / "replay-hash.txt").read_text().strip(),
     }
+    Draft202012Validator(json.loads((Path(__file__).with_name("schemas") / "toy_quality_compact_summary.schema.json").read_bytes())).validate(compact)
     data = destination / "data" / "a2_a3_a4_heldout_summary.json"
     _write(data, compact)
     lines = [
@@ -415,15 +469,16 @@ def run(
             else:
                 source = reuse_checkpoint_root / "training-runs" / variant / f"seed-{seed}"
                 manifest = json.loads((source / "checkpoint-manifest.json").read_bytes())
-                if manifest["variant"] != variant or manifest["seed"] != seed:
+                if manifest["variant_identity"] != config["variant_mapping"][variant] or manifest["seed"] != seed:
                     raise ValueError("REUSED_CHECKPOINT_IDENTITY_MISMATCH")
                 model = LockedPlanner(seed, variant).cpu()
                 model.load_state_dict(torch.load(source / "trained.pt", map_location="cpu", weights_only=True))
                 checkpoint = manifest
                 if state_dict_sha256(model.state_dict()) != manifest["trained_state_dict_sha256"]:
                     raise ValueError("REUSED_CHECKPOINT_HASH_MISMATCH")
-                run_dir.mkdir(parents=True, exist_ok=True)
-                _write(run_dir / "checkpoint-manifest.json", manifest)
+                if manifest["dataset_hash"] != dataset["dataset_hash"] or manifest["train_task_ids"] != config["train_task_ids"] or manifest["epochs"] != EPOCHS or manifest["updates"] != 9:
+                    raise ValueError("REUSED_CHECKPOINT_LINEAGE_MISMATCH")
+                shutil.copytree(source, run_dir)
             for row in eval_rows:
                 evidence = output / "evidence" / variant / f"seed-{seed}" / row["task_id"]
                 result = _evaluate(row, variant, seed, model, checkpoint, evidence)
@@ -438,7 +493,7 @@ def run(
     examples = _examples(rows, eval_rows, variants, seeds)
     (output / "human-readable-examples.md").write_text(examples)
     names = ["evaluation-config.json", "dataset-manifest.json", "task-results.jsonl", "per-seed-summary.json", "aggregate-summary.json", "paired-comparisons.json", "human-readable-examples.md"]
-    checkpoint_files = sorted(output.glob("training-runs/*/seed-*/checkpoint-manifest.json"))
+    checkpoint_files = sorted(path for path in output.glob("training-runs/*/seed-*/*") if path.is_file())
     evidence_files = sorted(output.glob("evidence/*/seed-*/*/*"))
     manifest = {"evaluator_version": VERSION, "seeds": list(seeds), "variants": list(variants), "variant_mapping": config["variant_mapping"],
                 "evaluator_source_sha256": config["evaluator_source_sha256"],
