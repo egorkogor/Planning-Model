@@ -22,7 +22,15 @@ def main() -> None:
     args = parser.parse_args()
     if args.skip_training and args.reuse_checkpoint_root is None:
         parser.error("--skip-training requires --reuse-checkpoint-root")
-    result = validate_evaluation(args.output_dir) if args.validate_only else run(args.output_dir, variants=args.variants, seeds=args.seeds, max_eval_tasks=args.max_eval_tasks, reuse_checkpoint_root=args.reuse_checkpoint_root if args.skip_training else None)
+    if args.validate_only:
+        result = validate_evaluation(args.output_dir)
+    else:
+        result = run(
+            args.output_dir, variants=args.variants, seeds=args.seeds,
+            max_eval_tasks=args.max_eval_tasks,
+            reuse_checkpoint_root=args.reuse_checkpoint_root if args.skip_training else None,
+            implementation_commit=args.implementation_commit,
+        )
     print(result)
     if args.compact_dir:
         export_compact(args.output_dir, args.compact_dir, args.implementation_commit)

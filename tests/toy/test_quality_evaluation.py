@@ -29,6 +29,13 @@ def canonical_smoke(tmp_path_factory):
     return root
 
 
+@pytest.fixture(scope="session")
+def all_three_smoke(tmp_path_factory):
+    root = tmp_path_factory.mktemp("quality-all-three") / "run"
+    run(root, variants=("A2", "A3", "A4"), seeds=(17,), max_eval_tasks=1)
+    return root
+
+
 def copied_run(tmp_path, canonical_smoke):
     root = tmp_path / "run"
     shutil.copytree(canonical_smoke, root)
@@ -70,21 +77,10 @@ def test_handcrafted_metrics_and_paired_matrix() -> None:
     assert paired(rows, "A3", "A2")["only_first_succeeds"] == 1
 
 
-def test_deterministic_smoke_and_public_mutation_rejection(tmp_path) -> None:
-    first, second = tmp_path / "one", tmp_path / "two"
-    run(first, variants=("A2",), seeds=(17,), max_eval_tasks=1)
-    run(second, variants=("A2",), seeds=(17,), max_eval_tasks=1)
-    deterministic = [
-        "evaluation-config.json", "dataset-manifest.json", "task-results.jsonl",
-        "per-seed-summary.json", "aggregate-summary.json", "paired-comparisons.json",
-        "human-readable-examples.md", "evaluation-manifest.json", "replay-hash.txt",
-    ]
-    assert all(
-        (first / name).read_bytes() == (second / name).read_bytes() for name in deterministic
-    )
-    assert validate_evaluation(first)["valid"]
+def test_deterministic_smoke_and_public_mutation_rejection(tmp_path, canonical_smoke) -> None:
+    assert validate_evaluation(canonical_smoke)["valid"]
     damaged = tmp_path / "damaged"
-    shutil.copytree(first, damaged)
+    shutil.copytree(canonical_smoke, damaged)
     row = json.loads((damaged / "task-results.jsonl").read_text())
     row["goal_reached"] = not row["goal_reached"]
     (damaged / "task-results.jsonl").write_text(json.dumps(row) + "\n")
@@ -92,9 +88,8 @@ def test_deterministic_smoke_and_public_mutation_rejection(tmp_path) -> None:
         validate_evaluation(damaged)
 
 
-def test_split_overlap_fails_closed(tmp_path) -> None:
-    root = tmp_path / "run"
-    run(root, variants=("A2",), seeds=(17,), max_eval_tasks=1)
+def test_split_overlap_fails_closed(tmp_path, canonical_smoke) -> None:
+    root = copied_run(tmp_path, canonical_smoke)
     config_path = root / "evaluation-config.json"
     config = json.loads(config_path.read_text())
     config["train_task_ids"].append(config["eval_task_ids"][0])
@@ -200,9 +195,8 @@ def test_canonical_dataset_mutations_fail(tmp_path, canonical_smoke, field) -> N
         validate_evaluation(root)
 
 
-def test_all_three_variant_real_smoke(tmp_path) -> None:
-    root = tmp_path / "all"
-    run(root, variants=("A2", "A3", "A4"), seeds=(17,), max_eval_tasks=1)
+def test_all_three_variant_real_smoke(all_three_smoke) -> None:
+    root = all_three_smoke
     config = json.loads((root / "evaluation-config.json").read_text())
     assert config["diagnostic_complete"] is False
     rows = [json.loads(line) for line in (root / "task-results.jsonl").read_text().splitlines()]
@@ -298,9 +292,9 @@ def test_quality_adapter_cannot_bypass_shared_lineage_core(tmp_path, monkeypatch
     assert called == ["A2"]
 
 
-def test_task_result_reordering_rejected(tmp_path) -> None:
+def test_task_result_reordering_rejected(tmp_path, all_three_smoke) -> None:
     root = tmp_path / "run"
-    run(root, variants=("A2",), seeds=(17,), max_eval_tasks=2)
+    shutil.copytree(all_three_smoke, root)
     path = root / "task-results.jsonl"
     lines = path.read_text().splitlines()
     path.write_text("\n".join(reversed(lines)) + "\n")

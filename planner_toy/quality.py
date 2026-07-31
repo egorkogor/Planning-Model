@@ -89,12 +89,27 @@ def source_identity() -> dict:
     return {"evaluator_source_files": entries, "evaluator_source_sha256": sha256(entries)}
 
 
-def implementation_provenance() -> dict:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=False
-    )
+def _git(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *args], cwd=ROOT, text=True, capture_output=True, check=False)
+
+
+def source_identity_at_commit(commit: str) -> dict:
+    entries = []
+    for name in SOURCE_FILES:
+        result = _git("show", f"{commit}:{name}")
+        if result.returncode:
+            raise ValueError(f"implementation commit does not contain {name}")
+        entries.append({"path": name, "sha256": "sha256:" + hashlib.sha256(result.stdout.encode()).hexdigest()})
+    return {"evaluator_source_files": entries, "evaluator_source_sha256": sha256(entries)}
+
+
+def implementation_provenance(commit: str | None = None) -> dict:
+    result = _git("rev-parse", commit or "HEAD")
+    implementation_commit = result.stdout.strip() if result.returncode == 0 else None
+    if implementation_commit is None or _git("cat-file", "-e", f"{implementation_commit}^{{commit}}").returncode:
+        raise ValueError("implementation commit must identify an existing commit")
     return {
-        "implementation_commit": result.stdout.strip() if result.returncode == 0 else None,
+        "implementation_commit": implementation_commit,
         "requirements_lock_sha256": _file_hash(ROOT / "requirements.lock"),
         "runtime_versions": {"python": platform.python_version(), "torch": torch.__version__},
     }
@@ -334,6 +349,13 @@ def validate_evaluation(root: Path) -> dict:
         raise ValueError("COMPLETE_RUN_TRAINING_PROVENANCE_MISMATCH")
     if config["evaluator_source_files"] != source_identity()["evaluator_source_files"] or config["evaluator_source_sha256"] != source_identity()["evaluator_source_sha256"]:
         raise ValueError("EVALUATOR_SOURCE_STALE")
+    implementation_commit = config["implementation_commit"]
+    if not implementation_commit or _git("cat-file", "-e", f"{implementation_commit}^{{commit}}").returncode:
+        raise ValueError("IMPLEMENTATION_COMMIT_MISSING")
+    if _git("merge-base", "--is-ancestor", implementation_commit, "HEAD").returncode:
+        raise ValueError("IMPLEMENTATION_COMMIT_NOT_ANCESTOR")
+    if source_identity_at_commit(implementation_commit) != source_identity():
+        raise ValueError("IMPLEMENTATION_COMMIT_SOURCE_MISMATCH")
     current_provenance = implementation_provenance()
     if config["requirements_lock_sha256"] != current_provenance["requirements_lock_sha256"] or config["runtime_versions"] != current_provenance["runtime_versions"]:
         raise ValueError("IMPLEMENTATION_RUNTIME_PROVENANCE_MISMATCH")
@@ -573,6 +595,7 @@ def run(
     seeds=SEEDS,
     max_eval_tasks: int | None = None,
     reuse_checkpoint_root: Path | None = None,
+    implementation_commit: str | None = None,
 ) -> dict:
     if max_eval_tasks is not None and max_eval_tasks <= 0:
         raise ValueError("max_eval_tasks must be positive")
@@ -587,7 +610,16 @@ def run(
     variants, seeds = tuple(variants), tuple(seeds)
     if any(seed not in SEEDS for seed in seeds):
         raise ValueError("only predeclared development seeds 17, 29, and 43 are supported")
+    reuse_validation = None
+    if reuse_checkpoint_root is not None:
+        reuse_validation = validate_evaluation(reuse_checkpoint_root)
     complete = variants == VARIANTS and seeds == SEEDS and max_eval_tasks is None and reuse_checkpoint_root is None
+    provenance = implementation_provenance(implementation_commit)
+    if complete:
+        if _git("status", "--porcelain").stdout.strip():
+            raise ValueError("complete canonical generation requires a clean working tree")
+        if source_identity_at_commit(provenance["implementation_commit"]) != source_identity():
+            raise ValueError("working evaluator sources differ from implementation commit")
     config = {"schema_version": VERSION, "evaluator_version": VERSION, "variants": list(variants), "seeds": list(seeds),
               "variant_mapping": {v: {"architecture_stage": MAPPING[v][0], "implementation_variant": v, "experimental_arm": MAPPING[v][1], "target_type": MAPPING[v][2]} for v in variants},
               "train_task_ids": [r["task_id"] for r in train_rows], "eval_task_ids": [r["task_id"] for r in eval_rows],
@@ -597,7 +629,7 @@ def run(
               "budget_version": "quality-v0.1-fixed-2026-07", "updates_per_run": EPOCHS * len(train_rows),
               "training_execution_mode": "REUSED" if reuse_checkpoint_root is not None else "TRAINED_IN_RUN",
               "checkpoint_origin_run_hash": (
-                  _file_hash(reuse_checkpoint_root / "evaluation-manifest.json")
+                  reuse_validation["replay_hash"]
                   if reuse_checkpoint_root is not None else None
               ),
               "reuse_source_manifest_hash": (
@@ -607,7 +639,7 @@ def run(
               "deterministic_training_replay_status": (
                   "REUSED_VALIDATED" if reuse_checkpoint_root is not None else "CANONICAL_DETERMINISTIC"
               ),
-              **source_identity(), **implementation_provenance()}
+              **source_identity(), **provenance}
     _write(output / "evaluation-config.json", config)
     _write(output / "dataset-manifest.json", {"dataset_hash": dataset["dataset_hash"], "train_task_ids": config["train_task_ids"], "eval_task_ids": config["eval_task_ids"]})
     rows = []
