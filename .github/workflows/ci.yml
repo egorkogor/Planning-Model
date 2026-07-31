@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -52,6 +54,22 @@ jobs:
           PY
           )"
           test -n "$IMPLEMENTATION_SHA"
+          if ! git cat-file -e "${IMPLEMENTATION_SHA}^{commit}" 2>/dev/null; then
+            if test "$(git rev-parse --is-shallow-repository)" = true; then
+              echo "implementation commit is unavailable because checkout history is shallow" >&2
+            else
+              echo "implementation commit is absent from the fetched repository" >&2
+            fi
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$IMPLEMENTATION_SHA" HEAD; then
+            echo "implementation commit exists but is not an ancestor of the results checkout" >&2
+            exit 1
+          fi
+          if ! git show "$IMPLEMENTATION_SHA:requirements.lock" >/dev/null; then
+            echo "implementation tree is incomplete: requirements.lock is missing" >&2
+            exit 1
+          fi
           python -m scripts.run_toy_quality_evaluation \
             --output-dir .quality-eval-ci \
             --implementation-commit "$IMPLEMENTATION_SHA"

@@ -2,8 +2,8 @@
 
 > Development-only diagnostic. Это не confirmatory experiment, не прохождение Stage 2A semantic gate, не доказательство semantic reasoning или superiority A3 и не разрешение A3b.
 
-- Evaluator source SHA256: `sha256:20e1a38ede2c7df9c835a1aa2e7668099923cf3af68c0e76a4722874e09e5272`
-- Implementation commit: `4b457296a1f6b8d28674ed84376ee201b2c39aa9`
+- Evaluator source SHA256: `sha256:b4b348aadd3b617b4eb35d8f0783bc80409845bc70dc7abf84ce163b032b8cf6`
+- Implementation commit: `d02e4cc8bf4615e6b1159b4d865d5c113ec1ffa6`
 - Requirements lock: `sha256:883c8e262c6f3ea917239010be08ac0064ab67de70c1caad7bb98fe9f0b68401`
 - Runtime: `{"cuda_available": false, "cuda_version": null, "execution_device": "cpu", "numpy": "2.3.5", "python": "3.11.15", "torch": "2.12.0+cpu"}`
 - Evaluator: `development-quality-evaluation/0.1`
@@ -679,6 +679,12 @@ Goal reached: `false`
 ## Воспроизведение
 
 ```bash
-python -m scripts.run_toy_quality_evaluation --output-dir .quality-eval
-python -m scripts.run_toy_quality_evaluation --output-dir .quality-eval --validate-only
+python -m scripts.run_toy_quality_evaluation \
+  --output-dir .quality-eval \
+  --implementation-commit <IMPLEMENTATION_SHA>
+
+python -m scripts.run_toy_quality_evaluation \
+  --output-dir .quality-eval \
+  --validate-only \
+  --compact-dir docs/evaluations
 ```

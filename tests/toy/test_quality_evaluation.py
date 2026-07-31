@@ -219,13 +219,13 @@ def test_incomplete_export_rejected(tmp_path, canonical_smoke) -> None:
         export_compact(canonical_smoke, tmp_path / "docs")
 
 
-def test_reuse_checkpoint_lineage_a2(tmp_path, canonical_smoke) -> None:
+def test_reuse_rejects_incomplete_source(tmp_path, canonical_smoke) -> None:
     reused = tmp_path / "reused"
-    run(reused, variants=("A2",), seeds=(17,), max_eval_tasks=1,
-        reuse_checkpoint_root=canonical_smoke)
-    config = json.loads((reused / "evaluation-config.json").read_text())
-    assert config["diagnostic_complete"] is False
-    assert validate_evaluation(reused)["valid"]
+    with pytest.raises(ValueError, match="COMPLETE_CANONICAL_SOURCE"):
+        run(
+            reused, variants=("A2",), seeds=(17,), max_eval_tasks=1,
+            reuse_checkpoint_root=canonical_smoke,
+        )
 
 
 def test_self_consistent_markdown_claim_rejected(tmp_path, canonical_smoke) -> None:

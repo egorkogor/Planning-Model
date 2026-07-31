@@ -455,7 +455,7 @@ def validate_evaluation(root: Path) -> dict:
             trained_state = model.state_dict()
             if any(not torch.equal(trained_state[name], persisted_initial[name]) for name in checkpoint["dormant_parameter_names"]):
                 raise ValueError("DORMANT_PARAMETER_CHANGED")
-            if config["diagnostic_complete"]:
+            if config["diagnostic_complete"] or config["training_execution_mode"] == "REUSED":
                 with tempfile.TemporaryDirectory() as training_replay_dir:
                     replay_model, replay_manifest = _train(
                         sorted(canonical["train"], key=lambda row: row["task_id"]),
@@ -592,7 +592,7 @@ def export_compact(root: Path, destination: Path) -> None:
         variant, seed = key.split("/seed-")
         applicable = "null" if summary["action_applicable_rate"] is None else f"{summary['action_applicable_rate']:.3f}"
         lines.append(f"| {MAPPING[variant][1]} | {seed} | {summary['success_count']}/{summary['heldout_task_count']} | {summary['task_success_rate']:.3f} | {summary['fully_executable_plan_rate']:.3f} | {applicable} | {summary['mean_predicted_plan_length']:.2f} |")
-    lines += ["", "## Aggregate", "", "```json", json.dumps(aggregate, ensure_ascii=False, indent=2, sort_keys=True), "```", "", "## Paired comparisons", "", "```json", json.dumps(comparisons, ensure_ascii=False, indent=2, sort_keys=True), "```", "", "## Детерминированно выбранные примеры", "", (root / "human-readable-examples.md").read_text(), "", "## Ограничения", "", "Все failures включены в denominator. Hyperparameters не подбирались после просмотра held-out результата. A3a-shuffled, A3a-foreign, A3s, A3b и Verbalizer не реализованы.", "", "## Воспроизведение", "", "```bash", "python -m scripts.run_toy_quality_evaluation --output-dir .quality-eval", "python -m scripts.run_toy_quality_evaluation --output-dir .quality-eval --validate-only", "```", ""]
+    lines += ["", "## Aggregate", "", "```json", json.dumps(aggregate, ensure_ascii=False, indent=2, sort_keys=True), "```", "", "## Paired comparisons", "", "```json", json.dumps(comparisons, ensure_ascii=False, indent=2, sort_keys=True), "```", "", "## Детерминированно выбранные примеры", "", (root / "human-readable-examples.md").read_text(), "", "## Ограничения", "", "Все failures включены в denominator. Hyperparameters не подбирались после просмотра held-out результата. A3a-shuffled, A3a-foreign, A3s, A3b и Verbalizer не реализованы.", "", "## Воспроизведение", "", "```bash", "python -m scripts.run_toy_quality_evaluation \\", "  --output-dir .quality-eval \\", "  --implementation-commit <IMPLEMENTATION_SHA>", "", "python -m scripts.run_toy_quality_evaluation \\", "  --output-dir .quality-eval \\", "  --validate-only \\", "  --compact-dir docs/evaluations", "```", ""]
     report = destination / "A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md"
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text("\n".join(lines))
@@ -623,6 +623,18 @@ def run(
     reuse_validation = None
     if reuse_checkpoint_root is not None:
         reuse_validation = validate_evaluation(reuse_checkpoint_root)
+        reuse_config = json.loads(
+            (reuse_checkpoint_root / "evaluation-config.json").read_bytes()
+        )
+        if (
+            not reuse_config["diagnostic_complete"]
+            or tuple(reuse_config["variants"]) != VARIANTS
+            or tuple(reuse_config["seeds"]) != SEEDS
+            or reuse_config["training_execution_mode"] != "TRAINED_IN_RUN"
+            or reuse_config["deterministic_training_replay_status"]
+            != "CANONICAL_DETERMINISTIC"
+        ):
+            raise ValueError("REUSE_REQUIRES_COMPLETE_CANONICAL_SOURCE")
     complete = variants == VARIANTS and seeds == SEEDS and max_eval_tasks is None and reuse_checkpoint_root is None
     if complete and implementation_commit is None:
         raise ValueError("complete canonical generation requires --implementation-commit")
