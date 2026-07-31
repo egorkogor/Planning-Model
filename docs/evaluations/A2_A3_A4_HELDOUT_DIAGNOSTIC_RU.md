@@ -2,11 +2,10 @@
 
 > Development-only diagnostic. Это не confirmatory experiment, не прохождение Stage 2A semantic gate, не доказательство semantic reasoning или superiority A3 и не разрешение A3b.
 
-- Optional Git commit: `8f8c4bd37b86689d5e5d83b0e7cff117412c9621`
-- Evaluator source SHA256: `sha256:0df6539ab7c72c3836fa05831e7598417051e1d8a9cae5358e977c70d05ee715`
-- Implementation commit: `8f8c4bd37b86689d5e5d83b0e7cff117412c9621`
+- Evaluator source SHA256: `sha256:20e1a38ede2c7df9c835a1aa2e7668099923cf3af68c0e76a4722874e09e5272`
+- Implementation commit: `4b457296a1f6b8d28674ed84376ee201b2c39aa9`
 - Requirements lock: `sha256:883c8e262c6f3ea917239010be08ac0064ab67de70c1caad7bb98fe9f0b68401`
-- Runtime: `{"python": "3.11.15", "torch": "2.12.0+cpu"}`
+- Runtime: `{"cuda_available": false, "cuda_version": null, "execution_device": "cpu", "numpy": "2.3.5", "python": "3.11.15", "torch": "2.12.0+cpu"}`
 - Evaluator: `development-quality-evaluation/0.1`
 - Dataset hash: `sha256:60e4ce06d6cfc90dc467fb4e82b2eb71cf2d92d37471eee3aeda64f864c541df`
 - Train tasks: 3; held-out tasks: 2

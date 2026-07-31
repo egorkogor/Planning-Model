@@ -39,6 +39,30 @@ jobs:
             exit 1
           }
       - run: ruff check .
+      - name: Regenerate canonical quality diagnostic
+        if: matrix.python-version == '3.11'
+        run: |
+          IMPLEMENTATION_SHA="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('docs/evaluations/data/a2_a3_a4_heldout_summary.json')
+          if not path.is_file():
+              raise SystemExit('committed compact diagnostic is missing')
+          print(json.loads(path.read_text())['implementation_commit'])
+          PY
+          )"
+          test -n "$IMPLEMENTATION_SHA"
+          python -m scripts.run_toy_quality_evaluation \
+            --output-dir .quality-eval-ci \
+            --implementation-commit "$IMPLEMENTATION_SHA"
+          python -m scripts.run_toy_quality_evaluation \
+            --output-dir .quality-eval-ci --validate-only \
+            --compact-dir .quality-docs-ci
+          cmp .quality-docs-ci/data/a2_a3_a4_heldout_summary.json \
+            docs/evaluations/data/a2_a3_a4_heldout_summary.json
+          cmp .quality-docs-ci/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
+            docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
+          rm -rf .quality-eval-ci .quality-docs-ci
       - name: Verify tests left a clean checkout
         run: |
           rm -rf .pytest-tmp .pytest_cache

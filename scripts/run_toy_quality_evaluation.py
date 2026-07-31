@@ -33,7 +33,7 @@ def main() -> None:
         )
     print(result)
     if args.compact_dir:
-        export_compact(args.output_dir, args.compact_dir, args.implementation_commit)
+        export_compact(args.output_dir, args.compact_dir)
 
 if __name__ == "__main__":
     main()

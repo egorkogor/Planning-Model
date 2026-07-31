@@ -13,6 +13,7 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from jsonschema import Draft202012Validator
@@ -93,13 +94,17 @@ def _git(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", *args], cwd=ROOT, text=True, capture_output=True, check=False)
 
 
+def _git_bytes(*args: str) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, check=False)
+
+
 def source_identity_at_commit(commit: str) -> dict:
     entries = []
     for name in SOURCE_FILES:
-        result = _git("show", f"{commit}:{name}")
+        result = _git_bytes("show", f"{commit}:{name}")
         if result.returncode:
             raise ValueError(f"implementation commit does not contain {name}")
-        entries.append({"path": name, "sha256": "sha256:" + hashlib.sha256(result.stdout.encode()).hexdigest()})
+        entries.append({"path": name, "sha256": "sha256:" + hashlib.sha256(result.stdout).hexdigest()})
     return {"evaluator_source_files": entries, "evaluator_source_sha256": sha256(entries)}
 
 
@@ -108,10 +113,17 @@ def implementation_provenance(commit: str | None = None) -> dict:
     implementation_commit = result.stdout.strip() if result.returncode == 0 else None
     if implementation_commit is None or _git("cat-file", "-e", f"{implementation_commit}^{{commit}}").returncode:
         raise ValueError("implementation commit must identify an existing commit")
+    requirements = _git_bytes("show", f"{implementation_commit}:requirements.lock")
+    if requirements.returncode:
+        raise ValueError("implementation commit does not contain requirements.lock")
     return {
         "implementation_commit": implementation_commit,
-        "requirements_lock_sha256": _file_hash(ROOT / "requirements.lock"),
-        "runtime_versions": {"python": platform.python_version(), "torch": torch.__version__},
+        "requirements_lock_sha256": "sha256:" + hashlib.sha256(requirements.stdout).hexdigest(),
+        "runtime_versions": {
+            "python": platform.python_version(), "torch": torch.__version__,
+            "numpy": np.__version__, "cuda_version": torch.version.cuda,
+            "cuda_available": torch.cuda.is_available(), "execution_device": "cpu",
+        },
     }
 
 
@@ -354,9 +366,9 @@ def validate_evaluation(root: Path) -> dict:
         raise ValueError("IMPLEMENTATION_COMMIT_MISSING")
     if _git("merge-base", "--is-ancestor", implementation_commit, "HEAD").returncode:
         raise ValueError("IMPLEMENTATION_COMMIT_NOT_ANCESTOR")
-    if source_identity_at_commit(implementation_commit) != source_identity():
+    if config["diagnostic_complete"] and source_identity_at_commit(implementation_commit) != source_identity():
         raise ValueError("IMPLEMENTATION_COMMIT_SOURCE_MISMATCH")
-    current_provenance = implementation_provenance()
+    current_provenance = implementation_provenance(implementation_commit)
     if config["requirements_lock_sha256"] != current_provenance["requirements_lock_sha256"] or config["runtime_versions"] != current_provenance["runtime_versions"]:
         raise ValueError("IMPLEMENTATION_RUNTIME_PROVENANCE_MISMATCH")
     expected_dataset_manifest = {"dataset_hash": canonical["dataset_hash"], "train_task_ids": expected_train, "eval_task_ids": config["eval_task_ids"]}
@@ -533,7 +545,7 @@ def validate_evaluation(root: Path) -> dict:
     return {"valid": True, "task_results": len(rows), "replay_hash": replay}
 
 
-def export_compact(root: Path, destination: Path, implementation_commit: str | None = None) -> None:
+def export_compact(root: Path, destination: Path) -> None:
     """Generate the two reviewable reference artifacts exclusively from a validated run."""
     validate_evaluation(root)
     config = json.loads((root / "evaluation-config.json").read_bytes())
@@ -545,7 +557,6 @@ def export_compact(root: Path, destination: Path, implementation_commit: str | N
     rows = [json.loads(line) for line in (root / "task-results.jsonl").read_text().splitlines()]
     compact = {
         "status": "development-only-diagnostic",
-        "optional_git_commit": implementation_commit,
         "evaluator_source_files": config["evaluator_source_files"],
         "evaluator_source_sha256": config["evaluator_source_sha256"],
         "implementation_commit": config["implementation_commit"],
@@ -567,7 +578,6 @@ def export_compact(root: Path, destination: Path, implementation_commit: str | N
     lines = [
         "# Диагностика качества A2/A3/A4 на held-out задачах", "",
         "> Development-only diagnostic. Это не confirmatory experiment, не прохождение Stage 2A semantic gate, не доказательство semantic reasoning или superiority A3 и не разрешение A3b.", "",
-        f"- Optional Git commit: `{implementation_commit}`",
         f"- Evaluator source SHA256: `{config['evaluator_source_sha256']}`",
         f"- Implementation commit: `{config['implementation_commit']}`",
         f"- Requirements lock: `{config['requirements_lock_sha256']}`",
@@ -614,10 +624,14 @@ def run(
     if reuse_checkpoint_root is not None:
         reuse_validation = validate_evaluation(reuse_checkpoint_root)
     complete = variants == VARIANTS and seeds == SEEDS and max_eval_tasks is None and reuse_checkpoint_root is None
+    if complete and implementation_commit is None:
+        raise ValueError("complete canonical generation requires --implementation-commit")
     provenance = implementation_provenance(implementation_commit)
     if complete:
-        if _git("status", "--porcelain").stdout.strip():
-            raise ValueError("complete canonical generation requires a clean working tree")
+        if _git("diff", "--quiet").returncode or _git("diff", "--cached", "--quiet").returncode:
+            raise ValueError("complete canonical generation requires a clean tracked working tree")
+        if _git("merge-base", "--is-ancestor", provenance["implementation_commit"], "HEAD").returncode:
+            raise ValueError("implementation commit must be an ancestor of the checkout")
         if source_identity_at_commit(provenance["implementation_commit"]) != source_identity():
             raise ValueError("working evaluator sources differ from implementation commit")
     config = {"schema_version": VERSION, "evaluator_version": VERSION, "variants": list(variants), "seeds": list(seeds),

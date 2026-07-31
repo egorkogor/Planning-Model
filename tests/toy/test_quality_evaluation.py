@@ -317,3 +317,35 @@ def test_cli_rejects_noncanonical_seed(tmp_path) -> None:
     )
     assert result.returncode != 0
     assert "invalid choice" in result.stderr
+
+
+def test_missing_implementation_commit_rejected_for_complete(tmp_path, monkeypatch) -> None:
+    from planner_toy import quality
+    monkeypatch.setattr(quality, "implementation_provenance", lambda commit: (_ for _ in ()).throw(
+        AssertionError("provenance must not be resolved before explicit commit check")
+    ))
+    with pytest.raises(ValueError, match="requires --implementation-commit"):
+        run(tmp_path / "run", implementation_commit=None)
+
+
+@pytest.mark.parametrize("commit", ["not-a-sha", "0" * 40], ids=["malformed", "missing"])
+def test_invalid_implementation_commit_rejected(commit) -> None:
+    from planner_toy.quality import implementation_provenance
+    with pytest.raises(ValueError, match="existing commit"):
+        implementation_provenance(commit)
+
+
+def test_requirements_hash_is_read_from_implementation_tree() -> None:
+    import hashlib
+    import subprocess
+
+    from planner_toy.quality import implementation_provenance
+    expected = subprocess.run(
+        ["git", "show", "HEAD:requirements.lock"], capture_output=True, check=True,
+    ).stdout
+    provenance = implementation_provenance("HEAD")
+    expected_hash = "sha256:" + hashlib.sha256(expected).hexdigest()
+    assert provenance["requirements_lock_sha256"] == expected_hash
+    assert set(provenance["runtime_versions"]) == {
+        "python", "torch", "numpy", "cuda_version", "cuda_available", "execution_device",
+    }
