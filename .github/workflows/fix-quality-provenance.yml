@@ -31,14 +31,14 @@ jobs:
         env:
           IMPLEMENTATION_SHA: 9ac8fc8b6206fdc47a0d633c24654a8326a0d1e7
         run: |
-          rm -rf .quality-eval .quality-eval-independent .quality-docs-independent
+          rm -rf .quality-eval .quality-eval-independent .quality-docs-first .quality-docs-independent
           python -m scripts.run_toy_quality_evaluation \
             --output-dir .quality-eval \
             --implementation-commit "$IMPLEMENTATION_SHA"
           python -m scripts.run_toy_quality_evaluation \
             --output-dir .quality-eval \
             --validate-only \
-            --compact-dir docs/evaluations
+            --compact-dir .quality-docs-first
           python -m scripts.run_toy_quality_evaluation \
             --output-dir .quality-eval-independent \
             --implementation-commit "$IMPLEMENTATION_SHA"
@@ -46,11 +46,15 @@ jobs:
             --output-dir .quality-eval-independent \
             --validate-only \
             --compact-dir .quality-docs-independent
-          cmp docs/evaluations/data/a2_a3_a4_heldout_summary.json \
+          cmp .quality-docs-first/data/a2_a3_a4_heldout_summary.json \
             .quality-docs-independent/data/a2_a3_a4_heldout_summary.json
-          cmp docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
+          cmp .quality-docs-first/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
             .quality-docs-independent/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
-          rm -rf .quality-eval .quality-eval-independent .quality-docs-independent
+          cp .quality-docs-first/data/a2_a3_a4_heldout_summary.json \
+            docs/evaluations/data/a2_a3_a4_heldout_summary.json
+          cp .quality-docs-first/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
+            docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
+          rm -rf .quality-eval .quality-eval-independent .quality-docs-first .quality-docs-independent
           git diff --check
           test "$(git diff --name-only | sort)" = "$(printf '%s\n' \
             docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
