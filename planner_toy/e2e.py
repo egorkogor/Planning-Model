@@ -444,6 +444,26 @@ def validate_frozen_plan_lineage_core(
             raise ValueError("WorkPlan step indices mismatch")
         if not steps or steps[-1].get("action") != "END":
             raise ValueError("WorkPlan terminal END mismatch")
+        executable_steps = [step for step in steps if step.get("action") != "END"]
+        if len(attempts) > len(executable_steps):
+            raise ValueError("attempt count exceeds frozen WorkPlan")
+        previous_after = None
+        for index, (attempt, step) in enumerate(
+            zip(attempts, executable_steps, strict=False)
+        ):
+            candidate = attempt.get("candidate_action")
+            expected = [step["action"], *step.get("args", [])]
+            if isinstance(candidate, dict):
+                candidate = [candidate.get("action"), *candidate.get("args", [])]
+            if attempt.get("step_index") != index or candidate != expected:
+                raise ValueError("attempt does not match frozen WorkPlan")
+            if previous_after is not None and attempt.get("state_before_hash") != previous_after:
+                raise ValueError("attempt state transition chain broken")
+            previous_after = attempt.get("state_after_hash")
+        if len(attempts) < len(executable_steps) and (
+            not attempts or attempts[-1].get("status") != "FAILED"
+        ):
+            raise ValueError("execution stopped before frozen WorkPlan terminal condition")
     if variant == "A2" and semantic_trace is not None:
         raise ValueError("A2_SEMANTIC_ARTIFACT_FORBIDDEN")
     if variant in {"A3", "A4"} and (work_plan is not None or semantic_trace is not None):
@@ -462,6 +482,33 @@ def validate_frozen_plan_lineage_core(
                 raise ValueError("A3_FEEDBACK_MODE_DISABLED")
             if variant == "A4" and influenced != 0:
                 raise ValueError("A4_FEEDBACK_APPLIED")
+            audit = semantic_trace.get("control_audit", [])
+            if [row.get("step_index") for row in audit] != list(range(len(audit))):
+                raise ValueError("SEMANTIC_CONTROL_AUDIT_ORDER")
+            steps = semantic_trace.get("steps", [])
+            zero_feedback_hash = "sha256:" + hashlib.sha256(
+                torch.zeros(384).numpy().tobytes()
+            ).hexdigest()
+            zero_component_hash = "sha256:" + hashlib.sha256(
+                torch.zeros(256).numpy().tobytes()
+            ).hexdigest()
+            for index, row in enumerate(audit):
+                expected_previous = None if index == 0 else steps[index - 1]["z_sha256"]
+                expected_input = zero_feedback_hash if index == 0 else expected_previous
+                if (
+                    row.get("expected_previous_z_sha256") != expected_previous
+                    or row.get("input_feedback_sha256") != expected_input
+                    or row.get("source")
+                    != ("BOS_ZERO" if index == 0 else "PREVIOUS_PREDICTED_LATENT")
+                ):
+                    raise ValueError("SEMANTIC_FEEDBACK_PROVENANCE_MISMATCH")
+                if variant == "A4" and (
+                    not row.get("projected_feedback_present")
+                    or not row.get("downstream_component_zero")
+                    or row.get("downstream_semantic_component_sha256") != zero_component_hash
+                    or row.get("downstream_semantic_component_norm") != 0.0
+                ):
+                    raise ValueError("A4_COMPUTE_THEN_ZERO_MISMATCH")
         else:
             if variant == "A3" and semantic_trace.get("feedback_applied") is not True:
                 raise ValueError("A3_INFERENCE_FEEDBACK_NOT_APPLIED")

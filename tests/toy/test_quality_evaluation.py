@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -349,3 +350,55 @@ def test_requirements_hash_is_read_from_implementation_tree() -> None:
     assert set(provenance["runtime_versions"]) == {
         "python", "torch", "numpy", "cuda_version", "cuda_available", "execution_device",
     }
+
+
+def test_ci_uses_full_history_and_explicit_provenance_preflight() -> None:
+    workflow = (Path(__file__).parents[2] / ".github/workflows/ci.yml").read_text()
+    assert "fetch-depth: 0" in workflow
+    assert 'git cat-file -e "${IMPLEMENTATION_SHA}^{commit}"' in workflow
+    assert 'git merge-base --is-ancestor "$IMPLEMENTATION_SHA" HEAD' in workflow
+    assert 'git show "$IMPLEMENTATION_SHA:requirements.lock"' in workflow
+
+
+def test_shared_lineage_core_rejects_reordered_attempts() -> None:
+    from planner_toy.e2e import validate_frozen_plan_lineage_core
+
+    plan = {"steps": [
+        {"step_index": 0, "action": "PICK_UP", "args": ["A"]},
+        {"step_index": 1, "action": "PUT_DOWN", "args": ["A"]},
+        {"step_index": 2, "action": "END", "args": []},
+    ]}
+    attempts = [
+        {"step_index": 1, "candidate_action": ["PUT_DOWN", "A"],
+         "state_before_hash": "one", "state_after_hash": "two", "status": "APPLIED"},
+        {"step_index": 0, "candidate_action": ["PICK_UP", "A"],
+         "state_before_hash": "two", "state_after_hash": "three", "status": "APPLIED"},
+    ]
+    with pytest.raises(ValueError, match="frozen WorkPlan"):
+        validate_frozen_plan_lineage_core(
+            variant="A2", planner_calls=1, replanning_count=0,
+            work_plan=plan, attempts=attempts, evaluation={"replanning_count": 0},
+            semantic_trace=None,
+        )
+
+
+def test_shared_lineage_core_rejects_broken_state_chain() -> None:
+    from planner_toy.e2e import validate_frozen_plan_lineage_core
+
+    plan = {"steps": [
+        {"step_index": 0, "action": "PICK_UP", "args": ["A"]},
+        {"step_index": 1, "action": "PUT_DOWN", "args": ["A"]},
+        {"step_index": 2, "action": "END", "args": []},
+    ]}
+    attempts = [
+        {"step_index": 0, "candidate_action": ["PICK_UP", "A"],
+         "state_before_hash": "one", "state_after_hash": "two", "status": "APPLIED"},
+        {"step_index": 1, "candidate_action": ["PUT_DOWN", "A"],
+         "state_before_hash": "not-two", "state_after_hash": "three", "status": "APPLIED"},
+    ]
+    with pytest.raises(ValueError, match="state transition"):
+        validate_frozen_plan_lineage_core(
+            variant="A2", planner_calls=1, replanning_count=0,
+            work_plan=plan, attempts=attempts, evaluation={"replanning_count": 0},
+            semantic_trace=None,
+        )
