@@ -1,23 +1,22 @@
 name: One-time quality provenance repair
 
 on:
-  push:
-    branches:
-      - codex/add-held-out-quality-evaluation-for-a2-a3-a4-x9se58
+  pull_request:
     paths:
       - .github/workflows/fix-quality-provenance.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   repair:
-    if: github.event.head_commit.message == 'chore: run provenance repair'
+    if: github.head_ref == 'codex/add-held-out-quality-evaluation-for-a2-a3-a4-x9se58'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -32,14 +31,14 @@ jobs:
         env:
           IMPLEMENTATION_SHA: 9ac8fc8b6206fdc47a0d633c24654a8326a0d1e7
         run: |
-          rm -rf .quality-eval .quality-eval-independent .quality-docs-independent
+          rm -rf .quality-eval .quality-eval-independent .quality-docs-independent repaired-artifacts
           python -m scripts.run_toy_quality_evaluation \
             --output-dir .quality-eval \
             --implementation-commit "$IMPLEMENTATION_SHA"
           python -m scripts.run_toy_quality_evaluation \
             --output-dir .quality-eval \
             --validate-only \
-            --compact-dir docs/evaluations
+            --compact-dir repaired-artifacts
           python -m scripts.run_toy_quality_evaluation \
             --output-dir .quality-eval-independent \
             --implementation-commit "$IMPLEMENTATION_SHA"
@@ -47,21 +46,13 @@ jobs:
             --output-dir .quality-eval-independent \
             --validate-only \
             --compact-dir .quality-docs-independent
-          cmp docs/evaluations/data/a2_a3_a4_heldout_summary.json \
+          cmp repaired-artifacts/data/a2_a3_a4_heldout_summary.json \
             .quality-docs-independent/data/a2_a3_a4_heldout_summary.json
-          cmp docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
+          cmp repaired-artifacts/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
             .quality-docs-independent/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
-          rm -rf .quality-eval .quality-eval-independent .quality-docs-independent
-          git diff --check
-          test "$(git diff --name-only | sort)" = "$(printf '%s\n' \
-            docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
-            docs/evaluations/data/a2_a3_a4_heldout_summary.json | sort)"
-      - name: Commit repaired artifacts
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add \
-            docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
-            docs/evaluations/data/a2_a3_a4_heldout_summary.json
-          git commit -m "docs: bind diagnostic to reachable implementation commit"
-          git push origin HEAD:${{ github.ref_name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repaired-quality-provenance
+          path: repaired-artifacts
+          if-no-files-found: error
+          retention-days: 1
