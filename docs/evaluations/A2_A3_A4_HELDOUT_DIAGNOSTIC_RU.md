@@ -3,7 +3,7 @@
 > Development-only diagnostic. Это не confirmatory experiment, не прохождение Stage 2A semantic gate, не доказательство semantic reasoning или superiority A3 и не разрешение A3b.
 
 - Evaluator source SHA256: `sha256:58d70e15558c78ec740942adbebf1d9746560025e188b0c0f86897cc82f67883`
-- Implementation commit: `f31abefe67a2945a0328a8af2129878505d14ec3`
+- Implementation commit: `9ac8fc8b6206fdc47a0d633c24654a8326a0d1e7`
 - Requirements lock: `sha256:883c8e262c6f3ea917239010be08ac0064ab67de70c1caad7bb98fe9f0b68401`
 - Runtime: `{"cuda_available": false, "cuda_version": null, "execution_device": "cpu", "numpy": "2.3.5", "python": "3.11.15", "torch": "2.12.0+cpu"}`
 - Evaluator: `development-quality-evaluation/0.1`
@@ -187,9 +187,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:b85f561e67f80fa66ed0b84cf5e63b4c32ff33d9e6eab1c7cb4ca0ae8b765ce0`
+Execution evidence hash: `sha256:b99b9a97dfb29641a7e44f09ea3b1e4eb0a14a3a07ce517bd3927a773fc7315c`
 
-Checkpoint hash: `sha256:c9bee3fc484e60042fc4d44bde0fbfb9bf3795989fe791fec21b59d5fc55d11f`
+Checkpoint hash: `sha256:1aefe1aaaa7421f4db277777c690d65185835416baeb8273ed5bc15e1737027d`
 
 Execution: `[]`
 
@@ -211,9 +211,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:f3e8fcc62084294d9b72e7f62799acb9ee99aad47d9d141ad17105320997451e`
+Execution evidence hash: `sha256:1e4fde8f0dd26d3bda17a8b8fe3bd201bb89ad0d9c34d4dd35ac70c37f49227a`
 
-Checkpoint hash: `sha256:ccc75704dde7618dac6744a8ff23d74d124f0bd8803621a8268f9e1ac1a3b076`
+Checkpoint hash: `sha256:cf647d8593bbfcdbb95ae6fe91e54e398058842a6b7cc9b6069b3351fb0db8a7`
 
 Execution: `[]`
 
@@ -235,9 +235,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:baa1dcb26e9d0d32485cb9b662c736b887a524c5929733abca231a64e47ee7dc`
+Execution evidence hash: `sha256:2094b67b3885cee3b19f3691d3688fc2e92ab88a1a75c098f2a12a54b267d91d`
 
-Checkpoint hash: `sha256:5add7d18fb018944e7226b626a015fa04ea501600fabe991731fa0d01d0468d7`
+Checkpoint hash: `sha256:4859805f699fd004cb064f3be36256004e114bbb86401a906566e16f13638cb9`
 
 Execution: `[]`
 
@@ -271,9 +271,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:b9e67a730559b57125543c55abae857bd9c62c42b2029a6f8a70f4aff4b33405`
+Execution evidence hash: `sha256:5641ca8f2fa4dd8d2250b5cd9294c453424f11ea652e6830cfb33f35ec80efe4`
 
-Checkpoint hash: `sha256:c9bee3fc484e60042fc4d44bde0fbfb9bf3795989fe791fec21b59d5fc55d11f`
+Checkpoint hash: `sha256:1aefe1aaaa7421f4db277777c690d65185835416baeb8273ed5bc15e1737027d`
 
 Execution: `[]`
 
@@ -295,9 +295,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:e135a650c837cec03ab7846f7ae99b10d79cce758cd0c63c37f9c1e5c65b76e3`
+Execution evidence hash: `sha256:ea9b4caa82c58576a72bd5ed7b44ceeaeca78151223922694f810d638b534c29`
 
-Checkpoint hash: `sha256:ccc75704dde7618dac6744a8ff23d74d124f0bd8803621a8268f9e1ac1a3b076`
+Checkpoint hash: `sha256:cf647d8593bbfcdbb95ae6fe91e54e398058842a6b7cc9b6069b3351fb0db8a7`
 
 Execution: `[]`
 
@@ -319,9 +319,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:464538c0ad5185354a39584827eb5003c7063d1720d6c3559e4b7271d349afe7`
+Execution evidence hash: `sha256:582159b42b67ca0816f17deb87d744a66970a33abceca5b62f5a30ef2bcfedfd`
 
-Checkpoint hash: `sha256:5add7d18fb018944e7226b626a015fa04ea501600fabe991731fa0d01d0468d7`
+Checkpoint hash: `sha256:4859805f699fd004cb064f3be36256004e114bbb86401a906566e16f13638cb9`
 
 Execution: `[]`
 
@@ -355,9 +355,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:442772a5f5b35fd695bbe7e10911690c6ce4366f38bc01157af44023b1c2d6bd`
+Execution evidence hash: `sha256:7f4119e41f3ab1f25860617a2b9d33a5d1c7119b062d818c02957cc2738f967e`
 
-Checkpoint hash: `sha256:9d720279ec79e7586b3a9011f37dd503d195db04def95434a72722b497724237`
+Checkpoint hash: `sha256:e9ed494e452f7921ff0d18b0a3304c1f8ab8a89f83bf009a0dcafc69f9f56830`
 
 Execution: `[]`
 
@@ -379,9 +379,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:d13a4344b8127e2f1f6d9c885a0a0232a390ba5619eef4c5d00b11bdb7be289a`
+Execution evidence hash: `sha256:0d13f25b6606c216dea0603aca8f71fbfc5d12cfdbc4b28452f1581292d091df`
 
-Checkpoint hash: `sha256:9a2a65fa9054189cd5f4c4ef83fe8363bc7a8b77191a63cf1fe95012eeb87fc7`
+Checkpoint hash: `sha256:4620a077a0d5620298ef5b6df52c6456beb77e6fe0d96940778af1b9361eb6d5`
 
 Execution: `[]`
 
@@ -403,9 +403,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:2ff31631e8c8c4ea408fee86ee7c9439dc67831c9ea1627616eec06a7c74ae43`
+Execution evidence hash: `sha256:5be5d95a2c6dac2906232136f20ca964e484f9a1ccd0c7d7eaf31fcf13902b99`
 
-Checkpoint hash: `sha256:83340d5522ea4e60e535193a01581974331f303311068b712402e3263e135937`
+Checkpoint hash: `sha256:210939a2a363705119d596ca5b311b18d58e60882f67ce03b916783fd4268ba9`
 
 Execution: `[]`
 
@@ -439,9 +439,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:b90f490741d776d45bf5c16d1435c32c6d6b60ffe8a83eae18b5f1c35ef56735`
+Execution evidence hash: `sha256:e21580c3f937a916aa791eaeeaf006940282c1c8b73a9116395eacb06fff3bbd`
 
-Checkpoint hash: `sha256:9d720279ec79e7586b3a9011f37dd503d195db04def95434a72722b497724237`
+Checkpoint hash: `sha256:e9ed494e452f7921ff0d18b0a3304c1f8ab8a89f83bf009a0dcafc69f9f56830`
 
 Execution: `[]`
 
@@ -463,9 +463,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:703f17eff79c7f0aac97f49b8a4d0211aed1a588a2a80c39ca21c504beb83b21`
+Execution evidence hash: `sha256:b7460a11157044190c87f0f286a55dad39cc321fafbb8b72d94f6e4388278028`
 
-Checkpoint hash: `sha256:9a2a65fa9054189cd5f4c4ef83fe8363bc7a8b77191a63cf1fe95012eeb87fc7`
+Checkpoint hash: `sha256:4620a077a0d5620298ef5b6df52c6456beb77e6fe0d96940778af1b9361eb6d5`
 
 Execution: `[]`
 
@@ -487,9 +487,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:0ccfce36f67b26d4df02ed80164fbbd1bd789f4df21d382e577d051aca6f5098`
+Execution evidence hash: `sha256:06d8073f2c394650846a8706a42da962edf188f723d8ab5030cce89365f2e156`
 
-Checkpoint hash: `sha256:83340d5522ea4e60e535193a01581974331f303311068b712402e3263e135937`
+Checkpoint hash: `sha256:210939a2a363705119d596ca5b311b18d58e60882f67ce03b916783fd4268ba9`
 
 Execution: `[]`
 
@@ -523,9 +523,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:b3c673cede48dd620f30b1c959e230b1c098b9612b724adb89541f9eededb622`
+Execution evidence hash: `sha256:39755201f850fedd378e0044ff878dffe66524bb23812c3629de475c091363c5`
 
-Checkpoint hash: `sha256:1c2dcf4d70083f1259437e4482c84c20916afcf34910e4d1efd01c25be36dad1`
+Checkpoint hash: `sha256:587a0def4e63619fa21e59c4f03ec2c7f55084fcf9832bdf21544445a4fdc49b`
 
 Execution: `[]`
 
@@ -547,9 +547,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:083a89f5119111aa94c80313ffe3855fa460d72dc65e5342c151731f093a180d`
+Execution evidence hash: `sha256:ea42b604a452f56befd088ba4f3f6dc1e95a7db79eb00c0c8a1994e9a70cc302`
 
-Checkpoint hash: `sha256:41239e44bad9ddd550011b9706825b1d6af5eaf12a43d1bbabdc95b6b78ad8e5`
+Checkpoint hash: `sha256:b7e07d708076110e63f89bedce9d65d624d47c28978818fd5ff40666ffad454b`
 
 Execution: `[]`
 
@@ -571,9 +571,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:6a4b90387497e5ffdc5beee3f82ae3618a9d8bd3ae47d609e3fdbb72d5f98cbb`
+Execution evidence hash: `sha256:fcad03f238465293f4b12406d72991959a687a4f2973efd6ee07a9fd1815db9f`
 
-Checkpoint hash: `sha256:04a69af34921558fafd3bd419505a0d2a0e5e23bf3bd94ec90160c5fa90d272c`
+Checkpoint hash: `sha256:7daec6553785464eb9ffa4425d962084fb5babdcc534ae8d166e04de01244e1e`
 
 Execution: `[]`
 
@@ -607,9 +607,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:cac958a942367de958909d5ce2ab1a7a7040da78fc442c4a7943db2463ec9d76`
+Execution evidence hash: `sha256:548086de1eb67b0bb1ac613f8f61350dd8e70e7fd33ff05ab569c58e2b45b82b`
 
-Checkpoint hash: `sha256:1c2dcf4d70083f1259437e4482c84c20916afcf34910e4d1efd01c25be36dad1`
+Checkpoint hash: `sha256:587a0def4e63619fa21e59c4f03ec2c7f55084fcf9832bdf21544445a4fdc49b`
 
 Execution: `[]`
 
@@ -631,9 +631,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:35fbd325cd88e972aa84c67fd3f42713a9fd78bdc8bee0603714b90f70acfe85`
+Execution evidence hash: `sha256:0c35555feae4612aa82b1e44d454a06e7b73db2ec0e9d4909bba2d690f097fee`
 
-Checkpoint hash: `sha256:41239e44bad9ddd550011b9706825b1d6af5eaf12a43d1bbabdc95b6b78ad8e5`
+Checkpoint hash: `sha256:b7e07d708076110e63f89bedce9d65d624d47c28978818fd5ff40666ffad454b`
 
 Execution: `[]`
 
@@ -655,9 +655,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:d9f6958d6dadc3aa37ef74fbe9cb0be08c8197a5c93631878b481f38338f4722`
+Execution evidence hash: `sha256:777dfddfa3c63daa62d7ec1a380a73b765ad53116ae9bc0d554a30d9b3c14db3`
 
-Checkpoint hash: `sha256:04a69af34921558fafd3bd419505a0d2a0e5e23bf3bd94ec90160c5fa90d272c`
+Checkpoint hash: `sha256:7daec6553785464eb9ffa4425d962084fb5babdcc534ae8d166e04de01244e1e`
 
 Execution: `[]`
 
