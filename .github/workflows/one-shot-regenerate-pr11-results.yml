@@ -1,0 +1,65 @@
+name: One-shot regenerate PR11 results
+
+on:
+  push:
+    branches:
+      - codex/add-held-out-quality-evaluation-for-a2-a3-a4-em3eck
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/add-held-out-quality-evaluation-for-a2-a3-a4-em3eck
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.15"
+          cache: pip
+
+      - name: Install canonical runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.lock
+          python -m pip install -e . --no-deps
+          python -m pip install torch==2.12.0+cpu --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e '.[ml]'
+
+      - name: Regenerate and commit results
+        env:
+          IMPLEMENTATION_SHA: ef8ff7b630c11cea103f777d1ccadfa73d09321c
+          TARGET_BRANCH: codex/add-held-out-quality-evaluation-for-a2-a3-a4-em3eck
+        run: |
+          set -euo pipefail
+          git cat-file -e "${IMPLEMENTATION_SHA}^{commit}"
+          git merge-base --is-ancestor "$IMPLEMENTATION_SHA" HEAD
+          rm -rf .quality-eval .quality-docs
+          python -m scripts.run_toy_quality_evaluation \
+            --output-dir .quality-eval \
+            --implementation-commit "$IMPLEMENTATION_SHA"
+          python -m scripts.run_toy_quality_evaluation \
+            --output-dir .quality-eval \
+            --validate-only \
+            --compact-dir .quality-docs
+          cp .quality-docs/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
+            docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
+          cp .quality-docs/data/a2_a3_a4_heldout_summary.json \
+            docs/evaluations/data/a2_a3_a4_heldout_summary.json
+          rm -rf .quality-eval .quality-docs
+          grep -F "$IMPLEMENTATION_SHA" docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
+          grep -F "$IMPLEMENTATION_SHA" docs/evaluations/data/a2_a3_a4_heldout_summary.json
+          git diff --check
+          git add \
+            docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
+            docs/evaluations/data/a2_a3_a4_heldout_summary.json
+          test "$(git diff --cached --name-only | wc -l)" -eq 2
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: bind diagnostic to reachable implementation commit"
+          git push origin "HEAD:${TARGET_BRANCH}"
