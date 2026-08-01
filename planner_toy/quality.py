@@ -498,7 +498,7 @@ def validate_evaluation(root: Path) -> dict:
             trained_state = model.state_dict()
             if any(not torch.equal(trained_state[name], persisted_initial[name]) for name in checkpoint["dormant_parameter_names"]):
                 raise ValueError("DORMANT_PARAMETER_CHANGED")
-            if config["diagnostic_complete"] or config["training_execution_mode"] == "REUSED":
+            if config["training_execution_mode"] in {"TRAINED_IN_RUN", "REUSED"}:
                 with tempfile.TemporaryDirectory() as training_replay_dir:
                     replay_model, replay_manifest = _train(
                         sorted(canonical["train"], key=lambda row: row["task_id"]),
@@ -613,8 +613,8 @@ def export_compact(root: Path, destination: Path) -> None:
     nonzero_feedback_positions = sum(
         trace["nonzero_feedback_application_count"] for trace in semantic_traces
     )
-    influenced_positions = sum(
-        trace["feedback_influenced_decoding_position_count"] for trace in semantic_traces
+    downstream_component_positions = sum(
+        trace["nonzero_downstream_semantic_component_count"] for trace in semantic_traces
     )
     compact = {
         "status": "development-only-diagnostic",
@@ -633,7 +633,9 @@ def export_compact(root: Path, destination: Path) -> None:
         "observed_failure_codes": sorted({r["failure_code"] for r in rows if r["failure_code"]}),
         "observed_feedback_application_positions": feedback_positions,
         "observed_nonzero_feedback_application_positions": nonzero_feedback_positions,
-        "observed_feedback_influenced_positions": influenced_positions,
+        "observed_nonzero_downstream_semantic_component_positions": (
+            downstream_component_positions
+        ),
         "replay_hash": (root / "replay-hash.txt").read_text().strip(),
     }
     Draft202012Validator(json.loads((Path(__file__).with_name("schemas") / "toy_quality_compact_summary.schema.json").read_bytes())).validate(compact)
@@ -661,14 +663,13 @@ def export_compact(root: Path, destination: Path) -> None:
         "просмотра held-out результата. A3a-shuffled, A3a-foreign, A3s, A3b и "
         f"Verbalizer не реализованы. Observed feedback application positions: {feedback_positions}. "
         f"Observed nonzero feedback application positions: {nonzero_feedback_positions}. "
-        f"Observed feedback-influenced positions: {influenced_positions}."
+        "Observed nonzero downstream semantic-component positions: "
+        f"{downstream_component_positions}."
     )
-    if influenced_positions == 0:
+    if downstream_component_positions == 0:
         limitation += (
-            " Because every run terminated before feedback influenced a downstream token, "
-            "this diagnostic is non-diagnostic for feedback-channel causality and for the "
-            "difference between active feedback and compute-then-zero at downstream decoding "
-            "positions."
+            " Because all runs terminated before a downstream semantic component was "
+            "observed, this diagnostic is non-diagnostic for feedback-channel causality."
         )
     lines += ["", "## Aggregate", "", "```json", json.dumps(aggregate, ensure_ascii=False, indent=2, sort_keys=True), "```", "", "## Paired comparisons", "", "```json", json.dumps(comparisons, ensure_ascii=False, indent=2, sort_keys=True), "```", "", "## Детерминированно выбранные примеры", "", (root / "human-readable-examples.md").read_text(), "", "## Ограничения", "", limitation, "", "## Воспроизведение", "", "```bash", "python -m scripts.run_toy_quality_evaluation \\", "  --output-dir .quality-eval \\", "  --implementation-commit <IMPLEMENTATION_SHA>", "", "python -m scripts.run_toy_quality_evaluation \\", "  --output-dir .quality-eval \\", "  --validate-only \\", "  --compact-dir docs/evaluations", "```", ""]
     report = destination / "A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md"

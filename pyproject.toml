@@ -42,6 +42,9 @@ packages = ["src/planner_llm_mvp", "planner_toy", "scripts"]
 addopts = "-q"
 testpaths = ["tests", "validation"]
 pythonpath = ["src"]
+markers = [
+  "canonical_quality: full pinned-runtime cross-process canonical diagnostic",
+]
 
 [tool.ruff]
 exclude = ["validation"]

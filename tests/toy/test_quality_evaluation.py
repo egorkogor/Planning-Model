@@ -285,8 +285,8 @@ def test_all_three_variant_real_smoke(all_three_smoke) -> None:
         assert trace["feedback_source"] == "predicted"
         assert trace["feedback_application_count"] == 0
         assert trace["nonzero_feedback_application_count"] == 0
-        assert trace["feedback_influenced_decoding_position_count"] == 0
-        assert trace["feedback_applied"] is False
+        assert trace["nonzero_downstream_semantic_component_count"] == 0
+        assert trace["downstream_semantic_component_observed"] is False
         assert trace["feedback_mode_enabled"] == (row["variant"] == "A3")
         assert trace["compute_then_zero"] == (row["variant"] == "A4")
 
@@ -619,6 +619,7 @@ def test_episode_manifest_conditionals_are_schema_enforced(changes) -> None:
         "planner_call_count": 1, "replanning_count": 0, "model_forward_count": 1,
         "plan_status": "READY", "work_plan_path": "work-plan.json",
         "work_plan_hash": "sha256:" + "0" * 64, "failure_code": None,
+        "partial_raw_output": None,
     }
     manifest.update(changes)
     with pytest.raises(ValidationError):
@@ -721,7 +722,7 @@ def test_persisted_attempt_sequence_mutations_fail(
          "QUALITY_FAILURE_LINEAGE_MISMATCH"),
         ("episode-log.json", "planner_calls", 2, "QUALITY_SCHEMA_INVALID"),
         ("evaluation-result.json", "model_forward_count", 99,
-         "QUALITY_PLANNER_COUNT_MISMATCH"),
+         "QUALITY_MODEL_FORWARD_COUNT_MISMATCH"),
         ("evaluation-result.json", "attempt_log_hash", "sha256:" + "f" * 64,
          "QUALITY_ATTEMPT_LOG_HASH_MISMATCH"),
     ],
@@ -743,7 +744,7 @@ def test_episode_evaluation_mutations_fail_before_replay(
         validate_persisted_quality_evidence(root=root, task=task, checkpoint=checkpoint)
 
 
-def test_raw_checkpoint_integrity_is_independent_of_canonical_replay(
+def test_semantically_equivalent_checkpoint_reserialization_preserves_canonical_identity(
     tmp_path, canonical_smoke,
 ) -> None:
     root = tmp_path / "run"
@@ -790,3 +791,191 @@ def test_raw_checkpoint_tamper_still_fails_local_integrity(tmp_path, canonical_s
     path.write_bytes(payload)
     with pytest.raises(ValueError, match="CHECKPOINT_FILE_HASH_MISMATCH"):
         validate_evaluation(root)
+
+
+def test_executor_failure_after_goal_is_not_success(tmp_path) -> None:
+    from planner_toy.dataset import generate
+    from planner_toy.e2e import evaluate_frozen_plan
+
+    task = generate(17)["validation"][0]
+    output = [*task["oracle_work_plan"][:-1], ["PICK_UP", "@B2"], ["END"]]
+
+    class GoalThenFailPlanner:
+        model = SimpleNamespace(variant="A2")
+        calls = 0
+        model_forward_count = 0
+        semantic_steps = None
+        semantic_audit = None
+
+        def plan(self, _row):
+            self.calls += 1
+            self.model_forward_count = len(output)
+            return output
+
+    checkpoint = {
+        "trained_state_dict_sha256": "sha256:" + "1" * 64,
+        "trained_file_sha256": "sha256:" + "2" * 64,
+        "variant_identity": {"implementation_variant": "A2"},
+    }
+    root = tmp_path / "evidence"
+    result = evaluate_frozen_plan(
+        row=task, planner=GoalThenFailPlanner(), output=root,
+        checkpoint_binding=checkpoint,
+    )
+    assert result["failure_code"] == "EXECUTOR_PRECONDITION_FAILED"
+    assert result["goal_reached"] is False
+    validate_persisted_quality_evidence(root=root, task=task, checkpoint=checkpoint)
+
+    episode_path = root / "episode-log.json"
+    episode = json.loads(episode_path.read_text())
+    episode["goal_success"] = True
+    episode_path.write_bytes(canonical_bytes(episode) + b"\n")
+    evaluation_path = root / "evaluation-result.json"
+    evaluation = json.loads(evaluation_path.read_text())
+    evaluation["success"] = True
+    evaluation["episode_log_hash"] = file_hash(episode_path)
+    evaluation_path.write_bytes(canonical_bytes(evaluation) + b"\n")
+    with pytest.raises(ValueError, match="QUALITY_EPISODE_COUNTS_MISMATCH"):
+        validate_persisted_quality_evidence(root=root, task=task, checkpoint=checkpoint)
+
+
+@pytest.mark.parametrize(
+    "target,manifest_count,evaluation_count",
+    [
+        ("both", 99, 99),
+        ("manifest-only", 99, None),
+        ("evaluation-only", None, 99),
+    ],
+)
+def test_ready_forward_counts_are_bound_to_frozen_plan(
+    nonempty_quality_evidence, target, manifest_count, evaluation_count,
+) -> None:
+    root, task, checkpoint = nonempty_quality_evidence
+    if manifest_count is not None:
+        path = root / "episode-plan-manifest.json"
+        value = json.loads(path.read_text())
+        value["model_forward_count"] = manifest_count
+        path.write_bytes(canonical_bytes(value) + b"\n")
+    if evaluation_count is not None:
+        path = root / "evaluation-result.json"
+        value = json.loads(path.read_text())
+        value["model_forward_count"] = evaluation_count
+        path.write_bytes(canonical_bytes(value) + b"\n")
+    with pytest.raises(ValueError, match="QUALITY_MODEL_FORWARD_COUNT_MISMATCH"):
+        validate_persisted_quality_evidence(root=root, task=task, checkpoint=checkpoint)
+
+
+@pytest.mark.parametrize("variant", ["A3", "A4"])
+def test_failed_semantic_plan_no_end_has_complete_forward_evidence(tmp_path, variant) -> None:
+    from planner_toy.dataset import generate
+    from planner_toy.e2e import evaluate_frozen_plan
+
+    task = generate(17)["validation"][0]
+    checkpoint = {
+        "trained_state_dict_sha256": "sha256:" + "1" * 64,
+        "trained_file_sha256": "sha256:" + "2" * 64,
+        "variant_identity": {"implementation_variant": variant},
+    }
+    root = tmp_path / variant
+    result = evaluate_frozen_plan(
+        row=task, planner=A2Planner(_ScriptedModel([0], variant)), output=root,
+        checkpoint_binding=checkpoint,
+    )
+    trace = json.loads((root / "semantic-trace.json").read_text())
+    manifest = json.loads((root / "episode-plan-manifest.json").read_text())
+    assert result["failure_code"] == "PLAN_NO_END"
+    assert result["model_forward_count"] == 17
+    assert manifest["partial_raw_output"] == result["raw_output"]
+    assert len(trace["steps"]) == len(trace["control_audit"]) == 17
+    assert not (root / "work-plan.json").exists()
+    assert (root / "attempt-log.jsonl").read_text() == ""
+    validate_persisted_quality_evidence(root=root, task=task, checkpoint=checkpoint)
+
+    manifest["model_forward_count"] = 16
+    manifest_path = root / "episode-plan-manifest.json"
+    manifest_path.write_bytes(canonical_bytes(manifest) + b"\n")
+    evaluation_path = root / "evaluation-result.json"
+    evaluation = json.loads(evaluation_path.read_text())
+    evaluation["model_forward_count"] = 16
+    evaluation_path.write_bytes(canonical_bytes(evaluation) + b"\n")
+    with pytest.raises(ValueError, match="QUALITY_MODEL_FORWARD_COUNT_MISMATCH"):
+        validate_persisted_quality_evidence(root=root, task=task, checkpoint=checkpoint)
+
+
+@pytest.mark.parametrize(
+    "variant,failure", [("A3", "LATENT_NONFINITE"), ("A4", "LATENT_DIMENSION")]
+)
+def test_semantic_pre_forward_failure_has_empty_trace(tmp_path, variant, failure) -> None:
+    from planner_toy.dataset import generate
+    from planner_toy.e2e import evaluate_frozen_plan
+
+    task = generate(17)["validation"][0]
+    checkpoint = {
+        "trained_state_dict_sha256": "sha256:" + "1" * 64,
+        "trained_file_sha256": "sha256:" + "2" * 64,
+        "variant_identity": {"implementation_variant": variant},
+    }
+    planner = A2Planner(_ScriptedModel([4], variant), injected_failure=failure)
+    root = tmp_path / variant
+    result = evaluate_frozen_plan(
+        row=task, planner=planner, output=root, checkpoint_binding=checkpoint,
+    )
+    trace = json.loads((root / "semantic-trace.json").read_text())
+    assert result["model_forward_count"] == 0
+    assert trace["steps"] == trace["control_audit"] == []
+    validate_persisted_quality_evidence(root=root, task=task, checkpoint=checkpoint)
+
+
+def _rewrite_checkpoint_hash_chain(root: Path, checkpoint_path: Path) -> None:
+    manifest_path = root / "evaluation-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    training_dir = checkpoint_path.parent
+    for path in training_dir.iterdir():
+        if path.is_file():
+            manifest["checkpoint_manifest_hashes"][str(path.relative_to(root))] = file_hash(path)
+    manifest_path.write_bytes(canonical_bytes(manifest) + b"\n")
+
+
+@pytest.mark.parametrize(
+    "update_semantic_hash", [False, True], ids=["raw-only", "raw-and-semantic"]
+)
+def test_changed_trained_tensor_cannot_be_hidden_by_rehash(
+    tmp_path, canonical_smoke, update_semantic_hash,
+) -> None:
+    root = copied_run(tmp_path, canonical_smoke)
+    run_dir = root / "training-runs/A2/seed-17"
+    trained_path = run_dir / "trained.pt"
+    checkpoint_path = run_dir / "checkpoint-manifest.json"
+    checkpoint = json.loads(checkpoint_path.read_text())
+    state = torch.load(trained_path, map_location="cpu", weights_only=True)
+    active_name = checkpoint["active_parameter_names"][0]
+    state[active_name] = state[active_name].clone()
+    state[active_name].view(-1)[0] += 1.0
+    torch.save(state, trained_path)
+    checkpoint["trained_file_sha256"] = file_hash(trained_path)
+    if update_semantic_hash:
+        checkpoint["trained_state_dict_sha256"] = state_dict_sha256(state)
+    checkpoint_path.write_bytes(canonical_bytes(checkpoint) + b"\n")
+    _rewrite_checkpoint_hash_chain(root, checkpoint_path)
+    expected = (
+        "DETERMINISTIC_TRAINING_REPLAY_MISMATCH"
+        if update_semantic_hash else "CHECKPOINT_STATE_HASH_MISMATCH"
+    )
+    with pytest.raises(ValueError, match=expected):
+        validate_evaluation(root)
+
+
+@pytest.mark.parametrize("variant", ["A3", "A4"])
+def test_ready_semantic_forward_count_mutation_is_independently_rejected(
+    tmp_path, all_three_smoke, variant,
+) -> None:
+    root = tmp_path / "run"
+    shutil.copytree(all_three_smoke, root)
+    evidence = next((root / f"evidence/{variant}/seed-17").iterdir())
+    for name in ("episode-plan-manifest.json", "evaluation-result.json"):
+        path = evidence / name
+        value = json.loads(path.read_text())
+        value["model_forward_count"] = 99
+        path.write_bytes(canonical_bytes(value) + b"\n")
+    with pytest.raises(ValueError, match="QUALITY_MODEL_FORWARD_COUNT_MISMATCH"):
+        validate_one_persisted_evidence(root, variant)

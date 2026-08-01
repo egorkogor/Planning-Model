@@ -59,10 +59,18 @@ PRESERVED_GENERATION_CODES = FAILURE_CODES - {
     "GOAL_NOT_ACHIEVED",
     "PLAN_GENERATION_ERROR",
 }
-GENERATION_FAILURE_CODES = FAILURE_CODES - {
-    "EXECUTOR_PRECONDITION_FAILED", "GOAL_NOT_ACHIEVED",
-    "SEMANTIC_TRACE_MISSING", "SEMANTIC_TRACE_LENGTH", "VARIANT_MISMATCH",
-}
+GENERATION_FAILURE_CODES = frozenset({
+    "PLAN_NO_END",
+    "PLAN_PARSE_ERROR",
+    "PLAN_UNKNOWN_REF",
+    "PLAN_GENERATION_ERROR",
+    "LATENT_NONFINITE",
+    "LATENT_ZERO_NORM",
+    "LATENT_DIMENSION",
+})
+PRE_FORWARD_FAILURE_CODES = frozenset({
+    "PLAN_GENERATION_ERROR", "LATENT_NONFINITE", "LATENT_ZERO_NORM", "LATENT_DIMENSION",
+})
 
 
 def file_hash(path: Path) -> str:
@@ -255,6 +263,7 @@ def evaluate_frozen_plan(
         "work_plan_path": "work-plan.json" if work_plan else None,
         "work_plan_hash": work_plan["plan_content_hash"] if work_plan else None,
         "failure_code": generation_failure,
+        "partial_raw_output": raw if generation_failure is not None else None,
     }
     _write(output / "episode-plan-manifest.json", manifest)
     final_hash = events[-1]["after"] if events else state_hash(row["initial"])
@@ -293,7 +302,7 @@ def evaluate_frozen_plan(
         trace = {
             "schema_version": "toy-quality-semantic-trace/1.0",
             "variant": planner.model.variant, "feedback_source": "predicted",
-            "feedback_applied": any(
+            "downstream_semantic_component_observed": any(
                 row["step_index"] > 0 and row["downstream_semantic_component_norm"] > 0
                 for row in (planner.semantic_audit or [])
             ),
@@ -305,7 +314,7 @@ def evaluate_frozen_plan(
                 row["step_index"] > 0 and row["input_feedback_norm"] > 0
                 for row in (planner.semantic_audit or [])
             ),
-            "feedback_influenced_decoding_position_count": sum(
+            "nonzero_downstream_semantic_component_count": sum(
                 row["step_index"] > 0 and row["downstream_semantic_component_norm"] > 0
                 for row in (planner.semantic_audit or [])
             ),
@@ -315,7 +324,7 @@ def evaluate_frozen_plan(
             "work_plan_artifact_hash": work_plan["plan_content_hash"] if work_plan else None,
             "latent_path": "semantic-latents.f32", "latent_file_sha256": file_hash(latent_path),
             "steps": trace_steps,
-            "control_audit": planner.semantic_audit,
+            "control_audit": planner.semantic_audit or [],
         }
         _write(output / "semantic-trace.json", trace)
         semantic_trace = trace
@@ -509,15 +518,17 @@ def validate_frozen_plan_lineage_core(
             raise ValueError("INFERENCE_FEEDBACK_NOT_PREDICTED")
         if "feedback_application_count" in semantic_trace:
             count = semantic_trace["feedback_application_count"]
-            influenced = semantic_trace["feedback_influenced_decoding_position_count"]
-            if count < 0 or influenced < 0 or influenced > count:
+            downstream_count = semantic_trace["nonzero_downstream_semantic_component_count"]
+            if count < 0 or downstream_count < 0 or downstream_count > count:
                 raise ValueError("SEMANTIC_FEEDBACK_COUNT_INVALID")
-            if semantic_trace.get("feedback_applied") != (influenced > 0):
-                raise ValueError("SEMANTIC_FEEDBACK_APPLICATION_MISMATCH")
+            if semantic_trace.get("downstream_semantic_component_observed") != (
+                downstream_count > 0
+            ):
+                raise ValueError("SEMANTIC_DOWNSTREAM_COMPONENT_COUNT_MISMATCH")
             if variant == "A3" and semantic_trace.get("feedback_mode_enabled") is not True:
                 raise ValueError("A3_FEEDBACK_MODE_DISABLED")
-            if variant == "A4" and influenced != 0:
-                raise ValueError("A4_FEEDBACK_APPLIED")
+            if variant == "A4" and downstream_count != 0:
+                raise ValueError("A4_NONZERO_DOWNSTREAM_COMPONENT")
             audit = semantic_trace.get("control_audit", [])
             if [row.get("step_index") for row in audit] != list(range(len(audit))):
                 raise ValueError("SEMANTIC_CONTROL_AUDIT_ORDER")
@@ -568,7 +579,7 @@ def validate_persisted_quality_evidence(
             schema = json.loads((schema_root / schema_name).read_bytes())
             Draft202012Validator(schema).validate(value)
             return value
-        except (OSError, json.JSONDecodeError, ValidationError) as error:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValidationError) as error:
             raise ValueError(f"QUALITY_SCHEMA_INVALID:{name}") from error
 
     request = load_json("planner-request.json", "toy_quality_planner_request.schema.json")
@@ -588,7 +599,7 @@ def validate_persisted_quality_evidence(
         ]
         for attempt in attempts:
             Draft202012Validator(attempt_schema).validate(attempt)
-    except (OSError, json.JSONDecodeError, ValidationError) as error:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValidationError) as error:
         raise ValueError("QUALITY_SCHEMA_INVALID:attempt-log.jsonl") from error
     work_plan = None
     if manifest["work_plan_path"] is not None:
@@ -646,7 +657,10 @@ def validate_persisted_quality_evidence(
             state = successor
             applied += 1
         final_hash = state_hash(state)
-        actual_goal_success = goal_satisfied(state, tuple(tuple(x) for x in task["goal"]))
+        final_state_goal_satisfied = goal_satisfied(
+            state, tuple(tuple(x) for x in task["goal"])
+        )
+        expected_execution_success = final_state_goal_satisfied and not terminal_failure
         if work_plan is not None and (
             work_plan["task_id"] != task["task_id"]
             or work_plan["state_hash"] != initial_hash
@@ -664,6 +678,7 @@ def validate_persisted_quality_evidence(
             if (
                 work_plan is None or manifest["work_plan_path"] != "work-plan.json"
                 or manifest["work_plan_hash"] is None or manifest["failure_code"] is not None
+                or manifest["partial_raw_output"] is not None
             ):
                 raise ValueError("QUALITY_READY_MANIFEST_MISMATCH")
         elif (
@@ -673,14 +688,43 @@ def validate_persisted_quality_evidence(
             or attempts
         ):
             raise ValueError("QUALITY_FAILED_MANIFEST_MISMATCH")
+        if work_plan is not None:
+            expected_forward_count = len(work_plan["steps"])
+        elif manifest["failure_code"] == "PLAN_NO_END":
+            expected_forward_count = request["max_decoding_steps"]
+            if len(manifest["partial_raw_output"]) != expected_forward_count:
+                raise ValueError("QUALITY_FAILURE_OUTPUT_COUNT_MISMATCH")
+        elif manifest["failure_code"] in {"PLAN_PARSE_ERROR", "PLAN_UNKNOWN_REF"}:
+            partial = manifest["partial_raw_output"]
+            if not partial:
+                raise ValueError("QUALITY_FAILURE_OUTPUT_COUNT_MISMATCH")
+            expected_forward_count = len(partial)
+            try:
+                parse_work_plan(partial, task["blocks"])
+            except ValueError as error:
+                if str(error) != manifest["failure_code"]:
+                    raise ValueError("QUALITY_FAILURE_OUTPUT_CODE_MISMATCH") from None
+            else:
+                raise ValueError("QUALITY_FAILURE_OUTPUT_CODE_MISMATCH")
+        elif manifest["failure_code"] in PRE_FORWARD_FAILURE_CODES:
+            expected_forward_count = 0
+            if manifest["partial_raw_output"] != []:
+                raise ValueError("QUALITY_FAILURE_OUTPUT_COUNT_MISMATCH")
+        else:  # guarded by the explicit generation-failure set above
+            raise ValueError("QUALITY_FAILED_MANIFEST_MISMATCH")
+        if (
+            manifest["model_forward_count"] != expected_forward_count
+            or evaluation["model_forward_count"] != expected_forward_count
+        ):
+            raise ValueError("QUALITY_MODEL_FORWARD_COUNT_MISMATCH")
         if attempts and attempts[0]["state_before_hash"] != initial_hash:
             raise ValueError("QUALITY_INITIAL_STATE_MISMATCH")
         if (
             episode["attempts_total"] != len(attempts)
             or episode["executed_length"] != applied
             or episode["final_state_hash"] != final_hash
-            or episode["goal_success"] != actual_goal_success
-            or evaluation["success"] != actual_goal_success
+            or episode["goal_success"] != expected_execution_success
+            or evaluation["success"] != expected_execution_success
         ):
             raise ValueError("QUALITY_EPISODE_COUNTS_MISMATCH")
         if (
@@ -723,7 +767,7 @@ def validate_persisted_quality_evidence(
                 row["step_index"] > 0 and row["input_feedback_norm"] > 0
                 for row in audit
             )
-            actual_influenced = sum(
+            actual_downstream_nonzero = sum(
                 row["step_index"] > 0
                 and row["downstream_semantic_component_norm"] > 0
                 for row in audit
@@ -732,9 +776,10 @@ def validate_persisted_quality_evidence(
                 semantic_trace["feedback_application_count"] != expected_applications
                 or semantic_trace["nonzero_feedback_application_count"]
                 != actual_nonzero
-                or semantic_trace["feedback_influenced_decoding_position_count"]
-                != actual_influenced
-                or semantic_trace["feedback_applied"] != (actual_influenced > 0)
+                or semantic_trace["nonzero_downstream_semantic_component_count"]
+                != actual_downstream_nonzero
+                or semantic_trace["downstream_semantic_component_observed"]
+                != (actual_downstream_nonzero > 0)
                 or semantic_trace["feedback_mode_enabled"]
                 != (request["variant"] == "A3")
                 or semantic_trace["compute_then_zero"]
@@ -766,7 +811,10 @@ def validate_persisted_quality_evidence(
                 ):
                     raise ValueError("QUALITY_LATENT_BLOCK_MISMATCH")
                 previous = step["z_sha256"]
-    except (KeyError, IndexError, TypeError) as error:
+    except (
+        KeyError, IndexError, TypeError, struct.error, OverflowError,
+        UnicodeDecodeError, OSError, StopIteration,
+    ) as error:
         raise ValueError("QUALITY_LINEAGE_STRUCTURE_INVALID") from error
     return {
         "request": request, "work_plan": work_plan, "manifest": manifest,
