@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"final_checkpoint_selected_without_heldout":{"const":true},"schema_version":{"const":"toy-quality-training-report/0.1"},"updates":{"const":9}},"required":["schema_version","updates","final_checkpoint_selected_without_heldout"],"type":"object"}
