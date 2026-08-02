@@ -30,8 +30,10 @@ from .e2e import (
 from .model import LockedPlanner, canonical_task_encoding
 from .numeric_identity import (
     CANONICAL_NUMERIC_POLICY,
+    TORCH_OBJECT_ENCODING_VERSION,
     canonical_state_dict_sha256,
     canonical_torch_object_sha256,
+    exact_torch_object_sha256,
 )
 from .semantic import targets
 from .training import ACTIONS, labels, state_dict_sha256
@@ -46,6 +48,9 @@ MAPPING = {
 }
 EPOCHS = 3
 MAX_STEPS = 17
+_CANONICAL_STATE_HASH_CACHE: dict[str, str] = {}
+_CANONICAL_OBJECT_HASH_CACHE: dict[str, str] = {}
+_EXACT_OBJECT_FILE_HASH_CACHE: dict[str, str] = {}
 ROOT = Path(__file__).parents[1]
 SOURCE_FILES = (
     "planner_toy/canonical.py", "planner_toy/dataset.py", "planner_toy/domain.py", "planner_toy/e2e.py",
@@ -78,22 +83,108 @@ def _file_hash(path: Path) -> str:
 
 
 def _torch_object_sha256(value) -> str:
-    digest = hashlib.sha256()
-    def visit(item) -> None:
-        if torch.is_tensor(item):
-            digest.update(b"tensor\0" + str(item.dtype).encode() + b"\0")
-            digest.update(item.detach().cpu().contiguous().numpy().tobytes())
-        elif isinstance(item, dict):
-            for key in sorted(item, key=str):
-                digest.update(b"key\0" + str(key).encode() + b"\0"); visit(item[key])
-        elif isinstance(item, list | tuple):
-            digest.update(f"sequence:{len(item)}\0".encode())
-            for child in item:
-                visit(child)
-        else:
-            digest.update(repr(item).encode() + b"\0")
-    visit(value)
-    return "sha256:" + digest.hexdigest()
+    return exact_torch_object_sha256(value)
+
+
+def _cached_canonical_state_hash(value: dict[str, torch.Tensor], exact_hash: str) -> str:
+    if exact_hash not in _CANONICAL_STATE_HASH_CACHE:
+        _CANONICAL_STATE_HASH_CACHE[exact_hash] = canonical_state_dict_sha256(value)
+    return _CANONICAL_STATE_HASH_CACHE[exact_hash]
+
+
+def _cached_canonical_object_hash(value: object, exact_hash: str) -> str:
+    if exact_hash not in _CANONICAL_OBJECT_HASH_CACHE:
+        _CANONICAL_OBJECT_HASH_CACHE[exact_hash] = canonical_torch_object_sha256(value)
+    return _CANONICAL_OBJECT_HASH_CACHE[exact_hash]
+
+
+def _cached_exact_object_hash(value: object, file_hash: str) -> str:
+    if file_hash not in _EXACT_OBJECT_FILE_HASH_CACHE:
+        _EXACT_OBJECT_FILE_HASH_CACHE[file_hash] = _torch_object_sha256(value)
+    return _EXACT_OBJECT_FILE_HASH_CACHE[file_hash]
+
+
+def _validate_optimizer_state(
+    optimizer_state: object, model: LockedPlanner, expected_updates: int
+) -> None:
+    """Validate the persisted AdamW state independently of its two hashes."""
+    if not isinstance(optimizer_state, dict) or set(optimizer_state) != {
+        "state", "param_groups"
+    }:
+        raise ValueError("OPTIMIZER_TOP_LEVEL_STRUCTURE_MISMATCH")
+    state = optimizer_state["state"]
+    groups = optimizer_state["param_groups"]
+    if not isinstance(state, dict) or not isinstance(groups, list) or len(groups) != 1:
+        raise ValueError("OPTIMIZER_PARAMETER_GROUP_MISMATCH")
+    group = groups[0]
+    if not isinstance(group, dict) or not isinstance(group.get("params"), list):
+        raise ValueError("OPTIMIZER_PARAMETER_GROUP_MISMATCH")
+    expected_group_fields = {
+        "lr", "betas", "eps", "weight_decay", "amsgrad", "maximize", "foreach",
+        "capturable", "differentiable", "fused", "decoupled_weight_decay", "params",
+    }
+    if set(group) != expected_group_fields:
+        raise ValueError("OPTIMIZER_PARAMETER_GROUP_FIELDS_MISMATCH")
+    expected_options = {
+        "lr": 3e-4, "betas": (0.9, 0.95), "eps": 1e-8, "weight_decay": 0.01,
+        "amsgrad": False, "maximize": False, "foreach": None, "capturable": False,
+        "differentiable": False, "fused": None, "decoupled_weight_decay": True,
+    }
+    if {key: group[key] for key in expected_options} != expected_options:
+        raise ValueError("OPTIMIZER_PARAMETER_GROUP_CONFIG_MISMATCH")
+    parameter_ids = group["params"]
+    if any(type(value) is not int for value in parameter_ids):
+        raise ValueError("OPTIMIZER_PARAMETER_ID_INVALID")
+    if len(parameter_ids) != len(set(parameter_ids)):
+        raise ValueError("OPTIMIZER_PARAMETER_ID_DUPLICATE")
+    ordered_parameters = _optimizer_named_parameters(model)
+    if len(parameter_ids) != len(ordered_parameters):
+        raise ValueError("OPTIMIZER_PARAMETER_GROUP_MISMATCH")
+    if parameter_ids != list(range(len(ordered_parameters))):
+        raise ValueError("OPTIMIZER_PARAMETER_ID_ORDER_MISMATCH")
+    if set(state) != set(parameter_ids):
+        raise ValueError("OPTIMIZER_STATE_PARAMETER_SET_MISMATCH")
+    for parameter_id, (_, parameter) in zip(parameter_ids, ordered_parameters, strict=True):
+        entry = state[parameter_id]
+        if not isinstance(entry, dict) or set(entry) != {"step", "exp_avg", "exp_avg_sq"}:
+            raise ValueError("OPTIMIZER_PARAMETER_STATE_FIELDS_MISMATCH")
+        step = entry["step"]
+        if (
+            not torch.is_tensor(step) or step.dtype != torch.float32
+            or step.shape != torch.Size([]) or not torch.isfinite(step).item()
+            or not float(step.item()).is_integer()
+            or not 1 <= int(step.item()) <= expected_updates
+        ):
+            raise ValueError("OPTIMIZER_STEP_MISMATCH")
+        for field in ("exp_avg", "exp_avg_sq"):
+            moment = entry[field]
+            if not torch.is_tensor(moment):
+                raise ValueError("OPTIMIZER_MOMENT_TYPE_MISMATCH")
+            if moment.shape != parameter.shape:
+                raise ValueError("OPTIMIZER_MOMENT_SHAPE_MISMATCH")
+            if moment.dtype != parameter.dtype:
+                raise ValueError("OPTIMIZER_MOMENT_DTYPE_MISMATCH")
+            if not torch.isfinite(moment).all().item():
+                raise ValueError("OPTIMIZER_MOMENT_NONFINITE")
+
+
+def _optimizer_named_parameters(model: LockedPlanner) -> list[tuple[str, torch.Tensor]]:
+    """Parameters that can affect the selected arm's training objective."""
+    return [
+        (name, parameter)
+        for name, parameter in model.named_parameters()
+        if parameter.requires_grad
+        and not (
+            model.variant == "A4" and name.startswith("semantic.latent_feedback.")
+        )
+    ]
+
+
+def _optimizer_parameter_policy(model: LockedPlanner) -> tuple[list[str], list[str]]:
+    active = [name for name, _ in _optimizer_named_parameters(model)]
+    active_set = set(active)
+    dormant = [name for name, _ in model.named_parameters() if name not in active_set]
+    return sorted(active), sorted(dormant)
 
 
 def source_identity() -> dict:
@@ -195,8 +286,10 @@ def _train(rows: list[dict], variant: str, seed: int, output: Path, dataset_hash
     initial_path = output / "initialization.pt"
     torch.save(model.state_dict(), initial_path)
     initialization_hash = state_dict_sha256(model.state_dict())
+    optimizer_named_parameters = _optimizer_named_parameters(model)
+    active_parameter_names, dormant_parameter_names = _optimizer_parameter_policy(model)
     optimizer = torch.optim.AdamW(
-        [p for p in model.parameters() if p.requires_grad], lr=3e-4,
+        [parameter for _, parameter in optimizer_named_parameters], lr=3e-4,
         betas=(0.9, 0.95), eps=1e-8, weight_decay=0.01,
     )
     for _ in range(EPOCHS):
@@ -226,20 +319,26 @@ def _train(rows: list[dict], variant: str, seed: int, output: Path, dataset_hash
     trained_path = output / "trained.pt"
     torch.save(model.state_dict(), trained_path)
     optimizer_path = output / "optimizer-state.pt"
-    torch.save(optimizer.state_dict(), optimizer_path)
+    optimizer_state = optimizer.state_dict()
+    torch.save(optimizer_state, optimizer_path)
+    optimizer_exact_hash = _torch_object_sha256(optimizer_state)
+    optimizer_canonical_hash = _cached_canonical_object_hash(
+        optimizer_state, optimizer_exact_hash
+    )
     optimizer_evidence = {
         "schema_version": "toy-quality-optimizer-evidence/0.1",
-        "optimizer_state_sha256": _torch_object_sha256(optimizer.state_dict()),
-        "canonical_optimizer_state_sha256": canonical_torch_object_sha256(
-            optimizer.state_dict()
-        ),
-        "active_parameter_names": sorted(model.active_names),
+        "torch_object_encoding_version": TORCH_OBJECT_ENCODING_VERSION,
+        "optimizer_state_sha256": optimizer_exact_hash,
+        "canonical_optimizer_state_sha256": optimizer_canonical_hash,
+        "active_parameter_names": active_parameter_names,
         "parameter_group_count": len(optimizer.param_groups),
         "update_count": EPOCHS * len(rows),
     }
     _write(output / "optimizer-evidence.json", optimizer_evidence)
     checkpoint_hash = state_dict_sha256(model.state_dict())
-    canonical_checkpoint_hash = canonical_state_dict_sha256(model.state_dict())
+    canonical_checkpoint_hash = _cached_canonical_state_hash(
+        model.state_dict(), checkpoint_hash
+    )
     identity = {"architecture_stage": MAPPING[variant][0], "implementation_variant": variant,
                 "experimental_arm": MAPPING[variant][1], "target_type": MAPPING[variant][2]}
     config = {"schema_version": "toy-quality-training-config/0.1", "variant_identity": identity,
@@ -253,21 +352,21 @@ def _train(rows: list[dict], variant: str, seed: int, output: Path, dataset_hash
     report = {"schema_version": "toy-quality-training-report/0.1", "updates": EPOCHS * len(rows), "final_checkpoint_selected_without_heldout": True}
     _write(output / "training-report.json", report)
     manifest = {"schema_version": "toy-quality-checkpoint/0.1", "variant_identity": identity,
+                "torch_object_encoding_version": TORCH_OBJECT_ENCODING_VERSION,
                 "seed": seed, "dataset_hash": dataset_hash, "train_task_ids": config["train_task_ids"],
                 "epochs": EPOCHS, "updates": EPOCHS * len(rows), "config_hash": _file_hash(output / "training-config.json"),
                 "initialization_path": "initialization.pt", "initialization_file_sha256": _file_hash(initial_path),
                 "initialization_state_dict_sha256": initialization_hash,
-                "canonical_initialization_state_dict_sha256": canonical_state_dict_sha256(
-                    torch.load(initial_path, map_location="cpu", weights_only=True)
+                "canonical_initialization_state_dict_sha256": _cached_canonical_state_hash(
+                    torch.load(initial_path, map_location="cpu", weights_only=True),
+                    initialization_hash,
                 ),
                 "trained_path": "trained.pt", "trained_file_sha256": _file_hash(trained_path),
                 "trained_state_dict_sha256": checkpoint_hash,
                 "canonical_trained_state_dict_sha256": canonical_checkpoint_hash,
                 "optimizer_state_path": "optimizer-state.pt", "optimizer_state_file_sha256": _file_hash(optimizer_path),
-                "optimizer_state_sha256": _torch_object_sha256(optimizer.state_dict()),
-                "canonical_optimizer_state_sha256": canonical_torch_object_sha256(
-                    optimizer.state_dict()
-                ),
+                "optimizer_state_sha256": optimizer_exact_hash,
+                "canonical_optimizer_state_sha256": optimizer_canonical_hash,
                 "optimizer_evidence_path": "optimizer-evidence.json",
                 "optimizer_evidence_file_sha256": _file_hash(output / "optimizer-evidence.json"),
                 "training_report_path": "training-report.json", "training_report_file_sha256": _file_hash(output / "training-report.json"),
@@ -275,8 +374,8 @@ def _train(rows: list[dict], variant: str, seed: int, output: Path, dataset_hash
                 "training_execution_mode": "TRAINED_IN_RUN",
                 "checkpoint_origin_run_hash": None, "reuse_source_manifest_hash": None,
                 "deterministic_training_replay_status": "CANONICAL_DETERMINISTIC",
-                "active_parameter_names": sorted(model.active_names),
-                "dormant_parameter_names": sorted(name for name, p in model.named_parameters() if not p.requires_grad)}
+                "active_parameter_names": active_parameter_names,
+                "dormant_parameter_names": dormant_parameter_names}
     _write(output / "checkpoint-manifest.json", manifest)
     return model, manifest
 
@@ -497,22 +596,26 @@ def validate_evaluation(root: Path, *, force_training_replay: bool = False) -> d
             optimizer_state = torch.load(
                 run_dir / checkpoint["optimizer_state_path"], map_location="cpu", weights_only=True
             )
-            if _torch_object_sha256(optimizer_state) != checkpoint["optimizer_state_sha256"]:
+            optimizer_model = LockedPlanner(seed, variant).cpu()
+            _validate_optimizer_state(optimizer_state, optimizer_model, checkpoint["updates"])
+            optimizer_exact_hash = _cached_exact_object_hash(
+                optimizer_state, checkpoint["optimizer_state_file_sha256"]
+            )
+            if optimizer_exact_hash != checkpoint["optimizer_state_sha256"]:
                 raise ValueError("OPTIMIZER_STATE_SEMANTIC_HASH_MISMATCH")
-            if canonical_torch_object_sha256(optimizer_state) != checkpoint[
+            if _cached_canonical_object_hash(
+                optimizer_state, optimizer_exact_hash
+            ) != checkpoint[
                 "canonical_optimizer_state_sha256"
             ]:
                 raise ValueError("OPTIMIZER_CANONICAL_NUMERIC_HASH_MISMATCH")
-            if len(optimizer_state.get("param_groups", [])) != 1 or len(
-                optimizer_state["param_groups"][0].get("params", [])
-            ) != len(checkpoint["active_parameter_names"]):
-                raise ValueError("OPTIMIZER_PARAMETER_GROUP_MISMATCH")
             optimizer_evidence = json.loads(
                 (run_dir / checkpoint["optimizer_evidence_path"]).read_bytes()
             )
             validate_schema("toy_quality_optimizer_evidence.schema.json", optimizer_evidence)
             if optimizer_evidence != {
                 "schema_version": "toy-quality-optimizer-evidence/0.1",
+                "torch_object_encoding_version": TORCH_OBJECT_ENCODING_VERSION,
                 "optimizer_state_sha256": checkpoint["optimizer_state_sha256"],
                 "canonical_optimizer_state_sha256": checkpoint[
                     "canonical_optimizer_state_sha256"
@@ -538,16 +641,24 @@ def validate_evaluation(root: Path, *, force_training_replay: bool = False) -> d
                 run_dir / "trained.pt", map_location="cpu", weights_only=True
             )
             if (
-                canonical_state_dict_sha256(persisted_initial)
+                _cached_canonical_state_hash(
+                    persisted_initial, checkpoint["initialization_state_dict_sha256"]
+                )
                 != checkpoint["canonical_initialization_state_dict_sha256"]
-                or canonical_state_dict_sha256(persisted_trained)
+                or _cached_canonical_state_hash(
+                    persisted_trained, checkpoint["trained_state_dict_sha256"]
+                )
                 != checkpoint["canonical_trained_state_dict_sha256"]
             ):
                 raise ValueError("CHECKPOINT_CANONICAL_NUMERIC_HASH_MISMATCH")
             if state_dict_sha256(canonical_initial) != state_dict_sha256(persisted_initial):
                 raise ValueError("CANONICAL_INITIALIZATION_MISMATCH")
             model.load_state_dict(torch.load(run_dir / "trained.pt", map_location="cpu", weights_only=True)); model.eval()
-            if checkpoint["active_parameter_names"] != sorted(model.active_names) or checkpoint["dormant_parameter_names"] != sorted(name for name, parameter in model.named_parameters() if not parameter.requires_grad):
+            expected_active, expected_dormant = _optimizer_parameter_policy(model)
+            if (
+                checkpoint["active_parameter_names"] != expected_active
+                or checkpoint["dormant_parameter_names"] != expected_dormant
+            ):
                 raise ValueError("PARAMETER_POLICY_MISMATCH")
             trained_state = model.state_dict()
             if any(not torch.equal(trained_state[name], persisted_initial[name]) for name in checkpoint["dormant_parameter_names"]):

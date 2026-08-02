@@ -19,6 +19,7 @@ from planner_toy.e2e import (
 from planner_toy.model import LockedPlanner
 from planner_toy.quality import (
     MAPPING,
+    _validate_optimizer_state,
     export_compact,
     paired,
     run,
@@ -935,6 +936,72 @@ def _rewrite_checkpoint_hash_chain(root: Path, checkpoint_path: Path) -> None:
         if path.is_file():
             manifest["checkpoint_manifest_hashes"][str(path.relative_to(root))] = file_hash(path)
     manifest_path.write_bytes(canonical_bytes(manifest) + b"\n")
+
+
+@pytest.mark.parametrize(
+    "mutation,error",
+    [
+        ("missing-state", "OPTIMIZER_TOP_LEVEL_STRUCTURE_MISMATCH"),
+        ("extra-state", "OPTIMIZER_STATE_PARAMETER_SET_MISMATCH"),
+        ("duplicate-id", "OPTIMIZER_PARAMETER_ID_DUPLICATE"),
+        ("reordered-ids", "OPTIMIZER_PARAMETER_ID_ORDER_MISMATCH"),
+        ("unknown-id", "OPTIMIZER_PARAMETER_ID_ORDER_MISMATCH"),
+        ("group-extra-field", "OPTIMIZER_PARAMETER_GROUP_FIELDS_MISMATCH"),
+        ("group-wrong-config", "OPTIMIZER_PARAMETER_GROUP_CONFIG_MISMATCH"),
+        ("missing-exp-avg", "OPTIMIZER_PARAMETER_STATE_FIELDS_MISMATCH"),
+        ("missing-exp-avg-sq", "OPTIMIZER_PARAMETER_STATE_FIELDS_MISMATCH"),
+        ("extra-field", "OPTIMIZER_PARAMETER_STATE_FIELDS_MISMATCH"),
+        ("wrong-shape", "OPTIMIZER_MOMENT_SHAPE_MISMATCH"),
+        ("wrong-dtype", "OPTIMIZER_MOMENT_DTYPE_MISMATCH"),
+        ("nan", "OPTIMIZER_MOMENT_NONFINITE"),
+        ("positive-inf", "OPTIMIZER_MOMENT_NONFINITE"),
+        ("negative-inf", "OPTIMIZER_MOMENT_NONFINITE"),
+        ("wrong-step", "OPTIMIZER_STEP_MISMATCH"),
+    ],
+)
+def test_optimizer_state_semantic_mutations_are_rejected(
+    tmp_path, canonical_smoke, mutation, error,
+) -> None:
+    del tmp_path
+    run_dir = canonical_smoke / "training-runs/A2/seed-17"
+    state_path = run_dir / "optimizer-state.pt"
+    optimizer = torch.load(state_path, map_location="cpu", weights_only=True)
+    parameter_id = optimizer["param_groups"][0]["params"][0]
+    entry = optimizer["state"][parameter_id]
+    if mutation == "missing-state":
+        del optimizer["state"]
+    elif mutation == "extra-state":
+        optimizer["state"][999999] = dict(entry)
+    elif mutation == "duplicate-id":
+        optimizer["param_groups"][0]["params"].append(parameter_id)
+    elif mutation == "reordered-ids":
+        optimizer["param_groups"][0]["params"][:2] = reversed(
+            optimizer["param_groups"][0]["params"][:2]
+        )
+    elif mutation == "unknown-id":
+        optimizer["param_groups"][0]["params"][0] = 999999
+    elif mutation == "group-extra-field":
+        optimizer["param_groups"][0]["foreign"] = True
+    elif mutation == "group-wrong-config":
+        optimizer["param_groups"][0]["lr"] = 1.0
+    elif mutation == "missing-exp-avg":
+        del entry["exp_avg"]
+    elif mutation == "missing-exp-avg-sq":
+        del entry["exp_avg_sq"]
+    elif mutation == "extra-field":
+        entry["foreign"] = torch.tensor(0)
+    elif mutation == "wrong-shape":
+        entry["exp_avg"] = entry["exp_avg"].reshape(-1)[:1]
+    elif mutation == "wrong-dtype":
+        entry["exp_avg"] = entry["exp_avg"].to(torch.float64)
+    elif mutation in {"nan", "positive-inf", "negative-inf"}:
+        value = {"nan": float("nan"), "positive-inf": float("inf"),
+                 "negative-inf": -float("inf")}[mutation]
+        entry["exp_avg"].reshape(-1)[0] = value
+    elif mutation == "wrong-step":
+        entry["step"] = torch.tensor(0.0)
+    with pytest.raises(ValueError, match=error):
+        _validate_optimizer_state(optimizer, LockedPlanner(17, "A2").cpu(), 9)
 
 
 @pytest.mark.parametrize(

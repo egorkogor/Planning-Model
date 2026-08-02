@@ -128,10 +128,13 @@ jobs:
       matrix:
         worker: [a, b]
     runs-on: ubuntu-latest
+    env:
+      IMPLEMENTATION_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11.15"
@@ -143,31 +146,31 @@ jobs:
           python -m pip install -e '.[ml]'
       - name: Independent canonical run
         run: |
-          # Compare the exact checkout under test. Committed reference results are
-          # intentionally allowed to lag during the implementation phase.
-          IMPLEMENTATION_SHA="$(git rev-parse HEAD)"
-          git cat-file -e "${IMPLEMENTATION_SHA}^{commit}"
+          printf '%s\n' "$IMPLEMENTATION_SHA" > implementation-sha.txt
           python -m scripts.run_toy_quality_evaluation \
             --output-dir canonical-run --implementation-commit "$IMPLEMENTATION_SHA"
           python -m scripts.run_toy_quality_evaluation \
             --output-dir canonical-run --validate-only --compact-dir compact
+          cp implementation-sha.txt canonical-run/
+          cp -R compact canonical-run/compact
       - uses: actions/upload-artifact@v4
         with:
           name: canonical-${{ matrix.worker }}
-          path: |
-            canonical-run/canonical-semantic-payload.json
-            canonical-run/task-results-semantic.json
-            canonical-run/replay-hash.txt
-            canonical-run/per-seed-summary.json
-            canonical-run/aggregate-summary.json
-            canonical-run/paired-comparisons.json
-            compact/data/a2_a3_a4_heldout_summary.json
-            compact/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
+          path: canonical-run
 
   canonical-compare:
     needs: canonical-workers
     runs-on: ubuntu-latest
+    env:
+      IMPLEMENTATION_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.15"
+      - run: python -m pip install torch==2.12.0+cpu --index-url https://download.pytorch.org/whl/cpu
       - uses: actions/download-artifact@v4
         with:
           name: canonical-a
@@ -178,6 +181,9 @@ jobs:
           path: b
       - name: Compare cross-worker semantic outputs
         run: |
+          cmp a/implementation-sha.txt b/implementation-sha.txt
+          printf '%s\n' "$IMPLEMENTATION_SHA" | cmp - a/implementation-sha.txt
+          python scripts/compare_toy_quality_runs.py a b --output cross-worker-report.json
           for path in \
             canonical-run/canonical-semantic-payload.json \
             canonical-run/task-results-semantic.json \
@@ -189,3 +195,8 @@ jobs:
             compact/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md; do
             cmp "a/$path" "b/$path"
           done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: canonical-cross-worker-diagnostic
+          path: cross-worker-report.json
