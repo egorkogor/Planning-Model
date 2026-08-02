@@ -170,7 +170,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11.15"
-      - run: python -m pip install torch==2.12.0+cpu --index-url https://download.pytorch.org/whl/cpu
+      - name: Install pinned canonical comparison runtime
+        run: |
+          python -m pip install -r requirements.lock
+          python -m pip install -e . --no-deps
+          python -m pip install torch==2.12.0+cpu \
+            --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e '.[ml]'
       - uses: actions/download-artifact@v4
         with:
           name: canonical-a
@@ -183,14 +189,27 @@ jobs:
         run: |
           cmp a/implementation-sha.txt b/implementation-sha.txt
           printf '%s\n' "$IMPLEMENTATION_SHA" | cmp - a/implementation-sha.txt
-          python scripts/compare_toy_quality_runs.py a b --output cross-worker-report.json
           for path in \
-            canonical-run/canonical-semantic-payload.json \
-            canonical-run/task-results-semantic.json \
-            canonical-run/replay-hash.txt \
-            canonical-run/per-seed-summary.json \
-            canonical-run/aggregate-summary.json \
-            canonical-run/paired-comparisons.json \
+            canonical-semantic-payload.json \
+            task-results-semantic.json \
+            replay-hash.txt \
+            per-seed-summary.json \
+            aggregate-summary.json \
+            paired-comparisons.json \
+            compact/data/a2_a3_a4_heldout_summary.json \
+            compact/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md; do
+            test -f "a/$path"
+            test -f "b/$path"
+          done
+          python -m scripts.compare_toy_quality_runs \
+            a b --output cross-worker-report.json
+          for path in \
+            canonical-semantic-payload.json \
+            task-results-semantic.json \
+            replay-hash.txt \
+            per-seed-summary.json \
+            aggregate-summary.json \
+            paired-comparisons.json \
             compact/data/a2_a3_a4_heldout_summary.json \
             compact/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md; do
             cmp "a/$path" "b/$path"
