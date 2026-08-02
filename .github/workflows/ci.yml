@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -39,8 +41,151 @@ jobs:
             exit 1
           }
       - run: ruff check .
+      - name: Pin canonical diagnostic Python
+        if: matrix.python-version == '3.11'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.15"
+          cache: pip
+      - name: Install canonical diagnostic runtime
+        if: matrix.python-version == '3.11'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.lock
+          python -m pip install -e . --no-deps
+          python -m pip install torch==2.12.0+cpu --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e '.[ml]'
+      - name: Regenerate canonical quality diagnostic
+        if: matrix.python-version == '3.11'
+        run: |
+          IMPLEMENTATION_SHA="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('docs/evaluations/data/a2_a3_a4_heldout_summary.json')
+          if not path.is_file():
+              raise SystemExit('committed compact diagnostic is missing')
+          print(json.loads(path.read_text())['implementation_commit'])
+          PY
+          )"
+          test -n "$IMPLEMENTATION_SHA"
+          if ! git cat-file -e "${IMPLEMENTATION_SHA}^{commit}" 2>/dev/null; then
+            if test "$(git rev-parse --is-shallow-repository)" = true; then
+              echo "implementation commit is unavailable because checkout history is shallow" >&2
+            else
+              echo "implementation commit is absent from the fetched repository" >&2
+            fi
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$IMPLEMENTATION_SHA" HEAD; then
+            echo "implementation commit exists but is not an ancestor of the results checkout" >&2
+            exit 1
+          fi
+          if ! git show "$IMPLEMENTATION_SHA:requirements.lock" >/dev/null; then
+            echo "implementation tree is incomplete: requirements.lock is missing" >&2
+            exit 1
+          fi
+          RUN_CANONICAL_QUALITY_DETERMINISM=1 \
+          QUALITY_IMPLEMENTATION_COMMIT="$IMPLEMENTATION_SHA" \
+            python -m pytest -q -m canonical_quality \
+            tests/toy/test_quality_determinism.py
+          python -m scripts.run_toy_quality_evaluation \
+            --output-dir .quality-eval-ci \
+            --implementation-commit "$IMPLEMENTATION_SHA"
+          python -m scripts.run_toy_quality_evaluation \
+            --output-dir .quality-eval-ci --validate-only \
+            --compact-dir .quality-docs-ci
+          python -m scripts.run_toy_quality_evaluation \
+            --output-dir .quality-eval-ci-independent \
+            --implementation-commit "$IMPLEMENTATION_SHA"
+          python -m scripts.run_toy_quality_evaluation \
+            --output-dir .quality-eval-ci-independent --validate-only \
+            --compact-dir .quality-docs-ci-independent
+          for artifact in \
+            evaluation-config.json replay-hash.txt task-results.jsonl \
+            per-seed-summary.json aggregate-summary.json paired-comparisons.json \
+            human-readable-examples.md; do
+            cmp ".quality-eval-ci/$artifact" ".quality-eval-ci-independent/$artifact"
+          done
+          cmp .quality-docs-ci/data/a2_a3_a4_heldout_summary.json \
+            .quality-docs-ci-independent/data/a2_a3_a4_heldout_summary.json
+          cmp .quality-docs-ci/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
+            .quality-docs-ci-independent/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
+          cmp .quality-docs-ci/data/a2_a3_a4_heldout_summary.json \
+            docs/evaluations/data/a2_a3_a4_heldout_summary.json
+          cmp .quality-docs-ci/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
+            docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
+          rm -rf .quality-eval-ci .quality-docs-ci \
+            .quality-eval-ci-independent .quality-docs-ci-independent
       - name: Verify tests left a clean checkout
         run: |
           rm -rf .pytest-tmp .pytest_cache
           git diff --exit-code
           test -z "$(git status --porcelain)"
+
+  canonical-workers:
+    name: canonical-run-${{ matrix.worker }}
+    strategy:
+      matrix:
+        worker: [a, b]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.15"
+          cache: pip
+      - run: |
+          python -m pip install -r requirements.lock
+          python -m pip install -e . --no-deps
+          python -m pip install torch==2.12.0+cpu --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e '.[ml]'
+      - name: Independent canonical run
+        run: |
+          # Compare the exact checkout under test. Committed reference results are
+          # intentionally allowed to lag during the implementation phase.
+          IMPLEMENTATION_SHA="$(git rev-parse HEAD)"
+          git cat-file -e "${IMPLEMENTATION_SHA}^{commit}"
+          python -m scripts.run_toy_quality_evaluation \
+            --output-dir canonical-run --implementation-commit "$IMPLEMENTATION_SHA"
+          python -m scripts.run_toy_quality_evaluation \
+            --output-dir canonical-run --validate-only --compact-dir compact
+      - uses: actions/upload-artifact@v4
+        with:
+          name: canonical-${{ matrix.worker }}
+          path: |
+            canonical-run/canonical-semantic-payload.json
+            canonical-run/task-results-semantic.json
+            canonical-run/replay-hash.txt
+            canonical-run/per-seed-summary.json
+            canonical-run/aggregate-summary.json
+            canonical-run/paired-comparisons.json
+            compact/data/a2_a3_a4_heldout_summary.json
+            compact/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
+
+  canonical-compare:
+    needs: canonical-workers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: canonical-a
+          path: a
+      - uses: actions/download-artifact@v4
+        with:
+          name: canonical-b
+          path: b
+      - name: Compare cross-worker semantic outputs
+        run: |
+          for path in \
+            canonical-run/canonical-semantic-payload.json \
+            canonical-run/task-results-semantic.json \
+            canonical-run/replay-hash.txt \
+            canonical-run/per-seed-summary.json \
+            canonical-run/aggregate-summary.json \
+            canonical-run/paired-comparisons.json \
+            compact/data/a2_a3_a4_heldout_summary.json \
+            compact/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md; do
+            cmp "a/$path" "b/$path"
+          done
