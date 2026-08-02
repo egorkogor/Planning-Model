@@ -39,7 +39,7 @@ packages = ["src/planner_llm_mvp", "planner_toy", "scripts"]
 "docs/architecture/planner_module_inventory_v1.yaml" = "planner_toy/planner_module_inventory_v1.yaml"
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q -m 'not canonical_quality'"
 testpaths = ["tests", "validation"]
 pythonpath = ["src"]
 markers = [

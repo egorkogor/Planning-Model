@@ -35,7 +35,8 @@ def test_independent_process_runs_have_stable_canonical_identity(tmp_path: Path)
         assert (roots[0] / name).read_bytes() == (roots[1] / name).read_bytes()
 
 
-def _full_canonical_compact_exports_are_byte_identical(tmp_path: Path) -> None:
+@pytest.mark.canonical_quality
+def test_full_canonical_compact_exports_are_byte_identical(tmp_path: Path) -> None:
     repository = Path(__file__).parents[2]
     committed = json.loads(
         (repository / "docs/evaluations/data/a2_a3_a4_heldout_summary.json").read_text()
@@ -74,9 +75,3 @@ def _full_canonical_compact_exports_are_byte_identical(tmp_path: Path) -> None:
         assert (compact_roots[0] / name).read_bytes() == (
             compact_roots[1] / name
         ).read_bytes()
-
-
-if os.environ.get("RUN_CANONICAL_QUALITY_DETERMINISM") == "1":
-    test_full_canonical_compact_exports_are_byte_identical = pytest.mark.canonical_quality(
-        _full_canonical_compact_exports_are_byte_identical
-    )

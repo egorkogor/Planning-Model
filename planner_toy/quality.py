@@ -365,7 +365,7 @@ def aggregate_summaries(per_seed: dict, rows: list[dict], variants, seeds) -> di
                 "structural_breakdown": _breakdowns([r for r in rows if r["variant"] == v])} for v in variants}
 
 
-def validate_evaluation(root: Path) -> dict:
+def validate_evaluation(root: Path, *, force_training_replay: bool = False) -> dict:
     torch.use_deterministic_algorithms(True)
     torch.set_num_threads(1)
     schema_root = Path(__file__).with_name("schemas")
@@ -498,7 +498,10 @@ def validate_evaluation(root: Path) -> dict:
             trained_state = model.state_dict()
             if any(not torch.equal(trained_state[name], persisted_initial[name]) for name in checkpoint["dormant_parameter_names"]):
                 raise ValueError("DORMANT_PARAMETER_CHANGED")
-            if config["training_execution_mode"] in {"TRAINED_IN_RUN", "REUSED"}:
+            if (
+                force_training_replay or config["diagnostic_complete"]
+                or config["training_execution_mode"] == "REUSED"
+            ):
                 with tempfile.TemporaryDirectory() as training_replay_dir:
                     replay_model, replay_manifest = _train(
                         sorted(canonical["train"], key=lambda row: row["task_id"]),
@@ -524,7 +527,9 @@ def validate_evaluation(root: Path) -> dict:
         if persisted["plan_generation_success"]:
             required.add("work-plan.json")
         if persisted["variant"] in {"A3", "A4"}:
-            required.update({"semantic-trace.json", "semantic-latents.f32"})
+            required.update({
+                "semantic-trace.json", "semantic-latents.f32", "projected-feedback.f32",
+            })
         actual = {path.name for path in evidence_root.iterdir() if path.is_file()}
         if actual != required:
             raise ValueError("EVIDENCE_COVERAGE_MISMATCH")

@@ -84,6 +84,10 @@ jobs:
             echo "implementation tree is incomplete: requirements.lock is missing" >&2
             exit 1
           fi
+          RUN_CANONICAL_QUALITY_DETERMINISM=1 \
+          QUALITY_IMPLEMENTATION_COMMIT="$IMPLEMENTATION_SHA" \
+            python -m pytest -q -m canonical_quality \
+            tests/toy/test_quality_determinism.py
           python -m scripts.run_toy_quality_evaluation \
             --output-dir .quality-eval-ci \
             --implementation-commit "$IMPLEMENTATION_SHA"

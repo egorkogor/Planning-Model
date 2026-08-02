@@ -54,22 +54,35 @@ class PlannerGenerationFailure(ValueError):
         self.code = code
         self.partial_raw_output = partial_raw_output
         self.model_forward_count = model_forward_count
-PRESERVED_GENERATION_CODES = FAILURE_CODES - {
-    "EXECUTOR_PRECONDITION_FAILED",
-    "GOAL_NOT_ACHIEVED",
-    "PLAN_GENERATION_ERROR",
-}
-GENERATION_FAILURE_CODES = frozenset({
+
+
+class PlanParseFailure(ValueError):
+    """Typed failure produced only by the quality WorkPlan parser."""
+
+
+PLAN_FAILURE_CODES = frozenset({
     "PLAN_NO_END",
     "PLAN_PARSE_ERROR",
     "PLAN_UNKNOWN_REF",
     "PLAN_GENERATION_ERROR",
+})
+LATENT_FAILURE_CODES = frozenset({
     "LATENT_NONFINITE",
     "LATENT_ZERO_NORM",
     "LATENT_DIMENSION",
 })
+GENERATION_FAILURE_CODES_BY_VARIANT = {
+    "A2": PLAN_FAILURE_CODES,
+    "A3": PLAN_FAILURE_CODES | LATENT_FAILURE_CODES,
+    "A4": PLAN_FAILURE_CODES | LATENT_FAILURE_CODES,
+}
+GENERATION_FAILURE_CODES = PLAN_FAILURE_CODES | LATENT_FAILURE_CODES
 PRE_FORWARD_FAILURE_CODES = frozenset({
     "PLAN_GENERATION_ERROR", "LATENT_NONFINITE", "LATENT_ZERO_NORM", "LATENT_DIMENSION",
+})
+LEGACY_PRESERVED_GENERATION_CODES = frozenset({
+    "PLAN_NO_END", "PLAN_PARSE_ERROR", "PLAN_UNKNOWN_REF",
+    "LATENT_NONFINITE", "LATENT_ZERO_NORM", "LATENT_DIMENSION",
 })
 
 
@@ -118,6 +131,7 @@ class A2Planner:
     injected_failure: str | None = None
     model_forward_count: int = 0
     semantic_audit: list[dict] | None = None
+    projected_steps: list[torch.Tensor] | None = None
 
     def plan(self, row: dict) -> list[list[str]]:
         if self.calls:
@@ -125,11 +139,12 @@ class A2Planner:
         self.calls += 1
         self.model_forward_count = 0
         if self.injected_failure in {"LATENT_NONFINITE", "LATENT_ZERO_NORM", "LATENT_DIMENSION"}:
-            raise ValueError(self.injected_failure)
+            raise PlannerGenerationFailure(self.injected_failure, [], 0)
         action_ids, arg1_ids, arg2_ids = [4] * 17, [0] * 17, [0] * 17
         decoded: list[list[str]] = []
         self.semantic_steps = []
         self.semantic_audit = []
+        self.projected_steps = []
         feedback = torch.zeros(1, 17, 384)
         previous_z_hash = None
         def tensor_hash(tensor):
@@ -149,6 +164,7 @@ class A2Planner:
                 z = logits.z_semantic[0, index].detach().clone()
                 input_feedback = feedback[0, index].detach().cpu().contiguous()
                 projected = logits.projected_semantic[0, index].detach().cpu().contiguous()
+                self.projected_steps.append(projected.clone())
                 downstream = logits.semantic_component[0, index].detach().cpu().contiguous()
                 self.semantic_steps.append(z)
                 if index + 1 < 17:
@@ -222,9 +238,15 @@ def evaluate_frozen_plan(
         raw = error.partial_raw_output
         parsed = ()
         generation_failure = error.code
-    except ValueError as error:
+    except PlanParseFailure as error:
         parsed = ()
         generation_failure = str(error)
+    except ValueError as error:
+        raise ValueError("QUALITY_UNKNOWN_GENERATION_EXCEPTION") from error
+    if generation_failure is not None and generation_failure not in (
+        GENERATION_FAILURE_CODES_BY_VARIANT[planner.model.variant]
+    ):
+        raise ValueError("QUALITY_VARIANT_FAILURE_CODE_MISMATCH")
     terminal_end = bool(raw and raw[-1] == ["END"])
     work_plan = None
     if generation_failure is None:
@@ -257,6 +279,7 @@ def evaluate_frozen_plan(
         failure = "GOAL_NOT_ACHIEVED"
     manifest = {
         "schema_version": "toy-quality-episode-plan-manifest/1.0",
+        "variant": planner.model.variant,
         "planner_call_count": planner.calls, "replanning_count": 0,
         "model_forward_count": planner.model_forward_count,
         "plan_status": "READY" if work_plan else "FAILED",
@@ -289,6 +312,11 @@ def evaluate_frozen_plan(
         latents = planner.semantic_steps or []
         latent_path = output / "semantic-latents.f32"
         latent_path.write_bytes(b"".join(struct.pack("<384f", *z.tolist()) for z in latents))
+        projected_path = output / "projected-feedback.f32"
+        projected = getattr(planner, "projected_steps", None) or []
+        projected_path.write_bytes(
+            b"".join(struct.pack("<256f", *value.tolist()) for value in projected)
+        )
         previous = None
         trace_steps = []
         for index, z in enumerate(latents):
@@ -323,6 +351,8 @@ def evaluate_frozen_plan(
             "planner_request_hash": file_hash(output / "planner-request.json"),
             "work_plan_artifact_hash": work_plan["plan_content_hash"] if work_plan else None,
             "latent_path": "semantic-latents.f32", "latent_file_sha256": file_hash(latent_path),
+            "projected_path": "projected-feedback.f32",
+            "projected_file_sha256": file_hash(projected_path),
             "steps": trace_steps,
             "control_audit": planner.semantic_audit or [],
         }
@@ -350,23 +380,38 @@ def evaluate_frozen_plan(
 
 def parse_work_plan(raw: list[list[str]], blocks: list[str]) -> tuple[tuple[str, ...], ...]:
     if not isinstance(raw, list) or not raw:
-        raise ValueError("PLAN_PARSE_ERROR")
+        raise PlanParseFailure("PLAN_PARSE_ERROR")
     if any(
         not isinstance(step, list) or not step or any(not isinstance(value, str) for value in step)
         for step in raw
     ):
-        raise ValueError("PLAN_PARSE_ERROR")
+        raise PlanParseFailure("PLAN_PARSE_ERROR")
     if raw[-1] != ["END"] or any(step == ["END"] for step in raw[:-1]):
-        raise ValueError("PLAN_NO_END")
+        raise PlanParseFailure("PLAN_NO_END")
     arity = {"PICK_UP": 1, "UNSTACK": 2, "PUT_DOWN": 1, "STACK": 2}
     parsed = []
     for step in raw[:-1]:
         if step[0] not in arity or len(step) != arity[step[0]] + 1:
-            raise ValueError("PLAN_PARSE_ERROR")
+            raise PlanParseFailure("PLAN_PARSE_ERROR")
         if any(arg not in blocks for arg in step[1:]):
-            raise ValueError("PLAN_UNKNOWN_REF")
+            raise PlanParseFailure("PLAN_UNKNOWN_REF")
         parsed.append(tuple(step))
     return tuple(parsed)
+
+
+def parse_nonterminal_step(step: object, blocks: list[str]) -> tuple[str, ...]:
+    """Validate one decoded action without allowing or requiring terminal END."""
+    if (
+        not isinstance(step, list) or not step
+        or any(not isinstance(value, str) for value in step)
+    ):
+        raise PlanParseFailure("PLAN_PARSE_ERROR")
+    arity = {"PICK_UP": 1, "UNSTACK": 2, "PUT_DOWN": 1, "STACK": 2}
+    if step[0] not in arity or len(step) != arity[step[0]] + 1:
+        raise PlanParseFailure("PLAN_PARSE_ERROR")
+    if any(arg not in blocks for arg in step[1:]):
+        raise PlanParseFailure("PLAN_UNKNOWN_REF")
+    return tuple(step)
 
 
 def execute(row: dict, plan: tuple[tuple[str, ...], ...]) -> tuple[list[dict], bool, str | None]:
@@ -542,13 +587,18 @@ def validate_frozen_plan_lineage_core(
             for index, row in enumerate(audit):
                 expected_previous = None if index == 0 else steps[index - 1]["z_sha256"]
                 expected_input = zero_feedback_hash if index == 0 else expected_previous
+                expected_norm = 0.0 if index == 0 else steps[index - 1]["latent_norm"]
                 if (
                     row.get("expected_previous_z_sha256") != expected_previous
                     or row.get("input_feedback_sha256") != expected_input
                     or row.get("source")
                     != ("BOS_ZERO" if index == 0 else "PREVIOUS_PREDICTED_LATENT")
+                    or not math.isclose(
+                        row.get("input_feedback_norm", math.inf), expected_norm,
+                        rel_tol=0, abs_tol=1e-6,
+                    )
                 ):
-                    raise ValueError("SEMANTIC_FEEDBACK_PROVENANCE_MISMATCH")
+                    raise ValueError("QUALITY_INPUT_FEEDBACK_NORM_MISMATCH")
                 if variant == "A4" and (
                     not row.get("projected_feedback_present")
                     or not row.get("downstream_component_zero")
@@ -660,7 +710,9 @@ def validate_persisted_quality_evidence(
         final_state_goal_satisfied = goal_satisfied(
             state, tuple(tuple(x) for x in task["goal"])
         )
-        expected_execution_success = final_state_goal_satisfied and not terminal_failure
+        expected_execution_success = (
+            work_plan is not None and final_state_goal_satisfied and not terminal_failure
+        )
         if work_plan is not None and (
             work_plan["task_id"] != task["task_id"]
             or work_plan["state_hash"] != initial_hash
@@ -679,25 +731,36 @@ def validate_persisted_quality_evidence(
                 work_plan is None or manifest["work_plan_path"] != "work-plan.json"
                 or manifest["work_plan_hash"] is None or manifest["failure_code"] is not None
                 or manifest["partial_raw_output"] is not None
+                or manifest["variant"] != request["variant"]
             ):
                 raise ValueError("QUALITY_READY_MANIFEST_MISMATCH")
         elif (
             work_plan is not None or manifest["work_plan_path"] is not None
             or manifest["work_plan_hash"] is not None
-            or manifest["failure_code"] not in GENERATION_FAILURE_CODES
+            or manifest["failure_code"] not in GENERATION_FAILURE_CODES_BY_VARIANT[
+                request["variant"]
+            ]
+            or manifest["variant"] != request["variant"]
             or attempts
         ):
             raise ValueError("QUALITY_FAILED_MANIFEST_MISMATCH")
         if work_plan is not None:
+            if not 1 <= len(work_plan["steps"]) <= request["max_decoding_steps"]:
+                raise ValueError("QUALITY_DECODING_BUDGET_EXCEEDED")
             expected_forward_count = len(work_plan["steps"])
         elif manifest["failure_code"] == "PLAN_NO_END":
             expected_forward_count = request["max_decoding_steps"]
             if len(manifest["partial_raw_output"]) != expected_forward_count:
                 raise ValueError("QUALITY_FAILURE_OUTPUT_COUNT_MISMATCH")
+            for step in manifest["partial_raw_output"]:
+                try:
+                    parse_nonterminal_step(step, task["blocks"])
+                except PlanParseFailure as error:
+                    raise ValueError("QUALITY_PARTIAL_OUTPUT_INVALID") from error
         elif manifest["failure_code"] in {"PLAN_PARSE_ERROR", "PLAN_UNKNOWN_REF"}:
             partial = manifest["partial_raw_output"]
-            if not partial:
-                raise ValueError("QUALITY_FAILURE_OUTPUT_COUNT_MISMATCH")
+            if not 1 <= len(partial) <= request["max_decoding_steps"]:
+                raise ValueError("QUALITY_DECODING_BUDGET_EXCEEDED")
             expected_forward_count = len(partial)
             try:
                 parse_work_plan(partial, task["blocks"])
@@ -762,6 +825,10 @@ def validate_persisted_quality_evidence(
                 (step["action"], step["args"]) for step in work_plan["steps"]
             ]:
                 raise ValueError("QUALITY_SEMANTIC_PLAN_MISMATCH")
+            if work_plan is None and [
+                [step["action"], *step["args"]] for step in steps
+            ] != manifest["partial_raw_output"]:
+                raise ValueError("QUALITY_PARTIAL_TRACE_MISMATCH")
             expected_applications = max(len(steps) - 1, 0)
             actual_nonzero = sum(
                 row["step_index"] > 0 and row["input_feedback_norm"] > 0
@@ -811,6 +878,34 @@ def validate_persisted_quality_evidence(
                 ):
                     raise ValueError("QUALITY_LATENT_BLOCK_MISMATCH")
                 previous = step["z_sha256"]
+            projected_path = root / semantic_trace["projected_path"]
+            projected_payload = projected_path.read_bytes()
+            if (
+                len(projected_payload) != len(steps) * 256 * 4
+                or file_hash(projected_path) != semantic_trace["projected_file_sha256"]
+            ):
+                raise ValueError("QUALITY_PROJECTED_FEEDBACK_MISMATCH")
+            for index, row in enumerate(audit):
+                block = projected_payload[index * 1024 : (index + 1) * 1024]
+                values = struct.unpack("<256f", block)
+                norm = math.sqrt(sum(value * value for value in values))
+                digest = "sha256:" + hashlib.sha256(block).hexdigest()
+                if (
+                    not all(math.isfinite(value) for value in values)
+                    or digest != row["projected_feedback_sha256"]
+                    or not math.isclose(
+                        norm, row["projected_feedback_norm"], rel_tol=0, abs_tol=1e-6
+                    )
+                ):
+                    raise ValueError("QUALITY_PROJECTED_FEEDBACK_MISMATCH")
+                if request["variant"] == "A3" and (
+                    digest != row["downstream_semantic_component_sha256"]
+                    or not math.isclose(
+                        norm, row["downstream_semantic_component_norm"],
+                        rel_tol=0, abs_tol=1e-6,
+                    )
+                ):
+                    raise ValueError("QUALITY_PROJECTED_FEEDBACK_MISMATCH")
     except (
         KeyError, IndexError, TypeError, struct.error, OverflowError,
         UnicodeDecodeError, OSError, StopIteration,
@@ -1453,7 +1548,7 @@ def run(
     except (RuntimeError, ValueError) as error:
         code = str(error)
         generation_failure_code = (
-            code if code in PRESERVED_GENERATION_CODES else "PLAN_GENERATION_ERROR"
+            code if code in LEGACY_PRESERVED_GENERATION_CODES else "PLAN_GENERATION_ERROR"
         )
         events, success = [], False
     execution_failure_code = None

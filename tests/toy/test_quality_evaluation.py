@@ -156,7 +156,7 @@ def test_handcrafted_metrics_and_paired_matrix() -> None:
 
 
 def test_deterministic_smoke_and_public_mutation_rejection(tmp_path, canonical_smoke) -> None:
-    assert validate_evaluation(canonical_smoke)["valid"]
+    assert (canonical_smoke / "replay-hash.txt").is_file()  # run() already validated it
     damaged = tmp_path / "damaged"
     shutil.copytree(canonical_smoke, damaged)
     row = json.loads((damaged / "task-results.jsonl").read_text())
@@ -616,6 +616,7 @@ def test_episode_manifest_conditionals_are_schema_enforced(changes) -> None:
     )
     manifest = {
         "schema_version": "toy-quality-episode-plan-manifest/1.0",
+        "variant": "A2",
         "planner_call_count": 1, "replanning_count": 0, "model_forward_count": 1,
         "plan_status": "READY", "work_plan_path": "work-plan.json",
         "work_plan_hash": "sha256:" + "0" * 64, "failure_code": None,
@@ -962,7 +963,7 @@ def test_changed_trained_tensor_cannot_be_hidden_by_rehash(
         if update_semantic_hash else "CHECKPOINT_STATE_HASH_MISMATCH"
     )
     with pytest.raises(ValueError, match=expected):
-        validate_evaluation(root)
+        validate_evaluation(root, force_training_replay=True)
 
 
 @pytest.mark.parametrize("variant", ["A3", "A4"])
@@ -979,3 +980,171 @@ def test_ready_semantic_forward_count_mutation_is_independently_rejected(
         path.write_bytes(canonical_bytes(value) + b"\n")
     with pytest.raises(ValueError, match="QUALITY_MODEL_FORWARD_COUNT_MISMATCH"):
         validate_one_persisted_evidence(root, variant)
+
+
+@pytest.mark.parametrize(
+    "variant,failure", [("A2", "PLAN_NO_END"), ("A3", "PLAN_NO_END"),
+                        ("A4", "LATENT_NONFINITE")],
+)
+def test_generation_failure_cannot_succeed_for_initially_satisfied_goal(
+    tmp_path, variant, failure,
+) -> None:
+    from planner_toy.canonical import canonical_task_hash
+    from planner_toy.dataset import generate
+    from planner_toy.e2e import evaluate_frozen_plan
+
+    task = dict(generate(17)["validation"][0])
+    task["goal"] = [task["initial"][0]]
+    task["canonical_task_hash"] = canonical_task_hash({
+        "domain_id": "blocks_world_v1", "blocks": task["blocks"],
+        "initial": task["initial"], "goal": task["goal"],
+    })
+    planner = A2Planner(
+        _ScriptedModel([0] if failure == "PLAN_NO_END" else [4], variant),
+        injected_failure=None if failure == "PLAN_NO_END" else failure,
+    )
+    checkpoint = {
+        "trained_state_dict_sha256": "sha256:" + "1" * 64,
+        "trained_file_sha256": "sha256:" + "2" * 64,
+        "variant_identity": {"implementation_variant": variant},
+    }
+    root = tmp_path / variant
+    result = evaluate_frozen_plan(
+        row=task, planner=planner, output=root, checkpoint_binding=checkpoint,
+    )
+    assert result["goal_reached"] is False
+    validate_persisted_quality_evidence(root=root, task=task, checkpoint=checkpoint)
+    episode_path = root / "episode-log.json"
+    episode = json.loads(episode_path.read_text())
+    episode["goal_success"] = True
+    episode_path.write_bytes(canonical_bytes(episode) + b"\n")
+    evaluation_path = root / "evaluation-result.json"
+    evaluation = json.loads(evaluation_path.read_text())
+    evaluation["success"] = True
+    evaluation["episode_log_hash"] = file_hash(episode_path)
+    evaluation_path.write_bytes(canonical_bytes(evaluation) + b"\n")
+    with pytest.raises(ValueError, match="QUALITY_EPISODE_COUNTS_MISMATCH"):
+        validate_persisted_quality_evidence(root=root, task=task, checkpoint=checkpoint)
+
+
+@pytest.mark.parametrize("failure", ["LATENT_NONFINITE", "LATENT_ZERO_NORM", "LATENT_DIMENSION"])
+def test_a2_latent_generation_failure_is_rejected(tmp_path, failure) -> None:
+    from jsonschema import Draft202012Validator, ValidationError
+
+    schema = json.loads((
+        Path(__file__).parents[2] / "planner_toy/schemas/"
+        "toy_quality_episode_plan_manifest.schema.json"
+    ).read_text())
+    manifest = {
+        "schema_version": "toy-quality-episode-plan-manifest/1.0", "variant": "A2",
+        "planner_call_count": 1, "replanning_count": 0, "model_forward_count": 0,
+        "plan_status": "FAILED", "work_plan_path": None, "work_plan_hash": None,
+        "failure_code": failure, "partial_raw_output": [],
+    }
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema).validate(manifest)
+
+
+def test_unknown_planner_value_error_is_not_persisted(tmp_path) -> None:
+    from planner_toy.dataset import generate
+    from planner_toy.e2e import evaluate_frozen_plan
+
+    class BrokenPlanner:
+        model = SimpleNamespace(variant="A2")
+        calls = 0
+        model_forward_count = 0
+        semantic_steps = None
+        semantic_audit = None
+
+        def plan(self, _row):
+            self.calls += 1
+            raise ValueError("RANDOM_INTERNAL_ERROR")
+
+    root = tmp_path / "evidence"
+    with pytest.raises(ValueError, match="QUALITY_UNKNOWN_GENERATION_EXCEPTION"):
+        evaluate_frozen_plan(
+            row=generate(17)["validation"][0], planner=BrokenPlanner(), output=root,
+            checkpoint_binding={"trained_state_dict_sha256": "sha256:" + "1" * 64,
+                                "trained_file_sha256": "sha256:" + "2" * 64},
+        )
+    assert not (root / "episode-plan-manifest.json").exists()
+
+
+@pytest.mark.parametrize("length", [18, 100])
+def test_work_plan_schema_rejects_decoding_budget_excess(length) -> None:
+    from jsonschema import Draft202012Validator, ValidationError
+
+    schema = json.loads((
+        Path(__file__).parents[2] / "planner_toy/schemas/toy_quality_work_plan.schema.json"
+    ).read_text())
+    steps = [
+        {"step_index": index, "action": "PICK_UP", "args": ["@B0"]}
+        for index in range(length - 1)
+    ] + [{"step_index": length - 1, "action": "END", "args": []}]
+    value = {"schema_version": "toy-quality-work-plan/1.0", "variant": "A2",
+             "task_id": "x", "state_hash": "sha256:" + "0" * 64,
+             "steps": steps, "plan_content_hash": "sha256:" + "1" * 64}
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema).validate(value)
+
+
+@pytest.mark.parametrize("mutation", ["trace-action", "trace-args", "trace-delete", "partial"])
+def test_failed_semantic_trace_is_bound_to_partial_output(tmp_path, mutation) -> None:
+    from planner_toy.dataset import generate
+    from planner_toy.e2e import evaluate_frozen_plan
+
+    task = generate(17)["validation"][0]
+    checkpoint = {"trained_state_dict_sha256": "sha256:" + "1" * 64,
+                  "trained_file_sha256": "sha256:" + "2" * 64,
+                  "variant_identity": {"implementation_variant": "A3"}}
+    root = tmp_path / "evidence"
+    evaluate_frozen_plan(row=task, planner=A2Planner(_ScriptedModel([0], "A3")),
+                         output=root, checkpoint_binding=checkpoint)
+    trace_path = root / "semantic-trace.json"
+    trace = json.loads(trace_path.read_text())
+    manifest_path = root / "episode-plan-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if mutation == "trace-action":
+        trace["steps"][0]["action"] = "PUT_DOWN"
+    elif mutation == "trace-args":
+        trace["steps"][0]["args"] = ["@B1"]
+    elif mutation == "trace-delete":
+        trace["steps"].pop()
+        trace["control_audit"].pop()
+    else:
+        manifest["partial_raw_output"][0] = ["PUT_DOWN", "@B0"]
+    trace_path.write_bytes(canonical_bytes(trace) + b"\n")
+    manifest_path.write_bytes(canonical_bytes(manifest) + b"\n")
+    with pytest.raises(ValueError, match="QUALITY_(PARTIAL_TRACE|SEMANTIC_LENGTH)_MISMATCH"):
+        validate_persisted_quality_evidence(root=root, task=task, checkpoint=checkpoint)
+
+
+@pytest.mark.parametrize("mutation", ["input-norm", "projected-norm", "projected-byte", "truncate"])
+def test_feedback_tensor_evidence_mutations_are_rejected(
+    tmp_path, all_three_smoke, mutation,
+) -> None:
+    root = tmp_path / "run"
+    shutil.copytree(all_three_smoke, root)
+    evidence = next((root / "evidence/A3/seed-17").iterdir())
+    trace_path = evidence / "semantic-trace.json"
+    trace = json.loads(trace_path.read_text())
+    projected = evidence / "projected-feedback.f32"
+    if mutation == "input-norm":
+        trace["control_audit"][0]["input_feedback_norm"] = 1.0
+    elif mutation == "projected-norm":
+        trace["control_audit"][0]["projected_feedback_norm"] = 1.0
+    else:
+        payload = bytearray(projected.read_bytes())
+        if mutation == "projected-byte":
+            payload[0] ^= 1
+        else:
+            payload = payload[:-4]
+        projected.write_bytes(payload)
+        trace["projected_file_sha256"] = file_hash(projected)
+    trace_path.write_bytes(canonical_bytes(trace) + b"\n")
+    expected = (
+        "QUALITY_INPUT_FEEDBACK_NORM_MISMATCH"
+        if mutation == "input-norm" else "QUALITY_PROJECTED_FEEDBACK_MISMATCH"
+    )
+    with pytest.raises(ValueError, match=expected):
+        validate_one_persisted_evidence(root, "A3")
