@@ -599,13 +599,17 @@ def validate_frozen_plan_lineage_core(
                     )
                 ):
                     raise ValueError("QUALITY_INPUT_FEEDBACK_NORM_MISMATCH")
-                if variant == "A4" and (
-                    not row.get("projected_feedback_present")
-                    or not row.get("downstream_component_zero")
-                    or row.get("downstream_semantic_component_sha256") != zero_component_hash
-                    or row.get("downstream_semantic_component_norm") != 0.0
-                ):
-                    raise ValueError("A4_COMPUTE_THEN_ZERO_MISMATCH")
+                if variant == "A4":
+                    if not row.get("projected_feedback_present"):
+                        raise ValueError("QUALITY_PROJECTED_FEEDBACK_MISMATCH")
+                    if not row.get("downstream_component_zero"):
+                        raise ValueError("QUALITY_DOWNSTREAM_ZERO_FLAG_MISMATCH")
+                    if (
+                        row.get("downstream_semantic_component_sha256")
+                        != zero_component_hash
+                        or row.get("downstream_semantic_component_norm") != 0.0
+                    ):
+                        raise ValueError("A4_COMPUTE_THEN_ZERO_MISMATCH")
         else:
             if variant == "A3" and semantic_trace.get("feedback_applied") is not True:
                 raise ValueError("A3_INFERENCE_FEEDBACK_NOT_APPLIED")
@@ -660,19 +664,39 @@ def validate_persisted_quality_evidence(
             "semantic-trace.json", "toy_quality_semantic_trace.schema.json"
         )
     try:
+        expected_variant = request["variant"]
         if (
             request["task_id"] != task["task_id"]
             or request["task_hash"] != task["canonical_task_hash"]
             or request["checkpoint_state_dict_sha256"]
             != checkpoint["trained_state_dict_sha256"]
-            or checkpoint["variant_identity"]["implementation_variant"]
-            != request["variant"]
+            or checkpoint["variant_identity"]["implementation_variant"] != expected_variant
         ):
             raise ValueError("QUALITY_REQUEST_BINDING_MISMATCH")
+        if (
+            manifest["variant"] != expected_variant
+            or (work_plan is not None and work_plan["variant"] != expected_variant)
+            or (semantic_trace is not None and semantic_trace["variant"] != expected_variant)
+            or (expected_variant == "A2" and (root / "semantic-trace.json").exists())
+        ):
+            raise ValueError("QUALITY_VARIANT_BINDING_MISMATCH")
         if evaluation["attempt_log_hash"] != file_hash(root / "attempt-log.jsonl"):
             raise ValueError("QUALITY_ATTEMPT_LOG_HASH_MISMATCH")
         if evaluation["episode_log_hash"] != file_hash(root / "episode-log.json"):
             raise ValueError("QUALITY_EPISODE_LOG_HASH_MISMATCH")
+        if work_plan is not None:
+            raw_plan = [[step["action"], *step["args"]] for step in work_plan["steps"]]
+            try:
+                independently_parsed = parse_work_plan(raw_plan, task["blocks"])
+            except PlanParseFailure as error:
+                code = (
+                    "QUALITY_WORK_PLAN_UNKNOWN_REF"
+                    if str(error) == "PLAN_UNKNOWN_REF"
+                    else "QUALITY_READY_PLAN_PARSE_MISMATCH"
+                )
+                raise ValueError(code) from None
+            if len(independently_parsed) != len(work_plan["steps"]) - 1:
+                raise ValueError("QUALITY_READY_PLAN_PARSE_MISMATCH")
         validate_frozen_plan_lineage_core(
             variant=request["variant"], planner_calls=manifest["planner_call_count"],
             replanning_count=manifest["replanning_count"], work_plan=work_plan,
@@ -898,6 +922,20 @@ def validate_persisted_quality_evidence(
                     )
                 ):
                     raise ValueError("QUALITY_PROJECTED_FEEDBACK_MISMATCH")
+                if row["projected_feedback_present"] is not True:
+                    raise ValueError("QUALITY_PROJECTED_FEEDBACK_MISMATCH")
+                zero_component_hash = "sha256:" + hashlib.sha256(
+                    torch.zeros(256).numpy().tobytes()
+                ).hexdigest()
+                actual_downstream_zero = (
+                    row["downstream_semantic_component_sha256"] == zero_component_hash
+                    and math.isclose(
+                        row["downstream_semantic_component_norm"], 0.0,
+                        rel_tol=0, abs_tol=1e-6,
+                    )
+                )
+                if row["downstream_component_zero"] != actual_downstream_zero:
+                    raise ValueError("QUALITY_DOWNSTREAM_ZERO_FLAG_MISMATCH")
                 if request["variant"] == "A3" and (
                     digest != row["downstream_semantic_component_sha256"]
                     or not math.isclose(

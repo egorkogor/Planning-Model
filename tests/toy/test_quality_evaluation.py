@@ -557,7 +557,7 @@ def test_persisted_a4_nonzero_downstream_fails_before_replay(
     trace["control_audit"][0]["downstream_semantic_component_norm"] = 1.0
     trace_path.write_bytes(canonical_bytes(trace) + b"\n")
     rehash_evidence_and_result(root, "A4")
-    with pytest.raises(ValueError, match="A4_COMPUTE_THEN_ZERO_MISMATCH"):
+    with pytest.raises(ValueError, match="QUALITY_DOWNSTREAM_ZERO_FLAG_MISMATCH"):
         validate_one_persisted_evidence(root, "A4")
 
 
@@ -1148,3 +1148,110 @@ def test_feedback_tensor_evidence_mutations_are_rejected(
     )
     with pytest.raises(ValueError, match=expected):
         validate_one_persisted_evidence(root, "A3")
+
+
+def test_work_plan_variant_is_bound_to_request(nonempty_quality_evidence) -> None:
+    root, task, checkpoint = nonempty_quality_evidence
+    plan_path = root / "work-plan.json"
+    plan = json.loads(plan_path.read_text())
+    plan["variant"] = "A3"
+    plan["plan_content_hash"] = toy_hash(
+        "quality_frozen_plan", {k: v for k, v in plan.items() if k != "plan_content_hash"}
+    )
+    plan_path.write_bytes(canonical_bytes(plan) + b"\n")
+    manifest_path = root / "episode-plan-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["work_plan_hash"] = plan["plan_content_hash"]
+    manifest_path.write_bytes(canonical_bytes(manifest) + b"\n")
+    with pytest.raises(ValueError, match="QUALITY_VARIANT_BINDING_MISMATCH"):
+        validate_persisted_quality_evidence(root=root, task=task, checkpoint=checkpoint)
+
+
+@pytest.mark.parametrize("variant,foreign", [("A3", "A4"), ("A4", "A3")])
+def test_semantic_trace_variant_is_bound_to_request(
+    tmp_path, all_three_smoke, variant, foreign,
+) -> None:
+    root = tmp_path / "run"
+    shutil.copytree(all_three_smoke, root)
+    evidence = next((root / f"evidence/{variant}/seed-17").iterdir())
+    path = evidence / "semantic-trace.json"
+    trace = json.loads(path.read_text())
+    trace["variant"] = foreign
+    path.write_bytes(canonical_bytes(trace) + b"\n")
+    with pytest.raises(ValueError, match="QUALITY_VARIANT_BINDING_MISMATCH"):
+        validate_one_persisted_evidence(root, variant)
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        ["PICK_UP", "@UNKNOWN"], ["PUT_DOWN", "@UNKNOWN"],
+        ["UNSTACK", "@B0", "@UNKNOWN"], ["STACK", "@UNKNOWN", "@B1"],
+        ["STACK", "@B0", "@UNKNOWN"],
+    ],
+)
+def test_ready_work_plan_unknown_refs_rejected_before_executor(
+    nonempty_quality_evidence, action,
+) -> None:
+    root, task, checkpoint = nonempty_quality_evidence
+    plan_path = root / "work-plan.json"
+    plan = json.loads(plan_path.read_text())
+    plan["steps"][0] = {"step_index": 0, "action": action[0], "args": action[1:]}
+    plan["plan_content_hash"] = toy_hash(
+        "quality_frozen_plan", {k: v for k, v in plan.items() if k != "plan_content_hash"}
+    )
+    plan_path.write_bytes(canonical_bytes(plan) + b"\n")
+    manifest_path = root / "episode-plan-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["work_plan_hash"] = plan["plan_content_hash"]
+    manifest_path.write_bytes(canonical_bytes(manifest) + b"\n")
+    with pytest.raises(ValueError, match="QUALITY_WORK_PLAN_UNKNOWN_REF"):
+        validate_persisted_quality_evidence(root=root, task=task, checkpoint=checkpoint)
+
+
+@pytest.mark.parametrize(
+    "variant,field,value,error",
+    [
+        ("A3", "projected_feedback_present", False, "QUALITY_PROJECTED_FEEDBACK_MISMATCH"),
+        ("A4", "projected_feedback_present", False, "QUALITY_PROJECTED_FEEDBACK_MISMATCH"),
+        ("A3", "downstream_component_zero", False,
+         "QUALITY_DOWNSTREAM_ZERO_FLAG_MISMATCH"),
+        ("A4", "downstream_component_zero", False,
+         "QUALITY_DOWNSTREAM_ZERO_FLAG_MISMATCH"),
+    ],
+)
+def test_semantic_audit_flags_are_derived(
+    tmp_path, all_three_smoke, variant, field, value, error,
+) -> None:
+    root = tmp_path / "run"
+    shutil.copytree(all_three_smoke, root)
+    evidence = next((root / f"evidence/{variant}/seed-17").iterdir())
+    path = evidence / "semantic-trace.json"
+    trace = json.loads(path.read_text())
+    trace["control_audit"][0][field] = value
+    path.write_bytes(canonical_bytes(trace) + b"\n")
+    with pytest.raises(ValueError, match=error):
+        validate_one_persisted_evidence(root, variant)
+
+
+def test_unexpected_runtime_error_never_creates_manifest(tmp_path) -> None:
+    from planner_toy.dataset import generate
+    from planner_toy.e2e import evaluate_frozen_plan
+
+    class BrokenPlanner:
+        model = SimpleNamespace(variant="A2")
+        calls = 0
+        model_forward_count = 0
+
+        def plan(self, _row):
+            self.calls += 1
+            raise RuntimeError("unexpected model failure")
+
+    root = tmp_path / "evidence"
+    with pytest.raises(RuntimeError, match="unexpected model failure"):
+        evaluate_frozen_plan(
+            row=generate(17)["validation"][0], planner=BrokenPlanner(), output=root,
+            checkpoint_binding={"trained_state_dict_sha256": "sha256:" + "1" * 64,
+                                "trained_file_sha256": "sha256:" + "2" * 64},
+        )
+    assert not (root / "episode-plan-manifest.json").exists()
