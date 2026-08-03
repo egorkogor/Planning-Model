@@ -1,0 +1,47 @@
+name: Repair PR16 payload
+
+on:
+  push:
+    branches:
+      - agent/a2-end-learnability-diagnostics
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/a2-end-learnability-diagnostics
+      - name: Reassemble verified payload segment
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            .pr16-parts/part-01-a \
+            .pr16-parts/part-01-b \
+            .pr16-parts/part-01-c \
+            .pr16-parts/part-01-d \
+            .pr16-parts/part-01-e \
+            .pr16-parts/part-01-f \
+            .pr16-parts/part-01-g \
+            > .pr16-parts/part-01
+          test "$(git hash-object .pr16-parts/part-01)" = \
+            'df82be9708d59fe631ee89b5e4b1d4f5d7cf315b'
+          git rm \
+            .pr16-parts/part-01-a \
+            .pr16-parts/part-01-b \
+            .pr16-parts/part-01-c \
+            .pr16-parts/part-01-d \
+            .pr16-parts/part-01-e \
+            .pr16-parts/part-01-f \
+            .pr16-parts/part-01-g \
+            .github/workflows/pr16-repair-payload.yml
+          git add .pr16-parts/part-01
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Repair PR16 staged payload'
+          git push origin HEAD:agent/a2-end-learnability-diagnostics
