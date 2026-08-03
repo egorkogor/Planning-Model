@@ -3,6 +3,10 @@
     "checkpoint": {
       "additionalProperties": false,
       "properties": {
+        "canonical_initialization_state_dict_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
         "canonical_optimizer_state_sha256": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "type": "string"
@@ -11,7 +15,22 @@
           "pattern": "^sha256:[0-9a-f]{64}$",
           "type": "string"
         },
+        "checkpoint_manifest_file_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
         "checkpoint_manifest_path": {
+          "type": "string"
+        },
+        "evaluated_train_split_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "frozen_dataset_lineage_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "initialization_path": {
           "type": "string"
         },
         "optimizer_state_path": {
@@ -31,8 +50,13 @@
       "required": [
         "seed",
         "checkpoint_manifest_path",
+        "checkpoint_manifest_file_sha256",
+        "initialization_path",
         "trained_checkpoint_path",
         "optimizer_state_path",
+        "frozen_dataset_lineage_hash",
+        "evaluated_train_split_hash",
+        "canonical_initialization_state_dict_sha256",
         "canonical_trained_state_dict_sha256",
         "canonical_optimizer_state_sha256"
       ],
@@ -968,10 +992,50 @@
             }
           ]
         },
+        "arg1_head_prediction": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "arg2_correct": {
           "oneOf": [
             {
               "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "arg2_head_prediction": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decoded_arg1": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decoded_arg2": {
+          "oneOf": [
+            {
+              "type": "string"
             },
             {
               "type": "null"
@@ -1038,26 +1102,6 @@
           "minimum": 0,
           "type": "integer"
         },
-        "predicted_arg1": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "predicted_arg2": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "predicted_operator": {
           "enum": [
             "PICK_UP",
@@ -1108,8 +1152,10 @@
         "has_arg2_target",
         "gold_arg1",
         "gold_arg2",
-        "predicted_arg1",
-        "predicted_arg2",
+        "arg1_head_prediction",
+        "arg2_head_prediction",
+        "decoded_arg1",
+        "decoded_arg2",
         "arg1_correct",
         "arg2_correct",
         "joint_step_correct"
@@ -1541,10 +1587,6 @@
       "minItems": 1,
       "type": "array"
     },
-    "dataset_hash": {
-      "pattern": "^sha256:[0-9a-f]{64}$",
-      "type": "string"
-    },
     "diagnostic_complete": {
       "type": "boolean"
     },
@@ -1583,6 +1625,10 @@
       "minItems": 1,
       "type": "array",
       "uniqueItems": true
+    },
+    "evaluated_train_split_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
     },
     "excluded_splits": {
       "items": {
@@ -1672,6 +1718,10 @@
       "minItems": 1,
       "type": "array"
     },
+    "frozen_dataset_lineage_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
     "gate_decision": {
       "type": "null"
     },
@@ -1721,6 +1771,18 @@
       "minItems": 1,
       "type": "array"
     },
+    "training_artifact_hashes": {
+      "additionalProperties": false,
+      "maxProperties": 21,
+      "minProperties": 1,
+      "patternProperties": {
+        "^training-runs/A2/seed-(17|29|43)/(checkpoint-manifest\\.json|initialization\\.pt|optimizer-evidence\\.json|optimizer-state\\.pt|trained\\.pt|training-config\\.json|training-report\\.json)$": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "training_config": {
       "$ref": "#/$defs/training_config"
     },
@@ -1742,7 +1804,8 @@
     "requirements_lock_sha256",
     "runtime_versions",
     "canonical_cpu_runtime",
-    "dataset_hash",
+    "frozen_dataset_lineage_hash",
+    "evaluated_train_split_hash",
     "evaluated_splits",
     "evaluated_task_ids",
     "excluded_splits",
@@ -1753,6 +1816,7 @@
     "gate_decision",
     "learnability_thresholds",
     "checkpoints",
+    "training_artifact_hashes",
     "per_update_loss_breakdown",
     "teacher_forced",
     "free_running",

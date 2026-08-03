@@ -24,7 +24,11 @@ from jsonschema.exceptions import SchemaError, ValidationError
 
 from .canonical import canonical_bytes, sha256
 from .canonical_runtime import configure_canonical_cpu_runtime
-from .dataset import generate, task_from_row
+from .dataset import (
+    FROZEN_DATASET_LINEAGE_HASH_V1,
+    generate_train_only,
+    task_from_row,
+)
 from .domain import apply_action, goal_satisfied, validate_state
 from .e2e import (
     ACTION_NAMES,
@@ -38,9 +42,14 @@ from .model import LockedPlanner, canonical_task_encoding
 from .numeric_identity import (
     canonical_state_dict_sha256,
     canonical_torch_object_sha256,
+    TORCH_OBJECT_ENCODING_VERSION,
     exact_torch_object_sha256,
 )
-from .quality import _train as _quality_train
+from .quality import (
+    _optimizer_parameter_policy,
+    _train as _quality_train,
+    _validate_optimizer_state,
+)
 from .training import ACTIONS, labels, state_dict_sha256
 
 VERSION = "development-learnability-diagnostic/0.1"
@@ -82,6 +91,8 @@ TRAINING_CONFIG = {
     "max_decoding_steps": MAX_STEPS,
 }
 SOURCE_FILES = (
+    "docs/architecture/planner_module_inventory_v1.yaml",
+    "docs/architecture/task_encoding_v1.yaml",
     "docs/evaluations/A2_END_COLLAPSE_DIAGNOSTIC_SPEC_RU.md",
     "planner_toy/canonical.py",
     "planner_toy/canonical_runtime.py",
@@ -89,13 +100,34 @@ SOURCE_FILES = (
     "planner_toy/domain.py",
     "planner_toy/e2e.py",
     "planner_toy/learnability.py",
-    "planner_toy/schemas/toy_learnability_diagnostic.schema.json",
     "planner_toy/model.py",
     "planner_toy/numeric_identity.py",
     "planner_toy/quality.py",
+    "planner_toy/schemas/toy_learnability_diagnostic.schema.json",
+    "planner_toy/schemas/toy_quality_checkpoint_manifest.schema.json",
+    "planner_toy/schemas/toy_quality_optimizer_evidence.schema.json",
+    "planner_toy/schemas/toy_quality_training_config.schema.json",
+    "planner_toy/schemas/toy_quality_training_report.schema.json",
+    "planner_toy/semantic.py",
     "planner_toy/training.py",
     "scripts/run_toy_learnability_diagnostic.py",
+ )
+
+TRAINING_REQUIRED_FILES = (
+    "checkpoint-manifest.json",
+    "initialization.pt",
+    "optimizer-evidence.json",
+    "optimizer-state.pt",
+    "trained.pt",
+    "training-config.json",
+    "training-report.json",
 )
+A2_VARIANT_IDENTITY = {
+    "architecture_stage": "STAGE_1",
+    "implementation_variant": "A2",
+    "experimental_arm": "A2-structured-baseline",
+    "target_type": "NONE",
+}
 
 _TRAINING_OBSERVER_LOCK = threading.Lock()
 
@@ -336,61 +368,6 @@ def _target_metadata(row: dict[str, Any], position: int) -> tuple[str, str | Non
     return step[0], step[1] if len(step) > 1 else None, step[2] if len(step) > 2 else None
 
 
-def _operator_arity(operator: str | None) -> int:
-    if operator is None or operator == "END":
-        return 0
-    if operator in {"PICK_UP", "PUT_DOWN"}:
-        return 1
-    if operator in {"UNSTACK", "STACK"}:
-        return 2
-    raise ValueError(f"LEARNABILITY_UNKNOWN_OPERATOR:{operator}")
-
-
-def _derived_step_metrics(
-    *,
-    gold_operator: str | None,
-    gold_arg1: str | None,
-    gold_arg2: str | None,
-    predicted_operator: str,
-    predicted_arg1: str | None,
-    predicted_arg2: str | None,
-) -> dict[str, bool | None]:
-    operator_correct = predicted_operator == gold_operator
-    arg1_correct = predicted_arg1 == gold_arg1 if gold_arg1 is not None else None
-    arg2_correct = predicted_arg2 == gold_arg2 if gold_arg2 is not None else None
-    return {
-        "operator_correct": operator_correct,
-        "end_correct": operator_correct if gold_operator == "END" else None,
-        "arg1_correct": arg1_correct,
-        "arg2_correct": arg2_correct,
-        "joint_step_correct": (
-            operator_correct
-            and arg1_correct is not False
-            and arg2_correct is not False
-        ),
-    }
-
-
-def _raw_step_from_position(position: dict[str, Any]) -> list[str]:
-    operator = position["predicted_operator"]
-    arity = _operator_arity(operator)
-    arg1 = position["predicted_arg1"]
-    arg2 = position["predicted_arg2"]
-    if arity == 0:
-        if arg1 is not None or arg2 is not None:
-            raise ValueError("LEARNABILITY_PREDICTED_END_POINTER_NON_NULL")
-        return [operator]
-    if arg1 is None:
-        raise ValueError("LEARNABILITY_PREDICTED_ARG1_MISSING")
-    if arity == 1:
-        if arg2 is not None:
-            raise ValueError("LEARNABILITY_PREDICTED_ARG2_UNEXPECTED")
-        return [operator, arg1]
-    if arg2 is None:
-        raise ValueError("LEARNABILITY_PREDICTED_ARG2_MISSING")
-    return [operator, arg1, arg2]
-
-
 def teacher_forced_task(
     model: LockedPlanner, row: dict[str, Any], *, split: str, seed: int
 ) -> dict[str, Any]:
@@ -406,24 +383,33 @@ def teacher_forced_task(
         predicted_operator_id = int(operator_probs.argmax())
         predicted_operator = ACTION_NAMES[predicted_operator_id]
         gold_operator_id = ACTIONS[gold_operator]
-        has_arg1 = gold_operator != "END"
-        has_arg2 = gold_operator in {"UNSTACK", "STACK"}
-        predicted_arity = _operator_arity(predicted_operator)
-        predicted_arg1 = None
-        predicted_arg2 = None
-        if predicted_arity >= 1:
-            predicted_arg1_id = int(logits.arg1[0, position, : len(row["blocks"])].argmax())
-            predicted_arg1 = row["blocks"][predicted_arg1_id]
-        if predicted_arity == 2:
-            predicted_arg2_id = int(logits.arg2[0, position, : len(row["blocks"])].argmax())
-            predicted_arg2 = row["blocks"][predicted_arg2_id]
-        derived = _derived_step_metrics(
-            gold_operator=gold_operator,
-            gold_arg1=gold_arg1,
-            gold_arg2=gold_arg2,
-            predicted_operator=predicted_operator,
-            predicted_arg1=predicted_arg1,
-            predicted_arg2=predicted_arg2,
+        has_arg1 = gold_arg1 is not None
+        has_arg2 = gold_arg2 is not None
+        arg1_id = int(logits.arg1[0, position, : len(row["blocks"])].argmax())
+        arg2_id = int(logits.arg2[0, position, : len(row["blocks"])].argmax())
+        raw_arg1_prediction = row["blocks"][arg1_id]
+        raw_arg2_prediction = row["blocks"][arg2_id]
+        arg1_head_prediction = raw_arg1_prediction if has_arg1 else None
+        arg2_head_prediction = raw_arg2_prediction if has_arg2 else None
+        arg1_correct = (
+            arg1_head_prediction == gold_arg1 if has_arg1 else None
+        )
+        arg2_correct = (
+            arg2_head_prediction == gold_arg2 if has_arg2 else None
+        )
+        decoded_arg1 = (
+            raw_arg1_prediction if predicted_operator != "END" else None
+        )
+        decoded_arg2 = (
+            raw_arg2_prediction
+            if predicted_operator in {"UNSTACK", "STACK"}
+            else None
+        )
+        operator_correct = predicted_operator == gold_operator
+        joint = (
+            operator_correct
+            and arg1_correct is not False
+            and arg2_correct is not False
         )
         probability_gold = float(operator_probs[gold_operator_id])
         positions.append(
@@ -434,23 +420,32 @@ def teacher_forced_task(
                 "position_index": position,
                 "gold_operator": gold_operator,
                 "predicted_operator": predicted_operator,
-                "operator_correct": derived["operator_correct"],
-                "end_correct": derived["end_correct"],
+                "operator_correct": operator_correct,
+                "end_correct": operator_correct if gold_operator == "END" else None,
                 "probability_gold_operator": probability_gold,
                 "probability_end": float(operator_probs[ACTIONS["END"]]),
-                "operator_nll": -math.log(max(probability_gold, torch.finfo(torch.float32).tiny)),
+                "operator_nll": -math.log(
+                    max(probability_gold, torch.finfo(torch.float32).tiny)
+                ),
                 "has_arg1_target": has_arg1,
                 "has_arg2_target": has_arg2,
                 "gold_arg1": gold_arg1,
                 "gold_arg2": gold_arg2,
-                "predicted_arg1": predicted_arg1,
-                "predicted_arg2": predicted_arg2,
-                "arg1_correct": derived["arg1_correct"],
-                "arg2_correct": derived["arg2_correct"],
-                "joint_step_correct": derived["joint_step_correct"],
+                "arg1_head_prediction": arg1_head_prediction,
+                "arg2_head_prediction": arg2_head_prediction,
+                "decoded_arg1": decoded_arg1,
+                "decoded_arg2": decoded_arg2,
+                "arg1_correct": arg1_correct,
+                "arg2_correct": arg2_correct,
+                "joint_step_correct": joint,
             }
         )
-    return {"split": split, "task_id": row["task_id"], "seed": seed, "positions": positions}
+    return {
+        "split": split,
+        "task_id": row["task_id"],
+        "seed": seed,
+        "positions": positions,
+    }
 
 
 def _first_parse_failure_position(raw: list[list[str]], blocks: list[str]) -> int | None:
@@ -788,6 +783,7 @@ def _free_summary(tasks: list[dict[str, Any]]) -> dict[str, Any]:
 def _gold_history_projection(
     teacher_task: dict[str, Any], row: dict[str, Any]
 ) -> dict[str, Any]:
+    raw: list[list[str]] = []
     metric_positions = [
         {
             "operator_correct": position["operator_correct"],
@@ -796,25 +792,30 @@ def _gold_history_projection(
         }
         for position in teacher_task["positions"]
     ]
-    projected_plan: list[list[str]] = []
     for position in teacher_task["positions"]:
-        projected_plan.append(_raw_step_from_position(position))
-        if position["predicted_operator"] == "END":
+        operator = position["predicted_operator"]
+        step = [operator]
+        if operator != "END":
+            step.append(position["decoded_arg1"])
+        if operator in {"UNSTACK", "STACK"}:
+            step.append(position["decoded_arg2"])
+        raw.append(step)
+        if operator == "END":
             break
-    prefix = executable_prefix(row, projected_plan)
-    parser_failure = _first_parse_failure_position(projected_plan, row["blocks"])
+    prefix = executable_prefix(row, raw)
+    parser_failure = _first_parse_failure_position(raw, row["blocks"])
     category, mismatch_position = classify_first_error(
         gold=row["oracle_work_plan"],
-        predicted=projected_plan,
+        predicted=raw,
         parser_failure_position=parser_failure,
         precondition_failure_position=prefix["precondition_failure_position"],
         goal_success=prefix["final_goal_success"],
     )
     return {
+        "predicted_plan": raw,
         "predicted_history_positions": metric_positions,
-        "predicted_plan": projected_plan,
         "predicted_action_count": prefix["predicted_action_count"],
-        "exact_plan_match": projected_plan == row["oracle_work_plan"],
+        "exact_plan_match": raw == row["oracle_work_plan"],
         "executable_prefix_length": prefix["executable_prefix_length"],
         "executable_prefix_fraction_of_predicted": prefix[
             "executable_prefix_fraction_of_predicted"
@@ -907,16 +908,35 @@ def _pipeline_replay(model: LockedPlanner, rows: list[dict[str, Any]]) -> dict[s
     return {"results": results, "hash": sha256(results)}
 
 
-def _checkpoint_record(seed: int, run_dir: Path, checkpoint: dict[str, Any]) -> dict[str, Any]:
+def _checkpoint_record(
+    seed: int,
+    run_dir: Path,
+    checkpoint: dict[str, Any],
+    evaluated_train_split_hash: str,
+) -> dict[str, Any]:
+    output_root = run_dir.parents[2]
     return {
         "seed": seed,
         "checkpoint_manifest_path": str(
-            (run_dir / "checkpoint-manifest.json").relative_to(run_dir.parents[2])
+            (run_dir / "checkpoint-manifest.json").relative_to(output_root)
         ),
-        "trained_checkpoint_path": str((run_dir / "trained.pt").relative_to(run_dir.parents[2])),
+        "checkpoint_manifest_file_sha256": _file_hash(
+            run_dir / "checkpoint-manifest.json"
+        ),
+        "initialization_path": str(
+            (run_dir / "initialization.pt").relative_to(output_root)
+        ),
+        "trained_checkpoint_path": str(
+            (run_dir / "trained.pt").relative_to(output_root)
+        ),
         "optimizer_state_path": str(
-            (run_dir / "optimizer-state.pt").relative_to(run_dir.parents[2])
+            (run_dir / "optimizer-state.pt").relative_to(output_root)
         ),
+        "frozen_dataset_lineage_hash": checkpoint["dataset_hash"],
+        "evaluated_train_split_hash": evaluated_train_split_hash,
+        "canonical_initialization_state_dict_sha256": checkpoint[
+            "canonical_initialization_state_dict_sha256"
+        ],
         "canonical_trained_state_dict_sha256": checkpoint[
             "canonical_trained_state_dict_sha256"
         ],
@@ -924,6 +944,278 @@ def _checkpoint_record(seed: int, run_dir: Path, checkpoint: dict[str, Any]) -> 
             "canonical_optimizer_state_sha256"
         ],
     }
+
+
+def _training_artifact_hashes(output: Path) -> dict[str, str]:
+    training_root = output / "training-runs"
+    return {
+        str(path.relative_to(output)): _file_hash(path)
+        for path in sorted(training_root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _validate_quality_schema(name: str, value: Any) -> None:
+    path = ROOT / "planner_toy" / "schemas" / name
+    try:
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        Draft202012Validator.check_schema(schema)
+        Draft202012Validator(schema).validate(value)
+    except (SchemaError, ValidationError) as exc:
+        raise ValueError(f"LEARNABILITY_TRAINING_SCHEMA_INVALID:{name}") from exc
+
+
+def _validate_training_lineage(
+    *,
+    root: Path,
+    payload: dict[str, Any],
+    train_rows: list[dict[str, Any]],
+) -> None:
+    training_root = root / "training-runs"
+    if not training_root.is_dir():
+        raise ValueError("LEARNABILITY_TRAINING_ROOT_MISSING")
+    expected_directories = {"A2"} | {
+        f"A2/seed-{seed}" for seed in payload["seeds"]
+    }
+    actual_directories = {
+        str(path.relative_to(training_root))
+        for path in training_root.rglob("*")
+        if path.is_dir()
+    }
+    if actual_directories != expected_directories:
+        raise ValueError("LEARNABILITY_TRAINING_DIRECTORY_COVERAGE_MISMATCH")
+    expected_paths = {
+        f"training-runs/A2/seed-{seed}/{name}"
+        for seed in payload["seeds"]
+        for name in TRAINING_REQUIRED_FILES
+    }
+    actual_paths = {
+        str(path.relative_to(root))
+        for path in training_root.rglob("*")
+        if path.is_file()
+    }
+    if actual_paths != expected_paths:
+        raise ValueError("LEARNABILITY_TRAINING_FILE_COVERAGE_MISMATCH")
+    persisted_hashes = payload["training_artifact_hashes"]
+    if set(persisted_hashes) != expected_paths:
+        raise ValueError("LEARNABILITY_TRAINING_HASH_COVERAGE_MISMATCH")
+    for relative in sorted(expected_paths):
+        if persisted_hashes[relative] != _file_hash(root / relative):
+            raise ValueError("LEARNABILITY_TRAINING_ARTIFACT_HASH_MISMATCH")
+
+    source_hashes = {
+        item["path"]: item["sha256"] for item in payload["diagnostic_source_files"]
+    }
+    train_task_ids = [row["task_id"] for row in train_rows]
+    checkpoint_records = {record["seed"]: record for record in payload["checkpoints"]}
+    if set(checkpoint_records) != set(payload["seeds"]):
+        raise ValueError("LEARNABILITY_CHECKPOINT_RECORD_COVERAGE_MISMATCH")
+
+    for seed in payload["seeds"]:
+        run_dir = training_root / "A2" / f"seed-{seed}"
+        checkpoint = json.loads(
+            (run_dir / "checkpoint-manifest.json").read_text(encoding="utf-8")
+        )
+        training_config = json.loads(
+            (run_dir / "training-config.json").read_text(encoding="utf-8")
+        )
+        training_report = json.loads(
+            (run_dir / "training-report.json").read_text(encoding="utf-8")
+        )
+        optimizer_evidence = json.loads(
+            (run_dir / "optimizer-evidence.json").read_text(encoding="utf-8")
+        )
+        _validate_quality_schema(
+            "toy_quality_checkpoint_manifest.schema.json", checkpoint
+        )
+        _validate_quality_schema(
+            "toy_quality_training_config.schema.json", training_config
+        )
+        _validate_quality_schema(
+            "toy_quality_training_report.schema.json", training_report
+        )
+        _validate_quality_schema(
+            "toy_quality_optimizer_evidence.schema.json", optimizer_evidence
+        )
+
+        expected_training_config = {
+            "schema_version": "toy-quality-training-config/0.1",
+            "variant_identity": A2_VARIANT_IDENTITY,
+            "seed": seed,
+            "dataset_hash": payload["frozen_dataset_lineage_hash"],
+            "train_task_ids": train_task_ids,
+            "epochs": EPOCHS,
+            "updates": UPDATES_PER_RUN,
+            "optimizer": TRAINING_CONFIG["optimizer"],
+            "checkpoint_policy": TRAINING_CONFIG["checkpoint_policy"],
+            "inventory_hash": source_hashes[
+                "docs/architecture/planner_module_inventory_v1.yaml"
+            ],
+            "task_encoding_hash": source_hashes[
+                "docs/architecture/task_encoding_v1.yaml"
+            ],
+        }
+        if training_config != expected_training_config:
+            raise ValueError("LEARNABILITY_TRAINING_CONFIG_SEMANTIC_MISMATCH")
+        if _file_hash(run_dir / "training-config.json") != checkpoint["config_hash"]:
+            raise ValueError("LEARNABILITY_TRAINING_CONFIG_HASH_MISMATCH")
+        if training_report != {
+            "schema_version": "toy-quality-training-report/0.1",
+            "updates": UPDATES_PER_RUN,
+            "final_checkpoint_selected_without_heldout": True,
+        }:
+            raise ValueError("LEARNABILITY_TRAINING_REPORT_SEMANTIC_MISMATCH")
+
+        required_path_fields = {
+            "initialization_path": "initialization.pt",
+            "trained_path": "trained.pt",
+            "optimizer_state_path": "optimizer-state.pt",
+            "optimizer_evidence_path": "optimizer-evidence.json",
+            "training_report_path": "training-report.json",
+        }
+        for field, expected in required_path_fields.items():
+            if checkpoint[field] != expected:
+                raise ValueError("LEARNABILITY_CHECKPOINT_PATH_SEMANTICS_MISMATCH")
+        required_file_hashes = {
+            "initialization_file_sha256": "initialization.pt",
+            "trained_file_sha256": "trained.pt",
+            "optimizer_state_file_sha256": "optimizer-state.pt",
+            "optimizer_evidence_file_sha256": "optimizer-evidence.json",
+            "training_report_file_sha256": "training-report.json",
+        }
+        for field, name in required_file_hashes.items():
+            if checkpoint[field] != _file_hash(run_dir / name):
+                raise ValueError("LEARNABILITY_CHECKPOINT_FILE_HASH_MISMATCH")
+
+        initialization = torch.load(
+            run_dir / "initialization.pt", map_location="cpu", weights_only=True
+        )
+        trained = torch.load(
+            run_dir / "trained.pt", map_location="cpu", weights_only=True
+        )
+        optimizer_state = torch.load(
+            run_dir / "optimizer-state.pt", map_location="cpu", weights_only=True
+        )
+        initialization_exact = state_dict_sha256(initialization)
+        trained_exact = state_dict_sha256(trained)
+        optimizer_exact = exact_torch_object_sha256(optimizer_state)
+        if initialization_exact != checkpoint["initialization_state_dict_sha256"]:
+            raise ValueError("LEARNABILITY_INITIALIZATION_STATE_HASH_MISMATCH")
+        if trained_exact != checkpoint["trained_state_dict_sha256"]:
+            raise ValueError("LEARNABILITY_TRAINED_STATE_HASH_MISMATCH")
+        if optimizer_exact != checkpoint["optimizer_state_sha256"]:
+            raise ValueError("LEARNABILITY_OPTIMIZER_STATE_HASH_MISMATCH")
+        if (
+            canonical_state_dict_sha256(initialization)
+            != checkpoint["canonical_initialization_state_dict_sha256"]
+        ):
+            raise ValueError("LEARNABILITY_INITIALIZATION_CANONICAL_HASH_MISMATCH")
+        if (
+            canonical_state_dict_sha256(trained)
+            != checkpoint["canonical_trained_state_dict_sha256"]
+        ):
+            raise ValueError("LEARNABILITY_TRAINED_CANONICAL_HASH_MISMATCH")
+        if (
+            canonical_torch_object_sha256(optimizer_state)
+            != checkpoint["canonical_optimizer_state_sha256"]
+        ):
+            raise ValueError("LEARNABILITY_OPTIMIZER_CANONICAL_HASH_MISMATCH")
+
+        configure_canonical_cpu_runtime(seed)
+        canonical_model = LockedPlanner(seed, VARIANT).cpu()
+        canonical_initialization = canonical_model.state_dict()
+        if state_dict_sha256(canonical_initialization) != initialization_exact:
+            raise ValueError("LEARNABILITY_CANONICAL_INITIALIZATION_MISMATCH")
+        if initialization_exact == trained_exact:
+            raise ValueError("LEARNABILITY_TRAINED_CHECKPOINT_UNCHANGED")
+        canonical_model.load_state_dict(trained)
+        expected_active, expected_dormant = _optimizer_parameter_policy(canonical_model)
+        if (
+            checkpoint["active_parameter_names"] != expected_active
+            or checkpoint["dormant_parameter_names"] != expected_dormant
+        ):
+            raise ValueError("LEARNABILITY_PARAMETER_POLICY_MISMATCH")
+        if any(
+            not torch.equal(trained[name], initialization[name])
+            for name in expected_dormant
+        ):
+            raise ValueError("LEARNABILITY_DORMANT_PARAMETER_CHANGED")
+        _validate_optimizer_state(optimizer_state, canonical_model, UPDATES_PER_RUN)
+
+        expected_optimizer_evidence = {
+            "schema_version": "toy-quality-optimizer-evidence/0.1",
+            "torch_object_encoding_version": TORCH_OBJECT_ENCODING_VERSION,
+            "optimizer_state_sha256": optimizer_exact,
+            "canonical_optimizer_state_sha256": checkpoint[
+                "canonical_optimizer_state_sha256"
+            ],
+            "active_parameter_names": expected_active,
+            "parameter_group_count": 1,
+            "update_count": UPDATES_PER_RUN,
+        }
+        if optimizer_evidence != expected_optimizer_evidence:
+            raise ValueError("LEARNABILITY_OPTIMIZER_EVIDENCE_SEMANTIC_MISMATCH")
+
+        if (
+            checkpoint["schema_version"] != "toy-quality-checkpoint/0.1"
+            or checkpoint["variant_identity"] != A2_VARIANT_IDENTITY
+            or checkpoint["torch_object_encoding_version"]
+            != TORCH_OBJECT_ENCODING_VERSION
+            or checkpoint["seed"] != seed
+            or checkpoint["dataset_hash"]
+            != payload["frozen_dataset_lineage_hash"]
+            or checkpoint["train_task_ids"] != train_task_ids
+            or checkpoint["epochs"] != EPOCHS
+            or checkpoint["updates"] != UPDATES_PER_RUN
+            or checkpoint["checkpoint_policy"]
+            != TRAINING_CONFIG["checkpoint_policy"]
+            or checkpoint["training_execution_mode"] != "TRAINED_IN_RUN"
+            or checkpoint["checkpoint_origin_run_hash"] is not None
+            or checkpoint["reuse_source_manifest_hash"] is not None
+            or checkpoint["deterministic_training_replay_status"]
+            != "CANONICAL_DETERMINISTIC"
+        ):
+            raise ValueError("LEARNABILITY_CHECKPOINT_LINEAGE_MISMATCH")
+        if (
+            checkpoint["optimizer_evidence_file_sha256"]
+            != _file_hash(run_dir / "optimizer-evidence.json")
+            or checkpoint["training_report_file_sha256"]
+            != _file_hash(run_dir / "training-report.json")
+        ):
+            raise ValueError("LEARNABILITY_TRAINING_EVIDENCE_HASH_MISMATCH")
+
+        record = checkpoint_records[seed]
+        expected_record = {
+            "seed": seed,
+            "checkpoint_manifest_path": (
+                f"training-runs/A2/seed-{seed}/checkpoint-manifest.json"
+            ),
+            "checkpoint_manifest_file_sha256": _file_hash(
+                run_dir / "checkpoint-manifest.json"
+            ),
+            "initialization_path": f"training-runs/A2/seed-{seed}/initialization.pt",
+            "trained_checkpoint_path": f"training-runs/A2/seed-{seed}/trained.pt",
+            "optimizer_state_path": (
+                f"training-runs/A2/seed-{seed}/optimizer-state.pt"
+            ),
+            "frozen_dataset_lineage_hash": payload[
+                "frozen_dataset_lineage_hash"
+            ],
+            "evaluated_train_split_hash": payload[
+                "evaluated_train_split_hash"
+            ],
+            "canonical_initialization_state_dict_sha256": checkpoint[
+                "canonical_initialization_state_dict_sha256"
+            ],
+            "canonical_trained_state_dict_sha256": checkpoint[
+                "canonical_trained_state_dict_sha256"
+            ],
+            "canonical_optimizer_state_sha256": checkpoint[
+                "canonical_optimizer_state_sha256"
+            ],
+        }
+        if record != expected_record:
+            raise ValueError("LEARNABILITY_CHECKPOINT_RECORD_MISMATCH")
 
 
 def _artifact_identity(payload: dict[str, Any]) -> str:
@@ -938,10 +1230,15 @@ def _artifact_identity(payload: dict[str, Any]) -> str:
 
 
 def _dataset_context() -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    dataset = generate(17)
+    dataset = generate_train_only(17)
     train_rows = sorted(dataset["train"], key=lambda row: row["task_id"])
-    if any(row["task_id"] in FROZEN_QUALITY_V0_1_HELDOUT_TASK_IDS for row in train_rows):
+    if any(
+        row["task_id"] in FROZEN_QUALITY_V0_1_HELDOUT_TASK_IDS
+        for row in train_rows
+    ):
         raise ValueError("LEARNABILITY_TRAIN_HELDOUT_OVERLAP")
+    if dataset["frozen_dataset_lineage_hash"] != FROZEN_DATASET_LINEAGE_HASH_V1:
+        raise ValueError("LEARNABILITY_FROZEN_DATASET_LINEAGE_MISMATCH")
     return dataset, train_rows
 
 
@@ -960,9 +1257,7 @@ def run(
         or provenance["diagnostic_source_sha256"]
         != diagnostic_source_identity()["diagnostic_source_sha256"]
     ):
-        raise ValueError("LEARNABILITY_WORKING_SOURCE_MISMATCH")
-    if provenance["requirements_lock_sha256"] != _file_hash(ROOT / "requirements.lock"):
-        raise ValueError("LEARNABILITY_WORKING_REQUIREMENTS_MISMATCH")
+        raise ValueError("LEARNABILITY_WORKING_TREE_SOURCE_MISMATCH")
     if output.exists() and any(output.iterdir()):
         raise ValueError("LEARNABILITY_OUTPUT_NOT_CLEAN")
     output.mkdir(parents=True, exist_ok=True)
@@ -988,11 +1283,13 @@ def run(
     for seed in selected_seeds:
         run_dir = training_root / "A2" / f"seed-{seed}"
         model, checkpoint, observed_losses = _train_a2_with_loss_trace(
-            train_rows, seed, run_dir, dataset["dataset_hash"]
+            train_rows, seed, run_dir, dataset["frozen_dataset_lineage_hash"]
         )
         for row in observed_losses:
             loss_rows.append({"seed": seed, **row})
-        checkpoint_record = _checkpoint_record(seed, run_dir, checkpoint)
+        checkpoint_record = _checkpoint_record(
+            seed, run_dir, checkpoint, dataset["evaluated_train_split_hash"]
+        )
         checkpoints.append(checkpoint_record)
         checkpoint_bytes_before = (run_dir / "trained.pt").read_bytes()
         optimizer_bytes_before = (run_dir / "optimizer-state.pt").read_bytes()
@@ -1052,7 +1349,12 @@ def run(
         **provenance,
         "runtime_versions": _runtime_versions(),
         "canonical_cpu_runtime": runtime_fingerprint,
-        "dataset_hash": dataset["dataset_hash"],
+        "frozen_dataset_lineage_hash": dataset[
+            "frozen_dataset_lineage_hash"
+        ],
+        "evaluated_train_split_hash": dataset[
+            "evaluated_train_split_hash"
+        ],
         "evaluated_splits": ["train"],
         "evaluated_task_ids": list(selected_ids),
         "excluded_splits": [
@@ -1069,6 +1371,7 @@ def run(
         "gate_decision": None,
         "learnability_thresholds": None,
         "checkpoints": checkpoints,
+        "training_artifact_hashes": _training_artifact_hashes(output),
         "per_update_loss_breakdown": loss_rows,
         "teacher_forced": teacher_tasks,
         "free_running": free_tasks,
@@ -1101,39 +1404,120 @@ def _assert_finite_json(value: Any, path: str = "$") -> None:
             _assert_finite_json(child, f"{path}[{index}]")
 
 
-def _assert_predicted_pointer_semantics(
-    position: dict[str, Any], row: dict[str, Any]
+def _derived_step_metrics(
+    *,
+    gold_operator: str | None,
+    gold_arg1: str | None,
+    gold_arg2: str | None,
+    predicted_operator: str,
+    predicted_arg1: str | None,
+    predicted_arg2: str | None,
+) -> dict[str, bool | None]:
+    operator_correct = predicted_operator == gold_operator
+    arg1_correct = predicted_arg1 == gold_arg1 if gold_arg1 is not None else None
+    arg2_correct = predicted_arg2 == gold_arg2 if gold_arg2 is not None else None
+    return {
+        "operator_correct": operator_correct,
+        "end_correct": operator_correct if gold_operator == "END" else None,
+        "arg1_correct": arg1_correct,
+        "arg2_correct": arg2_correct,
+        "joint_step_correct": (
+            operator_correct
+            and arg1_correct is not False
+            and arg2_correct is not False
+        ),
+    }
+
+
+def _decoded_step(
+    position: dict[str, Any],
+    row: dict[str, Any],
+    *,
+    arg1_field: str,
+    arg2_field: str,
 ) -> list[str]:
-    step = _raw_step_from_position(position)
-    for pointer in step[1:]:
-        if pointer not in row["blocks"]:
-            raise ValueError("LEARNABILITY_PREDICTED_POINTER_UNKNOWN")
-    return step
+    operator = position["predicted_operator"]
+    arg1 = position[arg1_field]
+    arg2 = position[arg2_field]
+    if operator == "END":
+        if arg1 is not None or arg2 is not None:
+            raise ValueError("LEARNABILITY_END_DECODED_POINTER_NON_NULL")
+        return ["END"]
+    if arg1 not in row["blocks"]:
+        raise ValueError("LEARNABILITY_DECODED_ARG1_INVALID")
+    if operator in {"PICK_UP", "PUT_DOWN"}:
+        if arg2 is not None:
+            raise ValueError("LEARNABILITY_UNARY_DECODED_ARG2_NON_NULL")
+        return [operator, arg1]
+    if operator in {"UNSTACK", "STACK"}:
+        if arg2 not in row["blocks"]:
+            raise ValueError("LEARNABILITY_DECODED_ARG2_INVALID")
+        return [operator, arg1, arg2]
+    raise ValueError("LEARNABILITY_PREDICTED_OPERATOR_INVALID")
 
 
 def _assert_teacher_position_semantics(
     position: dict[str, Any], row: dict[str, Any]
 ) -> None:
     gold_operator = position["gold_operator"]
-    expected_has_arg1 = _operator_arity(gold_operator) >= 1
-    expected_has_arg2 = _operator_arity(gold_operator) == 2
+    gold_arg1 = position["gold_arg1"]
+    gold_arg2 = position["gold_arg2"]
+    expected_has_arg1 = gold_arg1 is not None
+    expected_has_arg2 = gold_arg2 is not None
     if (
         position["has_arg1_target"] != expected_has_arg1
         or position["has_arg2_target"] != expected_has_arg2
     ):
         raise ValueError("LEARNABILITY_POINTER_TARGET_FLAGS_MISMATCH")
-    if (position["gold_arg1"] is not None) != expected_has_arg1:
-        raise ValueError("LEARNABILITY_GOLD_ARG1_TARGET_SEMANTICS")
-    if (position["gold_arg2"] is not None) != expected_has_arg2:
-        raise ValueError("LEARNABILITY_GOLD_ARG2_TARGET_SEMANTICS")
-    _assert_predicted_pointer_semantics(position, row)
+    arg1_prediction = position["arg1_head_prediction"]
+    arg2_prediction = position["arg2_head_prediction"]
+    if expected_has_arg1:
+        if arg1_prediction not in row["blocks"]:
+            raise ValueError("LEARNABILITY_ARG1_HEAD_PREDICTION_INVALID")
+    elif arg1_prediction is not None or position["arg1_correct"] is not None:
+        raise ValueError("LEARNABILITY_ARG1_HEAD_TARGET_SEMANTICS")
+    if expected_has_arg2:
+        if arg2_prediction not in row["blocks"]:
+            raise ValueError("LEARNABILITY_ARG2_HEAD_PREDICTION_INVALID")
+    elif arg2_prediction is not None or position["arg2_correct"] is not None:
+        raise ValueError("LEARNABILITY_ARG2_HEAD_TARGET_SEMANTICS")
+    if gold_operator == "END" and any(
+        position[field] is not None
+        for field in (
+            "gold_arg1",
+            "gold_arg2",
+            "arg1_head_prediction",
+            "arg2_head_prediction",
+            "arg1_correct",
+            "arg2_correct",
+        )
+    ):
+        raise ValueError("LEARNABILITY_END_POINTER_METRIC_NON_NULL")
+    _decoded_step(
+        position,
+        row,
+        arg1_field="decoded_arg1",
+        arg2_field="decoded_arg2",
+    )
+    if (
+        position["predicted_operator"] != "END"
+        and expected_has_arg1
+        and position["decoded_arg1"] != arg1_prediction
+    ):
+        raise ValueError("LEARNABILITY_ARG1_HEAD_DECODED_MISMATCH")
+    if (
+        position["predicted_operator"] in {"UNSTACK", "STACK"}
+        and expected_has_arg2
+        and position["decoded_arg2"] != arg2_prediction
+    ):
+        raise ValueError("LEARNABILITY_ARG2_HEAD_DECODED_MISMATCH")
     derived = _derived_step_metrics(
-        gold_operator=position["gold_operator"],
-        gold_arg1=position["gold_arg1"],
-        gold_arg2=position["gold_arg2"],
+        gold_operator=gold_operator,
+        gold_arg1=gold_arg1,
+        gold_arg2=gold_arg2,
         predicted_operator=position["predicted_operator"],
-        predicted_arg1=position["predicted_arg1"],
-        predicted_arg2=position["predicted_arg2"],
+        predicted_arg1=arg1_prediction,
+        predicted_arg2=arg2_prediction,
     )
     errors = {
         "operator_correct": "LEARNABILITY_TEACHER_OPERATOR_CORRECT_MISMATCH",
@@ -1164,7 +1548,12 @@ def _reconstruct_free_running_plan(
     for position in positions:
         if terminated:
             raise ValueError("LEARNABILITY_PLAN_CONTINUES_AFTER_END")
-        step = _assert_predicted_pointer_semantics(position, row)
+        step = _decoded_step(
+            position,
+            row,
+            arg1_field="predicted_arg1",
+            arg2_field="predicted_arg2",
+        )
         raw.append(step)
         terminated = step == ["END"]
     return raw, terminated
@@ -1193,6 +1582,7 @@ def validate_payload(payload: dict[str, Any], *, root: Path | None = None) -> No
         raise ValueError("LEARNABILITY_SCOPE_FLAG_MISMATCH")
     if payload["training_config"] != TRAINING_CONFIG:
         raise ValueError("LEARNABILITY_TRAINING_CONFIG_CHANGED")
+
     provenance = implementation_provenance(payload["implementation_commit"])
     if (
         payload["diagnostic_source_files"]
@@ -1220,10 +1610,19 @@ def validate_payload(payload: dict[str, Any], *, root: Path | None = None) -> No
         raise ValueError("LEARNABILITY_EXCLUDED_SPLIT_MISMATCH")
     if payload["seeds"] != [seed for seed in SEEDS if seed in payload["seeds"]]:
         raise ValueError("LEARNABILITY_SEED_ORDER_MISMATCH")
+
     dataset, train_rows = _dataset_context()
     train_by_id = {row["task_id"]: row for row in train_rows}
-    if payload["dataset_hash"] != dataset["dataset_hash"]:
-        raise ValueError("LEARNABILITY_DATASET_HASH_MISMATCH")
+    if (
+        payload["frozen_dataset_lineage_hash"]
+        != dataset["frozen_dataset_lineage_hash"]
+    ):
+        raise ValueError("LEARNABILITY_FROZEN_DATASET_LINEAGE_MISMATCH")
+    if (
+        payload["evaluated_train_split_hash"]
+        != dataset["evaluated_train_split_hash"]
+    ):
+        raise ValueError("LEARNABILITY_TRAIN_SPLIT_HASH_MISMATCH")
     evaluated_ids = payload["evaluated_task_ids"]
     canonical_evaluated_ids = [task_id for task_id in train_by_id if task_id in evaluated_ids]
     if evaluated_ids != canonical_evaluated_ids or not evaluated_ids:
@@ -1235,15 +1634,19 @@ def validate_payload(payload: dict[str, Any], *, root: Path | None = None) -> No
         raise ValueError("LEARNABILITY_HELDOUT_OR_UNKNOWN_TASK")
     if set(evaluated_ids) & set(FROZEN_QUALITY_V0_1_HELDOUT_TASK_IDS):
         raise ValueError("LEARNABILITY_HELDOUT_TASK_PRESENT")
+
     expected_keys = {
         (seed, task_id) for seed in payload["seeds"] for task_id in evaluated_ids
     }
-    teacher_keys = [(task["seed"], task["task_id"]) for task in payload["teacher_forced"]]
+    teacher_keys = [
+        (task["seed"], task["task_id"]) for task in payload["teacher_forced"]
+    ]
     free_keys = [(task["seed"], task["task_id"]) for task in payload["free_running"]]
     if len(teacher_keys) != len(set(teacher_keys)) or set(teacher_keys) != expected_keys:
         raise ValueError("LEARNABILITY_TEACHER_COVERAGE_MISMATCH")
     if len(free_keys) != len(set(free_keys)) or set(free_keys) != expected_keys:
         raise ValueError("LEARNABILITY_FREE_COVERAGE_MISMATCH")
+
     for task in payload["teacher_forced"]:
         row = train_by_id[task["task_id"]]
         positions = task["positions"]
@@ -1265,10 +1668,13 @@ def validate_payload(payload: dict[str, Any], *, root: Path | None = None) -> No
             ):
                 raise ValueError("LEARNABILITY_GOLD_TARGET_MISMATCH")
             _assert_teacher_position_semantics(position, row)
+
     for task in payload["free_running"]:
         row = train_by_id[task["task_id"]]
         positions = task["predicted_history_positions"]
-        if [position["position_index"] for position in positions] != list(range(len(positions))):
+        if [position["position_index"] for position in positions] != list(
+            range(len(positions))
+        ):
             raise ValueError("LEARNABILITY_PREDICTED_POSITION_ORDER")
         if len(positions) != task["model_forward_count"]:
             raise ValueError("LEARNABILITY_MODEL_FORWARD_COUNT_MISMATCH")
@@ -1294,11 +1700,9 @@ def validate_payload(payload: dict[str, Any], *, root: Path | None = None) -> No
             raise ValueError("LEARNABILITY_PLAN_LENGTH_CONTRADICTION")
         if task["end_only"] != (reconstructed_plan == [["END"]]):
             raise ValueError("LEARNABILITY_END_ONLY_CONTRADICTION")
-        first_operator = positions[0]["predicted_operator"]
-        first_end_probability = positions[0]["probability_end"]
         if (
-            task["first_predicted_operator"] != first_operator
-            or task["first_step_end_probability"] != first_end_probability
+            task["first_predicted_operator"] != positions[0]["predicted_operator"]
+            or task["first_step_end_probability"] != positions[0]["probability_end"]
         ):
             raise ValueError("LEARNABILITY_FIRST_POSITION_MISMATCH")
         for position_row in positions:
@@ -1308,20 +1712,25 @@ def validate_payload(payload: dict[str, Any], *, root: Path | None = None) -> No
                 if index < len(row["oracle_work_plan"])
                 else None
             )
-            expected_gold_operator = gold_step[0] if gold_step else None
-            expected_gold_arg1 = gold_step[1] if gold_step and len(gold_step) > 1 else None
-            expected_gold_arg2 = gold_step[2] if gold_step and len(gold_step) > 2 else None
+            gold_operator = gold_step[0] if gold_step else None
+            gold_arg1 = gold_step[1] if gold_step and len(gold_step) > 1 else None
+            gold_arg2 = gold_step[2] if gold_step and len(gold_step) > 2 else None
             if (
                 position_row["gold_operator"],
                 position_row["gold_arg1"],
                 position_row["gold_arg2"],
-            ) != (expected_gold_operator, expected_gold_arg1, expected_gold_arg2):
+            ) != (gold_operator, gold_arg1, gold_arg2):
                 raise ValueError("LEARNABILITY_PREDICTED_HISTORY_GOLD_MISMATCH")
-            _assert_predicted_pointer_semantics(position_row, row)
+            _decoded_step(
+                position_row,
+                row,
+                arg1_field="predicted_arg1",
+                arg2_field="predicted_arg2",
+            )
             derived = _derived_step_metrics(
-                gold_operator=expected_gold_operator,
-                gold_arg1=expected_gold_arg1,
-                gold_arg2=expected_gold_arg2,
+                gold_operator=gold_operator,
+                gold_arg1=gold_arg1,
+                gold_arg2=gold_arg2,
                 predicted_operator=position_row["predicted_operator"],
                 predicted_arg1=position_row["predicted_arg1"],
                 predicted_arg2=position_row["predicted_arg2"],
@@ -1360,7 +1769,6 @@ def validate_payload(payload: dict[str, Any], *, root: Path | None = None) -> No
         ):
             if task[field] != recalculated[field]:
                 raise ValueError("LEARNABILITY_EXECUTABLE_PREFIX_MISMATCH")
-        expected_failure_code: str | None
         if expected_generation_failure is not None:
             expected_failure_code = expected_generation_failure
         elif parser_failure is not None:
@@ -1381,15 +1789,21 @@ def validate_payload(payload: dict[str, Any], *, root: Path | None = None) -> No
             gold=row["oracle_work_plan"],
             predicted=reconstructed_plan,
             parser_failure_position=parser_failure,
-            precondition_failure_position=recalculated["precondition_failure_position"],
+            precondition_failure_position=recalculated[
+                "precondition_failure_position"
+            ],
             goal_success=recalculated["final_goal_success"],
         )
-        if task["first_mismatch_type"] != category or task["first_mismatch_position"] != position:
+        if (
+            task["first_mismatch_type"] != category
+            or task["first_mismatch_position"] != position
+        ):
             raise ValueError("LEARNABILITY_FIRST_ERROR_MISMATCH")
         if task["final_goal_success"]:
             canonical_state = tuple(tuple(fact) for fact in task["final_state"])
             if not goal_satisfied(canonical_state, task_from_row(row).goal):
                 raise ValueError("LEARNABILITY_FALSE_GOAL_SUCCESS")
+
     if payload["aggregates"]["teacher_forced"] != aggregate_teacher_forced(
         payload["teacher_forced"]
     ):
@@ -1409,13 +1823,15 @@ def validate_payload(payload: dict[str, Any], *, root: Path | None = None) -> No
         "first_error_distribution"
     ]:
         raise ValueError("LEARNABILITY_FIRST_ERROR_DISTRIBUTION_MISMATCH")
-    if payload["canonical_identity"] != _artifact_identity(payload):
-        raise ValueError("LEARNABILITY_CANONICAL_IDENTITY_MISMATCH")
+
     expected_loss_keys = {
-        (seed, update) for seed in payload["seeds"] for update in range(UPDATES_PER_RUN)
+        (seed, update)
+        for seed in payload["seeds"]
+        for update in range(UPDATES_PER_RUN)
     }
     loss_keys = [
-        (row["seed"], row["update_index"]) for row in payload["per_update_loss_breakdown"]
+        (row["seed"], row["update_index"])
+        for row in payload["per_update_loss_breakdown"]
     ]
     if len(loss_keys) != len(set(loss_keys)) or set(loss_keys) != expected_loss_keys:
         raise ValueError("LEARNABILITY_LOSS_BREAKDOWN_COVERAGE")
@@ -1425,13 +1841,19 @@ def validate_payload(payload: dict[str, Any], *, root: Path | None = None) -> No
             components.append(row["arg1_pointer_loss"])
         if row["arg2_pointer_loss"] is not None:
             components.append(row["arg2_pointer_loss"])
-        if not math.isclose(sum(components), row["total_loss"], rel_tol=1e-6, abs_tol=1e-7):
+        if not math.isclose(
+            sum(components), row["total_loss"], rel_tol=1e-6, abs_tol=1e-7
+        ):
             raise ValueError("LEARNABILITY_TOTAL_LOSS_BREAKDOWN_MISMATCH")
     checkpoint_seeds = [record["seed"] for record in payload["checkpoints"]]
     invariance_seeds = [record["seed"] for record in payload["diagnostic_invariance"]]
     if checkpoint_seeds != payload["seeds"] or invariance_seeds != payload["seeds"]:
         raise ValueError("LEARNABILITY_SEED_ARTIFACT_COVERAGE")
-    expected_schedule = [(epoch, task_id) for epoch in range(EPOCHS) for task_id in train_by_id]
+    expected_schedule = [
+        (epoch, task_id)
+        for epoch in range(EPOCHS)
+        for task_id in train_by_id
+    ]
     for seed in payload["seeds"]:
         actual_schedule = [
             (row["epoch_index"], row["task_id"])
@@ -1446,62 +1868,26 @@ def validate_payload(payload: dict[str, Any], *, root: Path | None = None) -> No
         or not record["optimizer_state_unchanged"]
         or not record["pipeline_replay_unchanged"]
         or not record["rng_state_restored"]
-        or record["checkpoint_canonical_before"] != record["checkpoint_canonical_after"]
-        or record["optimizer_canonical_before"] != record["optimizer_canonical_after"]
-        or record["pipeline_replay_hash_before"] != record["pipeline_replay_hash_after"]
+        or record["checkpoint_canonical_before"]
+        != record["checkpoint_canonical_after"]
+        or record["optimizer_canonical_before"]
+        != record["optimizer_canonical_after"]
+        or record["pipeline_replay_hash_before"]
+        != record["pipeline_replay_hash_after"]
         for record in payload["diagnostic_invariance"]
     ):
         raise ValueError("LEARNABILITY_DIAGNOSTIC_INVARIANCE_FAILED")
     if root is not None:
-        for checkpoint in payload["checkpoints"]:
-            seed = checkpoint["seed"]
-            run_dir = root / "training-runs" / "A2" / f"seed-{seed}"
-            manifest = json.loads((run_dir / "checkpoint-manifest.json").read_text())
-            state = torch.load(run_dir / "trained.pt", map_location="cpu", weights_only=True)
-            optimizer = torch.load(
-                run_dir / "optimizer-state.pt", map_location="cpu", weights_only=True
-            )
-            expected_paths = {
-                "checkpoint_manifest_path": (
-                    f"training-runs/A2/seed-{seed}/checkpoint-manifest.json"
-                ),
-                "trained_checkpoint_path": f"training-runs/A2/seed-{seed}/trained.pt",
-                "optimizer_state_path": f"training-runs/A2/seed-{seed}/optimizer-state.pt",
-            }
-            if any(checkpoint[key] != value for key, value in expected_paths.items()):
-                raise ValueError("LEARNABILITY_CHECKPOINT_PATH_MISMATCH")
-            if manifest["trained_state_dict_sha256"] != state_dict_sha256(state):
-                raise ValueError("LEARNABILITY_CHECKPOINT_HASH_MISMATCH")
-            if checkpoint["canonical_trained_state_dict_sha256"] != canonical_state_dict_sha256(
-                state
-            ):
-                raise ValueError("LEARNABILITY_CHECKPOINT_CANONICAL_HASH_MISMATCH")
-            if checkpoint["canonical_optimizer_state_sha256"] != canonical_torch_object_sha256(
-                optimizer
-            ):
-                raise ValueError("LEARNABILITY_OPTIMIZER_CANONICAL_HASH_MISMATCH")
-            if manifest["optimizer_state_sha256"] != exact_torch_object_sha256(optimizer):
-                raise ValueError("LEARNABILITY_OPTIMIZER_EXACT_HASH_MISMATCH")
-            if (
-                manifest["canonical_optimizer_state_sha256"]
-                != checkpoint["canonical_optimizer_state_sha256"]
-            ):
-                raise ValueError("LEARNABILITY_OPTIMIZER_MANIFEST_HASH_MISMATCH")
-            if (
-                manifest["canonical_trained_state_dict_sha256"]
-                != checkpoint["canonical_trained_state_dict_sha256"]
-            ):
-                raise ValueError("LEARNABILITY_CHECKPOINT_MANIFEST_HASH_MISMATCH")
-            if (
-                manifest["seed"] != seed
-                or manifest["variant_identity"]["implementation_variant"] != "A2"
-            ):
-                raise ValueError("LEARNABILITY_CHECKPOINT_IDENTITY_MISMATCH")
-            if manifest["epochs"] != EPOCHS or manifest["updates"] != UPDATES_PER_RUN:
-                raise ValueError("LEARNABILITY_CHECKPOINT_TRAINING_CONFIG_MISMATCH")
+        _validate_training_lineage(root=root, payload=payload, train_rows=train_rows)
+    if payload["canonical_identity"] != _artifact_identity(payload):
+        raise ValueError("LEARNABILITY_CANONICAL_IDENTITY_MISMATCH")
 
 
 def validate_diagnostic(root: Path) -> dict[str, Any]:
+    expected_top_level = {OUTPUT_JSON, OUTPUT_MARKDOWN, "training-runs"}
+    actual_top_level = {path.name for path in root.iterdir()}
+    if actual_top_level != expected_top_level:
+        raise ValueError("LEARNABILITY_BUNDLE_TOP_LEVEL_COVERAGE_MISMATCH")
     payload = json.loads((root / OUTPUT_JSON).read_text(encoding="utf-8"))
     validate_payload(payload, root=root)
     if (root / OUTPUT_MARKDOWN).read_text(encoding="utf-8") != render_markdown(payload):
@@ -1527,7 +1913,14 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- Version: `{payload['diagnostic_version']}`",
         f"- Status: `{payload['status']}`",
         f"- Implementation commit: `{payload['implementation_commit']}`",
-        f"- Dataset hash: `{payload['dataset_hash']}`",
+        (
+            "- Frozen dataset lineage hash: "
+            f"`{payload['frozen_dataset_lineage_hash']}`"
+        ),
+        (
+            "- Evaluated train-split hash: "
+            f"`{payload['evaluated_train_split_hash']}`"
+        ),
         f"- Evaluated splits: `{', '.join(payload['evaluated_splits'])}`",
         f"- Seeds: `{', '.join(map(str, payload['seeds']))}`",
         f"- Held-out accessed: `{str(payload['heldout_accessed']).lower()}`",
@@ -1536,23 +1929,23 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "",
         "## Split boundary",
         "",
-        "The repository has no separate non-held-out development validation split. The existing",
-        "`validation` rows are the frozen quality-v0.1 held-out tasks and are excluded from this",
-        "diagnostic. Metrics therefore cover the existing `train` split only.",
+        "The diagnostic uses the versioned train-only generator. It materializes only task IDs",
+        "`bw-00000001` through `bw-00000003`; frozen held-out rows and their oracle plans are not",
+        "built, read, or included in the evaluated train-split hash.",
         "",
         "## Teacher-forced summary",
         "",
         f"- Positions: `{teacher['position_count']}`",
-        f"- Operator accuracy: `{teacher['operator_accuracy']}`",
-        f"- Joint-step accuracy: `{teacher['joint_step_accuracy']}`",
+        f"- Operator-head accuracy: `{teacher['operator_accuracy']}`",
         (
-            f"- Arg1 accuracy: `{teacher['arg1_accuracy']}` over "
-            f"`{teacher['arg1_target_count']}` targets"
+            f"- Arg1-head accuracy: `{teacher['arg1_accuracy']}` over "
+            f"`{teacher['arg1_target_count']}` gold targets"
         ),
         (
-            f"- Arg2 accuracy: `{teacher['arg2_accuracy']}` over "
-            f"`{teacher['arg2_target_count']}` targets"
+            f"- Arg2-head accuracy: `{teacher['arg2_accuracy']}` over "
+            f"`{teacher['arg2_target_count']}` gold targets"
         ),
+        f"- Joint decoded-step accuracy: `{teacher['joint_step_accuracy']}`",
         f"- END accuracy: `{teacher['end_accuracy']}`",
         f"- Mean END probability: `{teacher['mean_probability_end']}`",
         "",
