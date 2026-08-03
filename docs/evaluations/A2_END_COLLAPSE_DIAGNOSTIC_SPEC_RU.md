@@ -229,7 +229,7 @@ Markdown отдельно показывает operator, arg1-head, arg2-head и
 Диагностические метрики не доказывают причину collapse автоматически.
 
 - Хороший teacher-forced результат и плохой free-running rollout поддерживают гипотезу
-  exposure/rollout failure, но не доказывает её.
+  exposure/rollout failure, но не доказывают её.
 - Плохой teacher-forced результат поддерживает гипотезу базовой learnability failure, но не
   определяет конкретное исправление.
 - Следующий intervention, threshold и gate decision принимаются отдельным versioned contract
