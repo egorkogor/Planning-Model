@@ -1,0 +1,146 @@
+name: Commit validated clean learnability implementation
+
+on:
+  push:
+    branches:
+      - agent/a2-end-learnability-diagnostics
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+env:
+  OMP_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+
+jobs:
+  commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout staging branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/a2-end-learnability-diagnostics
+          path: staging
+          fetch-depth: 0
+      - name: Checkout clean branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/a2-end-learnability-diagnostics-clean
+          path: clean
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.15"
+          cache: pip
+          cache-dependency-path: clean/requirements.lock
+      - name: Recreate validated implementation tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            staging/.pr16-parts/part-00 \
+            staging/.pr16-parts/part-01 \
+            staging/.pr16-parts/part-02 \
+            staging/.pr16-parts/part-03 \
+            | base64 --decode > /tmp/pr16-implementation.tar.xz
+          printf '%s  %s\n' \
+            '6e2112583c3569ccb4d6c835c97baf5d7ab820105b7e24cda9578bb97349514e' \
+            '/tmp/pr16-implementation.tar.xz' | sha256sum --check --strict
+          tar -xJf /tmp/pr16-implementation.tar.xz -C clean
+          base64 --decode staging/.pr17-clean-implementation.patch.xz.b64 \
+            > /tmp/pr17-clean.patch.xz
+          printf '%s  %s\n' \
+            'd4c94125e06cdace807c6c7e591c1db3e15054a2255770690b53d14fe6ea3f85' \
+            '/tmp/pr17-clean.patch.xz' | sha256sum --check --strict
+          xz --decompress --stdout /tmp/pr17-clean.patch.xz > /tmp/pr17-clean.patch
+          cd clean
+          git apply --check /tmp/pr17-clean.patch
+          git apply /tmp/pr17-clean.patch
+          test ! -e planner_toy/learnability_diagnostic.schema.json
+          test -e planner_toy/schemas/toy_learnability_diagnostic.schema.json
+      - name: Install pinned validation runtime
+        working-directory: clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.lock
+          python -m pip install -e . --no-deps
+          python -m pip install torch==2.12.0+cpu \
+            --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e '.[ml]' --no-deps
+      - name: Reproduce Ruff-fixed source and targeted tests
+        working-directory: clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruff check --fix \
+            planner_toy/learnability.py \
+            scripts/run_toy_learnability_diagnostic.py \
+            tests/toy/test_learnability_diagnostic.py
+          ruff check .
+          python -m pytest -q tests/toy/test_learnability_diagnostic.py
+      - name: Final repository and frozen-tree checks
+        working-directory: clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp release/BOOTSTRAP_MANIFEST.json /tmp/bootstrap-manifest-before.json
+          python scripts/build_release_manifest.py
+          cmp -s release/BOOTSTRAP_MANIFEST.json /tmp/bootstrap-manifest-before.json
+          python validation/verify_release_manifest.py
+          python validation/validate_bundle.py --skip-nested-pytest
+          python -m py_compile \
+            planner_toy/learnability.py \
+            scripts/run_toy_learnability_diagnostic.py
+          ruff check .
+          git diff --check
+          git diff --quiet HEAD -- \
+            docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
+            docs/evaluations/data/a2_a3_a4_heldout_summary.json \
+            docs/evaluations/A2_A3_A4_V0_1_DECISION_RU.md \
+            .github/workflows/ci.yml
+      - name: Commit clean implementation
+        working-directory: clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .pytest-tmp .pytest_cache
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          find . -type f -name '*.pyc' -delete
+          git add \
+            planner_toy/learnability.py \
+            planner_toy/schemas/toy_learnability_diagnostic.schema.json \
+            scripts/run_toy_learnability_diagnostic.py \
+            tests/toy/test_learnability_diagnostic.py \
+            docs/evaluations/A2_END_COLLAPSE_DIAGNOSTIC_SPEC_RU.md
+          python - <<'PY'
+          import subprocess
+
+          required = {
+              'planner_toy/learnability.py',
+              'planner_toy/schemas/toy_learnability_diagnostic.schema.json',
+              'scripts/run_toy_learnability_diagnostic.py',
+              'tests/toy/test_learnability_diagnostic.py',
+              'docs/evaluations/A2_END_COLLAPSE_DIAGNOSTIC_SPEC_RU.md',
+          }
+          actual = set(subprocess.check_output(
+              ['git', 'diff', '--cached', '--name-only'], text=True
+          ).splitlines())
+          if actual != required:
+              raise SystemExit(
+                  f'bad staged scope: missing={sorted(required-actual)} '
+                  f'extra={sorted(actual-required)}'
+              )
+          PY
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Add A2 END-only learnability diagnostics'
+          git push origin HEAD:agent/a2-end-learnability-diagnostics-clean
