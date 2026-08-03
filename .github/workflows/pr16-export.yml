@@ -1,0 +1,28 @@
+name: Export PR16 source
+
+on:
+  push:
+    branches:
+      - agent/a2-end-learnability-diagnostics
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/a2-end-learnability-diagnostics
+      - name: Pack repository source
+        run: |
+          set -euo pipefail
+          tar --exclude=.git --exclude=.pytest_cache --exclude=.pytest-tmp \
+            -czf /tmp/planning-model-pr16-source.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: planning-model-pr16-source
+          path: /tmp/planning-model-pr16-source.tar.gz
+          retention-days: 1
