@@ -6,7 +6,7 @@
   "generated_at": "2026-07-25T17:20:00Z",
   "scope": "SCIENTIFIC_TRUST_ROOT_ONLY",
   "files": {
-    ".github/workflows/ci.yml": "sha256:eb012585537dde63bc95df79e5de936f5dc880192020d096fc8c94aa824315eb",
+    ".github/workflows/ci.yml": "sha256:7c8736a8274277a78d258c2ca3b54d5fe5f20e392d6df83f89f441652426cfac",
     "analysis/decision_gates.py": "sha256:d7f1b3f4d3e8c5699bd83e120dd05c31e4ddbf72f0e7bcb169b9cde210f64c07",
     "analysis/sample_size.py": "sha256:e668425dcc697eda129a385e346d3d2d716966c0779431474070ca86e2160b19",
     "docs/Planner_LLM_Stage1_Operator_Runbook_v2.21_RU.md": "sha256:002521a71f526dda36cbccf905cf6e94d03624083ba640e1e2bdcd504b8cc76a",
@@ -156,5 +156,5 @@
     "**/__pycache__/**",
     "**/*.pyc"
   ],
-  "manifest_hash": "sha256:f4d963d82846ea3a71355c7c6b9bd007e7ef0eaeb31dca0df3ce24140fa2580a"
+  "manifest_hash": "sha256:945c61dc4b25f2be8adbe0f1b4d650e57317313f4b103e522de5269cfb36757c"
 }
