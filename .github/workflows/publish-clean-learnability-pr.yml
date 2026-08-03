@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/a2-end-learnability-diagnostics
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
