@@ -103,3 +103,16 @@ E2E с 30 updates. Все 18 evaluation units воспроизвели END-only 
 не определена (`null`), а пустой план при initially unsatisfied goal не считается
 `full_plan_executable`. Нулевой результат может отражать как ограничения архитектуры,
 так и недостаточность заранее зафиксированного v0.1 budget; post-hoc tuning не проводился.
+
+Decision record: [`evaluations/A2_A3_A4_V0_1_DECISION_RU.md`](evaluations/A2_A3_A4_V0_1_DECISION_RU.md).
+
+```text
+Development Quality Evaluation v0.1:
+COMPLETED / REDESIGN
+
+Stage 2A semantic gate:
+NOT PASSED
+
+Next:
+END-only diagnostics and Development Learnability Gate
+```
