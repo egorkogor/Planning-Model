@@ -22,64 +22,85 @@ Held-out accessed:
 false
 ```
 
-Это diagnostics-only стадия. Она добавляет наблюдаемость для существующего `A2 structured
-baseline`, но не исправляет поведение модели, не задаёт threshold и не является
+Это diagnostics-only стадия для существующего `A2 structured baseline`. Она добавляет
+наблюдаемость, но не меняет модель, optimizer, objective, epochs, update budget, seeds,
+decoding, parser или executor, не задаёт threshold и не является
 `Development Learnability Gate v0.2`.
 
-## Граница данных
+## Реальная граница данных
 
-Текущий toy dataset содержит только `train` и `validation`. Две строки существующего
-`validation` split (`bw-00000004` и `bw-00000005`) уже являются frozen held-out задачами
-Development Quality Evaluation v0.1. Поэтому они не используются в этой диагностике.
+Диагностика не вызывает обычный `generate(17)`. Она использует versioned train-only helper,
+который строит только существующие строки:
 
-Диагностические метрики вычисляются только для существующего `train` split. Новые задачи,
-новый split и post-hoc переименование validation-задач не создаются. Отсутствие отдельного
-non-held-out development validation split является явным ограничением формата 0.1.
+```text
+bw-00000001
+bw-00000002
+bw-00000003
+```
 
-Отдельный non-held-out development validation split в текущем frozen dataset отсутствует.
+Строки `bw-00000004` и `bw-00000005`, их states, goals и oracle plans не создаются. Для них
+не вызывается `shortest_plan`, validation split не материализуется и не участвует в hash
+фактически прочитанных данных.
 
-Обучение использует неизменённую historical конфигурацию quality-v0.1:
+Output различает две идентичности:
+
+- `frozen_dataset_lineage_hash` — immutable hash исторического полного dataset, необходимый
+  для совместимости с существующим checkpoint/training lineage;
+- `evaluated_train_split_hash` — hash канонических bytes только трёх реально созданных и
+  оценённых train rows.
+
+Первый не выдаётся за hash прочитанных данных. `heldout_accessed: false` допустим только при
+совпадении train-only task IDs, порядка и обоих versioned bindings.
+
+Обычный `generate(17)` и frozen dataset hash остаются неизменными. Обучение сохраняет
+historical конфигурацию quality-v0.1:
 
 - seeds `17`, `29`, `43`;
 - `3` epochs;
-- три существующие train-задачи в порядке `task_id`;
+- train-задачи в существующем порядке;
 - `9` updates/run;
 - final checkpoint only;
 - существующие AdamW, loss weights и gradient clipping.
 
-## Teacher-forced mode
+## Teacher-forced per-head metrics
 
-Для каждой позиции gold-плана модель получает правильный gold prefix. Gold plan используется
-только как diagnostic history и target. Для позиции сохраняются:
+Для каждой позиции gold-плана модель получает правильный gold prefix. Action и pointer heads
+диагностируются раздельно:
 
-- gold и predicted operator;
-- operator top-1 correctness;
-- probability gold operator;
-- probability `END`;
-- operator negative log-likelihood;
-- наличие pointer targets;
-- predicted arg1/arg2;
-- pointer correctness;
-- joint exact-step correctness.
+- `predicted_operator` берётся из action head;
+- `arg1_head_prediction` сохраняется при наличии gold arg1 target;
+- `arg2_head_prediction` сохраняется при наличии gold arg2 target;
+- `arg1_correct` и `arg2_correct` сравнивают соответствующий head с gold target независимо
+  от predicted operator;
+- `joint_step_correct` требует правильный operator и все применимые pointer-head predictions.
 
-Pointer denominator включает только позиции с определённым target. Predicted pointer-поля
-следуют arity предсказанного operator: для predicted `END` оба pointer-поля равны `null`,
-для unary operator заполнен только `arg1`, для binary operator заполнены `arg1` и `arg2`.
-Correctness pointer-поля остаются `null`, если соответствующего gold target нет.
+Например, при gold `STACK`, predicted `END` и двух правильных pointer heads результат равен:
+
+```text
+operator_correct = false
+arg1_correct = true
+arg2_correct = true
+joint_step_correct = false
+```
+
+Pointer denominator определяется только наличием gold targets. Для gold `END` targets,
+head predictions и pointer correctness равны `null`.
+
+`decoded_arg1` и `decoded_arg2` — отдельные поля projected decoding. Они следуют arity
+predicted operator и не используются как замена per-head teacher-forced metrics.
 
 ## Gold-history one-step и projected-plan metrics
 
-Gold-history диагностика разделяет две разные сущности.
+Gold-history диагностика разделяет две сущности:
 
-`gold-history one-step metrics` включают все позиции gold plan. На каждой позиции модель
-получает правильный gold prefix, а denominator operator/joint metrics равен полному числу
-gold positions. Ранний predicted `END` на одной позиции не удаляет predictions последующих
-позиций.
+- `gold-history one-step metrics` содержат все позиции gold plan, даже если action head раньше
+  предсказал `END`;
+- `gold-history projected plan metrics` интерпретируют predictions как последовательный план
+  и заканчиваются на первом predicted `END`.
 
-`gold-history projected plan metrics` интерпретируют те же one-step predictions как один
-последовательный план. Для exact-plan match, executable prefix, goal success, predicted action
-count и first-error classification projected plan заканчивается на первом predicted `END`.
-Поэтому ранний `END` сохраняет `EARLY_END`, но не сокращает denominator one-step metrics.
+Поэтому operator/joint denominator равен полному количеству gold positions, а exact-plan,
+executable-prefix, goal-success, predicted-action-count и first-error используют укороченный
+projected plan. Ранний `END` остаётся `EARLY_END`.
 
 ## Free-running mode
 
@@ -91,9 +112,10 @@ Free-running использует неизменённый `A2Planner.plan`:
 - отсутствие replanning и suffix correction;
 - отсутствие forced minimum length или `END` suppression.
 
-Logits наблюдаются read-only forward hook-ом; decoding остаётся в существующем Planner.
+Фактический decoded plan содержит pointers только согласно arity predicted operator. Logits
+наблюдаются read-only forward hook-ом; decoding остаётся в существующем Planner.
 
-## First-error taxonomy
+## First-error и executable-prefix semantics
 
 Используется фиксированный набор:
 
@@ -109,38 +131,74 @@ PRECONDITION_FAILURE
 GOAL_NOT_ACHIEVED
 ```
 
-Фиксируется первая категория. Parse и precondition failures не сворачиваются в generic
-mismatch. При precondition failure на той же позиции он имеет приоритет над содержательным
-mismatch как фактический первый отказ исполнения.
-
-## Executable-prefix semantics
-
-Executable prefix — максимальный начальный префикс predicted actions, где каждое действие:
-
-1. прошло существующий parser;
-2. удовлетворило preconditions в evolving state;
-3. применено существующей canonical transition function.
-
-Сохраняются длина префикса и доли относительно predicted и gold action counts. Для пустого
-predicted plan fraction относительно predicted равен `null`. Пустой план при изначально
-неудовлетворённой цели не считается fully executable.
+Executable prefix — максимальный начальный префикс predicted actions, где каждое действие
+прошло parser, удовлетворило preconditions в evolving state и было применено canonical
+transition function. Пустой план при неудовлетворённой initial goal не является fully
+executable.
 
 ## Loss breakdown
 
-Диагностика не создаёт альтернативный training loop. Она прозрачно наблюдает существующую
-quality-v0.1 training function и записывает уже вычисляемые:
+Диагностика не создаёт альтернативный training loop. Observer сохраняет уже вычисляемые
+operator, arg1, arg2 и total losses, target counts, gradient norm и clipping occurrence,
+возвращая исходные tensors и результат clipping без изменения gradients или optimizer step.
 
-- operator loss;
-- arg1 pointer loss;
-- arg2 pointer loss;
-- total loss;
-- target counts;
-- gradient norm;
-- clipping occurrence.
+## Полный source closure
 
-Observer возвращает исходные loss tensors и исходный результат clipping без изменения
-objective, gradients или optimizer step. Regression tests сравнивают checkpoints и optimizer
-state с запуском без observer.
+Diagnostic source identity — versioned явный tuple фактических runtime/output dependencies.
+Он включает, в частности:
+
+```text
+docs/architecture/planner_module_inventory_v1.yaml
+docs/architecture/task_encoding_v1.yaml
+planner_toy/semantic.py
+planner_toy/dataset.py
+planner_toy/model.py
+planner_toy/quality.py
+planner_toy/training.py
+```
+
+Также включены canonical/runtime, domain/e2e/numeric-identity, learnability implementation,
+его schema, CLI, эта спецификация и quality schemas, реально используемые для строгой
+training-lineage validation. Тесты и unrelated schemas в inventory не входят.
+
+Переданный полный `--implementation-commit` проверяется fail-closed: commit должен
+существовать, быть доступным, являться ancestor results checkout и содержать
+`requirements.lock` и каждый `SOURCE_FILES`. Source hashes и requirements hash читаются из
+implementation tree через `git show <commit>:<path>`. Перед generation implementation-tree
+identity обязана совпасть с working-tree identity. Validator исторического artifact повторяет
+расчёт по `payload["implementation_commit"]`.
+
+## Полная training-runs lineage
+
+Для каждого seed обязательны ровно семь файлов:
+
+```text
+initialization.pt
+trained.pt
+optimizer-state.pt
+checkpoint-manifest.json
+training-config.json
+training-report.json
+optimizer-evidence.json
+```
+
+Лишние и отсутствующие файлы запрещены. Top-level `training_artifact_hashes` связывает
+canonical diagnostic JSON с полной recursive map всех generated training files.
+
+Validation переиспользует strict quality schemas и независимо проверяет:
+
+- file SHA-256 и recursive file coverage;
+- exact и canonical initialization/trained state-dict identities;
+- exact и canonical optimizer identity и структуру AdamW state;
+- config, training-report и optimizer-evidence hashes;
+- frozen dataset lineage и evaluated train-task ordering;
+- seed, A2 variant, epochs, update count и optimizer config;
+- active/dormant parameter policy;
+- checkpoint policy и initialization/trained distinction;
+- соответствие top-level checkpoint records manifests на диске.
+
+Поверхностное пересчитывание artifact hashes и `canonical_identity` не позволяет принять
+изменённый или неполный bundle.
 
 ## Canonical output
 
@@ -160,41 +218,9 @@ A2_END_COLLAPSE_DIAGNOSTIC.md
 training-runs/A2/seed-*/...
 ```
 
-JSON содержит provenance, runtime fingerprint, unchanged training config, checkpoint и
-optimizer identities, per-update losses, teacher-forced/free-running diagnostics,
-aggregates, first-error distribution и invariance evidence. Markdown является
-детерминированным rendering JSON.
-
-Переданный полный `--implementation-commit` проверяется fail-closed: commit должен
-существовать, быть доступным и являться ancestor текущего results checkout, а его tree должен
-содержать `requirements.lock` и все diagnostic `SOURCE_FILES`. Source hashes, aggregate
-`diagnostic_source_sha256` и `requirements_lock_sha256` вычисляются из bytes implementation
-tree через `git show <commit>:<path>`, а не из текущего working tree. Validator повторяет
-этот расчёт по `payload["implementation_commit"]`, поэтому historical artifact не привязан к
-случайному состоянию текущего checkout.
-
-Schema хранится только в `planner_toy/schemas/toy_learnability_diagnostic.schema.json`.
-Она не входит в immutable source inventory quality-v0.1: quality subsystem использует явный
-historical список принадлежащих ему schemas вместо широкого `toy_*.schema.json` glob.
-Regression test фиксирует точный historical inventory из 45 файлов, его aggregate source hash
-и успешное чтение source identity из implementation commit `779172c3...`.
-
-Generated JSON/Markdown не коммитятся в implementation PR. После code freeze внешний
-reviewer передаёт remote-reachable implementation SHA и выполняет отдельную results-фазу.
-
-## Semantic validation derived fields
-
-Validator независимо восстанавливает derived metrics из persisted primitive fields.
-
-Для teacher-forced rows пересчитываются operator, END, arg1, arg2 и joint correctness,
-operator arity, target flags и operator NLL. Для free-running rows из
-`predicted_history_positions` восстанавливается raw predicted plan и проверяются termination,
-model-forward coverage, parser status, generation failure, failure code, counts, exact match,
-executable-prefix и first-error semantics. Persisted booleans не используются как источник
-истины.
-
-Adversarial tests изменяют derived values, заново считают aggregates и `canonical_identity`,
-после чего validator всё равно отклоняет artifact стабильным `ValueError` code.
+Markdown отдельно показывает operator, arg1-head, arg2-head и joint-step metrics, а также
+раздельные frozen lineage и evaluated train hashes. Generated learnability JSON/Markdown не
+коммитятся в implementation PR.
 
 ## Ограничения выводов
 
