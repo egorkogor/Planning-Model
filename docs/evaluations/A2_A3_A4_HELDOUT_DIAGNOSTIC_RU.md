@@ -2,8 +2,8 @@
 
 > Development-only diagnostic. Это не confirmatory experiment, не прохождение Stage 2A semantic gate, не доказательство semantic reasoning или superiority A3 и не разрешение A3b.
 
-- Evaluator source SHA256: `sha256:58d70e15558c78ec740942adbebf1d9746560025e188b0c0f86897cc82f67883`
-- Implementation commit: `f31abefe67a2945a0328a8af2129878505d14ec3`
+- Evaluator source SHA256: `sha256:9205ad312fc37fa9927505e9c44a599e29fc5e31180db9d2e49ebfcc247b4570`
+- Implementation commit: `779172c3bbca3d03552deaed6421e82fcf19a932`
 - Requirements lock: `sha256:883c8e262c6f3ea917239010be08ac0064ab67de70c1caad7bb98fe9f0b68401`
 - Runtime: `{"cuda_available": false, "cuda_version": null, "execution_device": "cpu", "numpy": "2.3.5", "python": "3.11.15", "torch": "2.12.0+cpu"}`
 - Evaluator: `development-quality-evaluation/0.1`
@@ -187,9 +187,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:b85f561e67f80fa66ed0b84cf5e63b4c32ff33d9e6eab1c7cb4ca0ae8b765ce0`
+Execution evidence hash: `sha256:17d905961303942b6cd5d3b4cd032dfd2dad97b2ef0543ed35c1f3a48c4801d3`
 
-Checkpoint hash: `sha256:c9bee3fc484e60042fc4d44bde0fbfb9bf3795989fe791fec21b59d5fc55d11f`
+Canonical checkpoint hash: `sha256:b8e88275a0fcf5e041fd157fc0b65de7161ec7485e74d47c67be594baedc5387`
 
 Execution: `[]`
 
@@ -211,9 +211,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:f3e8fcc62084294d9b72e7f62799acb9ee99aad47d9d141ad17105320997451e`
+Execution evidence hash: `sha256:d8a9b054689625cd30cf16b3f7c82bf74ada5595a7f63882e3da8cc6142b5f41`
 
-Checkpoint hash: `sha256:ccc75704dde7618dac6744a8ff23d74d124f0bd8803621a8268f9e1ac1a3b076`
+Canonical checkpoint hash: `sha256:5f9dfb4216b29101311dc709bc2392a7ade4711ebf63b289e61b662479513587`
 
 Execution: `[]`
 
@@ -235,9 +235,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:baa1dcb26e9d0d32485cb9b662c736b887a524c5929733abca231a64e47ee7dc`
+Execution evidence hash: `sha256:e46cb9a87cbc04a6ea102ee6e090b15d5383e883f5de805b461b79106f006413`
 
-Checkpoint hash: `sha256:5add7d18fb018944e7226b626a015fa04ea501600fabe991731fa0d01d0468d7`
+Canonical checkpoint hash: `sha256:3f0cb4ade2f990f3bdb478c23027d88ae18069379c42989414b075f88cbd2d33`
 
 Execution: `[]`
 
@@ -271,9 +271,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:b9e67a730559b57125543c55abae857bd9c62c42b2029a6f8a70f4aff4b33405`
+Execution evidence hash: `sha256:de6fa3845d333a29f11a2dd25167ea65de6831878f773bed820dde58d8bae10d`
 
-Checkpoint hash: `sha256:c9bee3fc484e60042fc4d44bde0fbfb9bf3795989fe791fec21b59d5fc55d11f`
+Canonical checkpoint hash: `sha256:b8e88275a0fcf5e041fd157fc0b65de7161ec7485e74d47c67be594baedc5387`
 
 Execution: `[]`
 
@@ -295,9 +295,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:e135a650c837cec03ab7846f7ae99b10d79cce758cd0c63c37f9c1e5c65b76e3`
+Execution evidence hash: `sha256:49c88f5706d7eb5f70ec4d336c7121ed4dea0f9e05087b0eca0d16ebba0adf2f`
 
-Checkpoint hash: `sha256:ccc75704dde7618dac6744a8ff23d74d124f0bd8803621a8268f9e1ac1a3b076`
+Canonical checkpoint hash: `sha256:5f9dfb4216b29101311dc709bc2392a7ade4711ebf63b289e61b662479513587`
 
 Execution: `[]`
 
@@ -319,9 +319,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:464538c0ad5185354a39584827eb5003c7063d1720d6c3559e4b7271d349afe7`
+Execution evidence hash: `sha256:dd0ba156de96fb6b77ceef7dd0d0012c0490c06f089b9b398d3cbe6e93a0c093`
 
-Checkpoint hash: `sha256:5add7d18fb018944e7226b626a015fa04ea501600fabe991731fa0d01d0468d7`
+Canonical checkpoint hash: `sha256:3f0cb4ade2f990f3bdb478c23027d88ae18069379c42989414b075f88cbd2d33`
 
 Execution: `[]`
 
@@ -355,9 +355,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:442772a5f5b35fd695bbe7e10911690c6ce4366f38bc01157af44023b1c2d6bd`
+Execution evidence hash: `sha256:17d905961303942b6cd5d3b4cd032dfd2dad97b2ef0543ed35c1f3a48c4801d3`
 
-Checkpoint hash: `sha256:9d720279ec79e7586b3a9011f37dd503d195db04def95434a72722b497724237`
+Canonical checkpoint hash: `sha256:ac2160b6f7ed1dc2d44797fbe7b0f4c25371c7a3ccfa558716f76bb970a5e7b3`
 
 Execution: `[]`
 
@@ -379,9 +379,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:d13a4344b8127e2f1f6d9c885a0a0232a390ba5619eef4c5d00b11bdb7be289a`
+Execution evidence hash: `sha256:a0109fb8834817a6a1da26e8bef51056929fb0388c77a53bfef75511798f6379`
 
-Checkpoint hash: `sha256:9a2a65fa9054189cd5f4c4ef83fe8363bc7a8b77191a63cf1fe95012eeb87fc7`
+Canonical checkpoint hash: `sha256:ef75f66fa542d4e8012a945e08337721f72a4a35222a0c7f9537665567a5ead4`
 
 Execution: `[]`
 
@@ -403,9 +403,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:2ff31631e8c8c4ea408fee86ee7c9439dc67831c9ea1627616eec06a7c74ae43`
+Execution evidence hash: `sha256:8c339eea3ade56f1b8eb887ddeaac8c2ca588f1e15c032658e8761b6feee9e5c`
 
-Checkpoint hash: `sha256:83340d5522ea4e60e535193a01581974331f303311068b712402e3263e135937`
+Canonical checkpoint hash: `sha256:c4209c89b520d41d8b38e0e9e6b36b4c647c0e040ee373d224361f9351fe967e`
 
 Execution: `[]`
 
@@ -439,9 +439,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:b90f490741d776d45bf5c16d1435c32c6d6b60ffe8a83eae18b5f1c35ef56735`
+Execution evidence hash: `sha256:de6fa3845d333a29f11a2dd25167ea65de6831878f773bed820dde58d8bae10d`
 
-Checkpoint hash: `sha256:9d720279ec79e7586b3a9011f37dd503d195db04def95434a72722b497724237`
+Canonical checkpoint hash: `sha256:ac2160b6f7ed1dc2d44797fbe7b0f4c25371c7a3ccfa558716f76bb970a5e7b3`
 
 Execution: `[]`
 
@@ -463,9 +463,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:703f17eff79c7f0aac97f49b8a4d0211aed1a588a2a80c39ca21c504beb83b21`
+Execution evidence hash: `sha256:15040e8b5c640c1e727ec19943d19d57f6930bead72cbbc651a44be2844109d8`
 
-Checkpoint hash: `sha256:9a2a65fa9054189cd5f4c4ef83fe8363bc7a8b77191a63cf1fe95012eeb87fc7`
+Canonical checkpoint hash: `sha256:ef75f66fa542d4e8012a945e08337721f72a4a35222a0c7f9537665567a5ead4`
 
 Execution: `[]`
 
@@ -487,9 +487,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:0ccfce36f67b26d4df02ed80164fbbd1bd789f4df21d382e577d051aca6f5098`
+Execution evidence hash: `sha256:dc50c604726c9b4e3bce71246120d3dfba39e1b404bb4e87c34cad1d643fbec1`
 
-Checkpoint hash: `sha256:83340d5522ea4e60e535193a01581974331f303311068b712402e3263e135937`
+Canonical checkpoint hash: `sha256:c4209c89b520d41d8b38e0e9e6b36b4c647c0e040ee373d224361f9351fe967e`
 
 Execution: `[]`
 
@@ -523,9 +523,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:b3c673cede48dd620f30b1c959e230b1c098b9612b724adb89541f9eededb622`
+Execution evidence hash: `sha256:17d905961303942b6cd5d3b4cd032dfd2dad97b2ef0543ed35c1f3a48c4801d3`
 
-Checkpoint hash: `sha256:1c2dcf4d70083f1259437e4482c84c20916afcf34910e4d1efd01c25be36dad1`
+Canonical checkpoint hash: `sha256:cd58fe996aac59671299a536b7b69116e3aa399a6cf936d6ff563f305bb000ff`
 
 Execution: `[]`
 
@@ -547,9 +547,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:083a89f5119111aa94c80313ffe3855fa460d72dc65e5342c151731f093a180d`
+Execution evidence hash: `sha256:4f557d52ac67fe0d0918365a9d49d9af1f0bb44196831fbcd345276b6184464f`
 
-Checkpoint hash: `sha256:41239e44bad9ddd550011b9706825b1d6af5eaf12a43d1bbabdc95b6b78ad8e5`
+Canonical checkpoint hash: `sha256:ce129e000cb0808175a801d5c0e0ec727387feb7709bc866678137985aa08d72`
 
 Execution: `[]`
 
@@ -571,9 +571,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:6a4b90387497e5ffdc5beee3f82ae3618a9d8bd3ae47d609e3fdbb72d5f98cbb`
+Execution evidence hash: `sha256:3f1a2cc3ca382bcf8a7fd5222236539d0f0e5ec7fcb9cf4775daca19565465da`
 
-Checkpoint hash: `sha256:04a69af34921558fafd3bd419505a0d2a0e5e23bf3bd94ec90160c5fa90d272c`
+Canonical checkpoint hash: `sha256:06f1ed3c065c6084ed67c049ee095d492f96fea788886fd511ac395d3984ab08`
 
 Execution: `[]`
 
@@ -607,9 +607,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:cac958a942367de958909d5ce2ab1a7a7040da78fc442c4a7943db2463ec9d76`
+Execution evidence hash: `sha256:de6fa3845d333a29f11a2dd25167ea65de6831878f773bed820dde58d8bae10d`
 
-Checkpoint hash: `sha256:1c2dcf4d70083f1259437e4482c84c20916afcf34910e4d1efd01c25be36dad1`
+Canonical checkpoint hash: `sha256:cd58fe996aac59671299a536b7b69116e3aa399a6cf936d6ff563f305bb000ff`
 
 Execution: `[]`
 
@@ -631,9 +631,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:35fbd325cd88e972aa84c67fd3f42713a9fd78bdc8bee0603714b90f70acfe85`
+Execution evidence hash: `sha256:0d5be41b3f86f096c811e7545bd6b6fdf54d7d364c8a150f367c704f31db47a1`
 
-Checkpoint hash: `sha256:41239e44bad9ddd550011b9706825b1d6af5eaf12a43d1bbabdc95b6b78ad8e5`
+Canonical checkpoint hash: `sha256:ce129e000cb0808175a801d5c0e0ec727387feb7709bc866678137985aa08d72`
 
 Execution: `[]`
 
@@ -655,9 +655,9 @@ Model forwards: `1`
 
 Generated/attempted/applicable: `0/0/0`
 
-Execution evidence hash: `sha256:d9f6958d6dadc3aa37ef74fbe9cb0be08c8197a5c93631878b481f38338f4722`
+Execution evidence hash: `sha256:371bb377f7d20a4aea9273b8837902c17c4b1fb7761ac4082e49d58d9e620fd4`
 
-Checkpoint hash: `sha256:04a69af34921558fafd3bd419505a0d2a0e5e23bf3bd94ec90160c5fa90d272c`
+Canonical checkpoint hash: `sha256:06f1ed3c065c6084ed67c049ee095d492f96fea788886fd511ac395d3984ab08`
 
 Execution: `[]`
 
@@ -674,7 +674,7 @@ Goal reached: `false`
 
 ## Ограничения
 
-Все failures включены в denominator. Hyperparameters не подбирались после просмотра held-out результата. A3a-shuffled, A3a-foreign, A3s, A3b и Verbalizer не реализованы.
+Все failures включены в denominator. Hyperparameters не подбирались после просмотра held-out результата. A3a-shuffled, A3a-foreign, A3s, A3b и Verbalizer не реализованы. Observed feedback application positions: 0. Observed nonzero feedback application positions: 0. Observed nonzero downstream semantic-component positions: 0. Because all runs terminated before a downstream semantic component was observed, this diagnostic is non-diagnostic for feedback-channel causality.
 
 ## Воспроизведение
 
