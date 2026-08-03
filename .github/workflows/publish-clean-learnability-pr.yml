@@ -1,0 +1,195 @@
+name: Publish clean learnability implementation
+
+on:
+  push:
+    branches:
+      - agent/a2-end-learnability-diagnostics
+
+permissions:
+  contents: write
+
+env:
+  OMP_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout staging branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/a2-end-learnability-diagnostics
+          path: staging
+          fetch-depth: 0
+      - name: Checkout clean branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/a2-end-learnability-diagnostics-clean
+          path: clean
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.15"
+          cache: pip
+          cache-dependency-path: clean/requirements.lock
+      - name: Apply implementation and review corrections
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            staging/.pr16-parts/part-00 \
+            staging/.pr16-parts/part-01 \
+            staging/.pr16-parts/part-02 \
+            staging/.pr16-parts/part-03 \
+            | base64 --decode > /tmp/pr16-implementation.tar.xz
+          printf '%s  %s\n' \
+            '6e2112583c3569ccb4d6c835c97baf5d7ab820105b7e24cda9578bb97349514e' \
+            '/tmp/pr16-implementation.tar.xz' | sha256sum --check --strict
+          tar -xJf /tmp/pr16-implementation.tar.xz -C clean
+          base64 --decode staging/.pr17-clean-implementation.patch.xz.b64 \
+            > /tmp/pr17-clean.patch.xz
+          printf '%s  %s\n' \
+            'd4c94125e06cdace807c6c7e591c1db3e15054a2255770690b53d14fe6ea3f85' \
+            '/tmp/pr17-clean.patch.xz' | sha256sum --check --strict
+          xz --decompress --stdout /tmp/pr17-clean.patch.xz > /tmp/pr17-clean.patch
+          cd clean
+          git apply --check /tmp/pr17-clean.patch
+          git apply /tmp/pr17-clean.patch
+          test ! -e planner_toy/learnability_diagnostic.schema.json
+          test -e planner_toy/schemas/toy_learnability_diagnostic.schema.json
+      - name: Install pinned runtime
+        working-directory: clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.lock
+          python -m pip install -e . --no-deps
+          python -m pip install torch==2.12.0+cpu \
+            --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e '.[ml]' --no-deps
+          python - <<'PY'
+          import platform
+          import torch
+          assert platform.python_version() == '3.11.15'
+          assert torch.__version__ == '2.12.0+cpu'
+          print('PINNED_RUNTIME_OK', platform.python_version(), torch.__version__)
+          PY
+      - name: Ruff fix and check
+        working-directory: clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruff check --fix \
+            planner_toy/learnability.py \
+            scripts/run_toy_learnability_diagnostic.py \
+            tests/toy/test_learnability_diagnostic.py
+          ruff check .
+      - name: Rebuild release manifest
+        working-directory: clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp release/BOOTSTRAP_MANIFEST.json /tmp/bootstrap-manifest-before.json
+          python scripts/build_release_manifest.py
+          if cmp -s release/BOOTSTRAP_MANIFEST.json /tmp/bootstrap-manifest-before.json; then
+            echo 'BOOTSTRAP_MANIFEST_UNCHANGED'
+          else
+            echo 'BOOTSTRAP_MANIFEST_CHANGED_BY_GENERATOR'
+          fi
+      - name: Targeted learnability tests
+        working-directory: clean
+        run: python -m pytest -q tests/toy/test_learnability_diagnostic.py
+      - name: Relevant regression tests
+        working-directory: clean
+        run: |
+          python -m pytest -q \
+            tests/toy/test_a2_e2e.py \
+            tests/toy/test_quality_evaluation.py \
+            tests/toy/test_quality_determinism.py
+      - name: Full toy suite
+        working-directory: clean
+        run: python -m pytest -q tests/toy
+      - name: Repository per-file suite
+        working-directory: clean
+        run: |
+          python validation/run_test_suite.py \
+            --timeout-per-file 120 \
+            --log-dir .pytest-tmp/logs
+      - name: Manifest, bundle, compile and frozen-artifact checks
+        working-directory: clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          python validation/verify_release_manifest.py
+          python validation/validate_bundle.py --skip-nested-pytest
+          python -m py_compile \
+            planner_toy/learnability.py \
+            scripts/run_toy_learnability_diagnostic.py
+          ruff check .
+          git diff --check
+          printf '%s  %s\n' \
+            '133b3be3ec0d1a9d1025c32ddd60413344cea03bd4acb84eb8b60cc0e3a46df1' \
+            'docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md' \
+            '0a9c0cb0ee98fa4d458cb0a6fafa2e9e78bb0771a223d46a035f458c566df050' \
+            'docs/evaluations/data/a2_a3_a4_heldout_summary.json' \
+            'a1392b21961c728c7b4fa8686d6d095a345dc319fdfeec2b1e47eaaccb9b754a' \
+            'docs/evaluations/A2_A3_A4_V0_1_DECISION_RU.md' \
+            '169ccc4efc6307bef09f9367c9cd4dc3f1b8f7cf529811475439454b5bc37ac9' \
+            '.github/workflows/ci.yml' | sha256sum --check --strict
+      - name: Commit clean implementation
+        working-directory: clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .pytest-tmp .pytest_cache
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          find . -type f -name '*.pyc' -delete
+          git add \
+            planner_toy/learnability.py \
+            planner_toy/schemas/toy_learnability_diagnostic.schema.json \
+            scripts/run_toy_learnability_diagnostic.py \
+            tests/toy/test_learnability_diagnostic.py \
+            docs/evaluations/A2_END_COLLAPSE_DIAGNOSTIC_SPEC_RU.md
+          if ! git diff --quiet -- release/BOOTSTRAP_MANIFEST.json; then
+            git add release/BOOTSTRAP_MANIFEST.json
+          fi
+          python - <<'PY'
+          import subprocess
+
+          required = {
+              'planner_toy/learnability.py',
+              'planner_toy/schemas/toy_learnability_diagnostic.schema.json',
+              'scripts/run_toy_learnability_diagnostic.py',
+              'tests/toy/test_learnability_diagnostic.py',
+              'docs/evaluations/A2_END_COLLAPSE_DIAGNOSTIC_SPEC_RU.md',
+          }
+          allowed = required | {'release/BOOTSTRAP_MANIFEST.json'}
+          actual = set(subprocess.check_output(
+              ['git', 'diff', '--cached', '--name-only'], text=True
+          ).splitlines())
+          if not required <= actual or not actual <= allowed:
+              raise SystemExit(
+                  f'bad staged scope: missing={sorted(required-actual)} '
+                  f'extra={sorted(actual-allowed)}'
+              )
+          forbidden = {
+              '.github/workflows/pr16-export.yml',
+              '.github/workflows/pr16-lint-finalize.yml',
+              '.pr16-parts',
+              '.pr16-trigger',
+              'planner_toy/learnability_diagnostic.schema.json',
+          }
+          if actual & forbidden:
+              raise SystemExit(f'forbidden staged paths: {sorted(actual & forbidden)}')
+          print('STAGED_PATHS', *sorted(actual), sep='\n')
+          PY
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Add A2 END-only learnability diagnostics'
+          git push origin HEAD:agent/a2-end-learnability-diagnostics-clean
