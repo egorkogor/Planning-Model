@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/a2-end-learnability-diagnostics
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -14,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/a2-end-learnability-diagnostics
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Decode implementation payload
         shell: bash
         run: |
