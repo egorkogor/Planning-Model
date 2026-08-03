@@ -18,14 +18,21 @@ from planner_toy.learnability import (
     FIRST_ERROR_CATEGORIES,
     OUTPUT_JSON,
     OUTPUT_MARKDOWN,
+    _artifact_identity,
     _dataset_context,
+    _gold_history_projection,
     _pipeline_replay,
     _train_a2_with_loss_trace,
     _TrainingLossObserver,
+    aggregate_free_running,
+    aggregate_history_modes,
+    aggregate_loss_breakdown,
     aggregate_teacher_forced,
     classify_first_error,
+    diagnostic_source_identity_at_commit,
     executable_prefix,
     free_running_task,
+    implementation_provenance,
     render_markdown,
     run,
     teacher_forced_task,
@@ -45,7 +52,30 @@ from planner_toy.quality import (
 )
 from planner_toy.training import ACTIONS, labels, state_dict_sha256
 
-IMPLEMENTATION = "a" * 40
+REPOSITORY = Path(__file__).parents[2]
+IMPLEMENTATION = subprocess.check_output(
+    ["git", "rev-parse", "HEAD"], cwd=REPOSITORY, text=True
+).strip()
+HISTORICAL_QUALITY_IMPLEMENTATION = "779172c3bbca3d03552deaed6421e82fcf19a932"
+
+
+def _reseal(payload: dict) -> None:
+    payload["aggregates"]["teacher_forced"] = aggregate_teacher_forced(
+        payload["teacher_forced"]
+    )
+    payload["aggregates"]["free_running"] = aggregate_free_running(
+        payload["free_running"]
+    )
+    payload["aggregates"]["history_mode_comparison"] = aggregate_history_modes(
+        payload["teacher_forced"], payload["free_running"]
+    )
+    payload["aggregates"]["loss_breakdown"] = aggregate_loss_breakdown(
+        payload["per_update_loss_breakdown"]
+    )
+    payload["first_error_distribution"] = payload["aggregates"]["free_running"][
+        "overall"
+    ]["first_error_distribution"]
+    payload["canonical_identity"] = _artifact_identity(payload)
 
 
 class ScriptedA2(torch.nn.Module):
@@ -107,7 +137,7 @@ def smoke_root(tmp_path_factory):
         root,
         implementation_commit=IMPLEMENTATION,
         seeds=(17,),
-        task_ids=("bw-00000001",),
+        task_ids=("bw-00000002",),
     )
     return root
 
@@ -119,7 +149,7 @@ def second_smoke_root(tmp_path_factory):
         root,
         implementation_commit=IMPLEMENTATION,
         seeds=(17,),
-        task_ids=("bw-00000001",),
+        task_ids=("bw-00000002",),
     )
     return root
 
@@ -185,6 +215,37 @@ def test_pointer_denominators_exclude_end_positions(train_rows) -> None:
     assert end["arg1_correct"] is None
     assert end["predicted_arg2"] is None
     assert end["arg2_correct"] is None
+
+
+def test_gold_history_metrics_keep_all_positions_after_early_end(train_rows) -> None:
+    row = next(row for row in train_rows if row["task_id"] == "bw-00000003")
+    action_ids = [ACTIONS["END"]] + [
+        ACTIONS[step[0]] for step in row["oracle_work_plan"][1:]
+    ]
+    teacher = teacher_forced_task(
+        ScriptedA2(action_ids), row, split="train", seed=17
+    )
+    projected = _gold_history_projection(teacher, row)
+    free = free_running_task(
+        ScriptedA2([ACTIONS["END"]]), row, split="train", seed=17
+    )
+    comparison = aggregate_history_modes([teacher], [free])["gold_history"]
+    expected_operator_correct = sum(
+        position["operator_correct"] for position in teacher["positions"]
+    )
+    expected_joint_correct = sum(
+        position["joint_step_correct"] for position in teacher["positions"]
+    )
+    assert comparison["predicted_position_count"] == len(row["oracle_work_plan"])
+    assert comparison["operator_accuracy"] == pytest.approx(
+        expected_operator_correct / len(row["oracle_work_plan"])
+    )
+    assert comparison["joint_step_accuracy"] == pytest.approx(
+        expected_joint_correct / len(row["oracle_work_plan"])
+    )
+    assert projected["predicted_plan"] == [["END"]]
+    assert projected["first_mismatch_type"] == "EARLY_END"
+    assert projected["first_mismatch_position"] == 0
 
 
 def test_joint_step_requires_operator_and_arguments(train_rows) -> None:
@@ -314,6 +375,60 @@ def test_smoke_artifact_passes_schema_and_semantic_validation(smoke_root) -> Non
     result = validate_diagnostic(smoke_root)
     assert result["valid"] is True
     assert result["diagnostic_complete"] is False
+
+
+def test_nonexistent_full_sha_is_rejected() -> None:
+    with pytest.raises(
+        ValueError, match="LEARNABILITY_IMPLEMENTATION_COMMIT_NOT_FOUND"
+    ):
+        diagnostic_source_identity_at_commit("f" * 40)
+
+
+def test_reachable_commit_without_diagnostic_sources_is_rejected() -> None:
+    with pytest.raises(
+        ValueError, match="LEARNABILITY_IMPLEMENTATION_SOURCE_MISSING"
+    ):
+        diagnostic_source_identity_at_commit(HISTORICAL_QUALITY_IMPLEMENTATION)
+
+
+def test_source_identity_and_requirements_are_read_from_implementation_tree() -> None:
+    provenance = implementation_provenance(IMPLEMENTATION)
+    for entry in provenance["diagnostic_source_files"]:
+        source_bytes = subprocess.check_output(
+            ["git", "show", f"{IMPLEMENTATION}:{entry['path']}"], cwd=REPOSITORY
+        )
+        assert entry["sha256"] == "sha256:" + hashlib.sha256(source_bytes).hexdigest()
+    requirements = subprocess.check_output(
+        ["git", "show", f"{IMPLEMENTATION}:requirements.lock"], cwd=REPOSITORY
+    )
+    assert provenance["requirements_lock_sha256"] == (
+        "sha256:" + hashlib.sha256(requirements).hexdigest()
+    )
+
+
+def test_validator_uses_implementation_tree_not_working_tree(
+    smoke_root, monkeypatch
+) -> None:
+    payload = json.loads((smoke_root / OUTPUT_JSON).read_text())
+
+    def forbidden_current_identity():
+        raise AssertionError("current working-tree identity must not be consulted")
+
+    monkeypatch.setattr(
+        "planner_toy.learnability.diagnostic_source_identity",
+        forbidden_current_identity,
+    )
+    validate_payload(payload, root=smoke_root)
+
+
+def test_resealed_implementation_commit_substitution_is_rejected(smoke_root) -> None:
+    payload = json.loads((smoke_root / OUTPUT_JSON).read_text())
+    payload["implementation_commit"] = HISTORICAL_QUALITY_IMPLEMENTATION
+    _reseal(payload)
+    with pytest.raises(
+        ValueError, match="LEARNABILITY_IMPLEMENTATION_SOURCE_MISSING"
+    ):
+        validate_payload(payload, root=smoke_root)
 
 
 def test_schema_violation_uses_public_value_error_contract(smoke_root) -> None:
@@ -464,6 +579,91 @@ def test_repeated_smoke_runs_are_byte_identical(smoke_root, second_smoke_root) -
     assert (smoke_root / OUTPUT_MARKDOWN).read_bytes() == (
         second_smoke_root / OUTPUT_MARKDOWN
     ).read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_code"),
+    [
+        (
+            lambda payload: payload["teacher_forced"][0]["positions"][0].update(
+                {
+                    "operator_correct": not payload["teacher_forced"][0][
+                        "positions"
+                    ][0]["operator_correct"]
+                }
+            ),
+            "LEARNABILITY_TEACHER_OPERATOR_CORRECT_MISMATCH",
+        ),
+        (
+            lambda payload: payload["teacher_forced"][0]["positions"][0].update(
+                {
+                    "arg1_correct": not payload["teacher_forced"][0]["positions"][0][
+                        "arg1_correct"
+                    ]
+                }
+            ),
+            "LEARNABILITY_TEACHER_ARG1_CORRECT_MISMATCH",
+        ),
+        (
+            lambda payload: payload["teacher_forced"][0]["positions"][0].update(
+                {
+                    "joint_step_correct": not payload["teacher_forced"][0][
+                        "positions"
+                    ][0]["joint_step_correct"]
+                }
+            ),
+            "LEARNABILITY_TEACHER_JOINT_CORRECT_MISMATCH",
+        ),
+        (
+            lambda payload: payload["teacher_forced"][0]["positions"][-1].update(
+                {
+                    "end_correct": not payload["teacher_forced"][0]["positions"][-1][
+                        "end_correct"
+                    ]
+                }
+            ),
+            "LEARNABILITY_TEACHER_END_CORRECT_MISMATCH",
+        ),
+        (
+            lambda payload: payload["free_running"][0].update(
+                {"predicted_plan": [["PICK_UP", "@B0"], ["END"]]}
+            ),
+            "LEARNABILITY_PREDICTED_PLAN_MISMATCH",
+        ),
+        (
+            lambda payload: payload["free_running"][0].update(
+                {
+                    "predicted_pre_end_action_count": payload["free_running"][0][
+                        "predicted_pre_end_action_count"
+                    ]
+                    + 1
+                }
+            ),
+            "LEARNABILITY_PREDICTED_PRE_END_COUNT_MISMATCH",
+        ),
+        (
+            lambda payload: payload["free_running"][0].update(
+                {"failure_code": "PLAN_PARSE_ERROR"}
+            ),
+            "LEARNABILITY_FAILURE_CODE_MISMATCH",
+        ),
+        (
+            lambda payload: payload["free_running"][0].update(
+                {"parser_success": not payload["free_running"][0]["parser_success"]}
+            ),
+            "LEARNABILITY_PARSER_SUCCESS_MISMATCH",
+        ),
+    ],
+)
+def test_resealed_derived_metric_mutations_are_rejected(
+    smoke_root, mutation, error_code
+) -> None:
+    payload = json.loads((smoke_root / OUTPUT_JSON).read_text())
+    mutation(payload)
+    _reseal(payload)
+    assert payload["canonical_identity"] == _artifact_identity(payload)
+    with pytest.raises(ValueError, match=error_code):
+        validate_payload(payload, root=smoke_root)
 
 
 def test_mutated_artifact_is_rejected(smoke_root) -> None:

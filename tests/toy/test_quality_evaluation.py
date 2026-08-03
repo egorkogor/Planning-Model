@@ -19,14 +19,65 @@ from planner_toy.e2e import (
 from planner_toy.model import LockedPlanner
 from planner_toy.quality import (
     MAPPING,
+    SOURCE_FILES,
     _validate_optimizer_state,
     export_compact,
     paired,
     run,
+    source_identity_at_commit,
     state_dict_sha256,
     summarize,
     validate_evaluation,
     validate_task_result_semantics,
+)
+
+HISTORICAL_QUALITY_IMPLEMENTATION = "779172c3bbca3d03552deaed6421e82fcf19a932"
+EXPECTED_QUALITY_V0_1_SOURCE_FILES = (
+    'docs/architecture/planner_module_inventory_v1.yaml',
+    'docs/architecture/task_encoding_v1.yaml',
+    'planner_toy/canonical.py',
+    'planner_toy/canonical_runtime.py',
+    'planner_toy/dataset.py',
+    'planner_toy/domain.py',
+    'planner_toy/e2e.py',
+    'planner_toy/model.py',
+    'planner_toy/numeric_identity.py',
+    'planner_toy/quality.py',
+    'planner_toy/schemas/toy_attempt_log.schema.json',
+    'planner_toy/schemas/toy_checkpoint_manifest.schema.json',
+    'planner_toy/schemas/toy_development_config.schema.json',
+    'planner_toy/schemas/toy_episode_log.schema.json',
+    'planner_toy/schemas/toy_episode_plan_manifest.schema.json',
+    'planner_toy/schemas/toy_evaluation_result.schema.json',
+    'planner_toy/schemas/toy_optimizer_evidence.schema.json',
+    'planner_toy/schemas/toy_planner_request.schema.json',
+    'planner_toy/schemas/toy_quality_aggregate_summary.schema.json',
+    'planner_toy/schemas/toy_quality_attempt_log.schema.json',
+    'planner_toy/schemas/toy_quality_checkpoint_manifest.schema.json',
+    'planner_toy/schemas/toy_quality_compact_summary.schema.json',
+    'planner_toy/schemas/toy_quality_dataset_manifest.schema.json',
+    'planner_toy/schemas/toy_quality_episode_log.schema.json',
+    'planner_toy/schemas/toy_quality_episode_plan_manifest.schema.json',
+    'planner_toy/schemas/toy_quality_evaluation.schema.json',
+    'planner_toy/schemas/toy_quality_evaluation_manifest.schema.json',
+    'planner_toy/schemas/toy_quality_evaluation_result.schema.json',
+    'planner_toy/schemas/toy_quality_optimizer_evidence.schema.json',
+    'planner_toy/schemas/toy_quality_paired_comparison.schema.json',
+    'planner_toy/schemas/toy_quality_per_seed_summary.schema.json',
+    'planner_toy/schemas/toy_quality_planner_request.schema.json',
+    'planner_toy/schemas/toy_quality_semantic_trace.schema.json',
+    'planner_toy/schemas/toy_quality_structural_breakdown.schema.json',
+    'planner_toy/schemas/toy_quality_task_result.schema.json',
+    'planner_toy/schemas/toy_quality_training_config.schema.json',
+    'planner_toy/schemas/toy_quality_training_report.schema.json',
+    'planner_toy/schemas/toy_quality_work_plan.schema.json',
+    'planner_toy/schemas/toy_run_result.schema.json',
+    'planner_toy/schemas/toy_semantic_trace.schema.json',
+    'planner_toy/schemas/toy_training_report.schema.json',
+    'planner_toy/schemas/toy_work_plan.schema.json',
+    'planner_toy/semantic.py',
+    'planner_toy/training.py',
+    'scripts/run_toy_quality_evaluation.py',
 )
 
 
@@ -130,6 +181,19 @@ def rewrite_quality_lineage_hashes(root: Path) -> None:
     evaluation["attempt_log_hash"] = file_hash(root / "attempt-log.jsonl")
     evaluation["episode_log_hash"] = file_hash(root / "episode-log.json")
     evaluation_path.write_bytes(canonical_bytes(evaluation) + b"\n")
+
+
+
+def test_quality_v0_1_source_inventory_is_exact_and_owned() -> None:
+    assert SOURCE_FILES == EXPECTED_QUALITY_V0_1_SOURCE_FILES
+    assert (
+        "planner_toy/schemas/toy_learnability_diagnostic.schema.json"
+        not in SOURCE_FILES
+    )
+    historical = source_identity_at_commit(HISTORICAL_QUALITY_IMPLEMENTATION)
+    assert tuple(
+        entry["path"] for entry in historical["evaluator_source_files"]
+    ) == EXPECTED_QUALITY_V0_1_SOURCE_FILES
 
 
 def test_common_initialization_is_byte_identical() -> None:

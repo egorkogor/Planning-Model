@@ -62,8 +62,24 @@ non-held-out development validation split является явным огран
 - pointer correctness;
 - joint exact-step correctness.
 
-Pointer denominator включает только позиции с определённым target. Для `END` pointer-поля
-равны `null`.
+Pointer denominator включает только позиции с определённым target. Predicted pointer-поля
+следуют arity предсказанного operator: для predicted `END` оба pointer-поля равны `null`,
+для unary operator заполнен только `arg1`, для binary operator заполнены `arg1` и `arg2`.
+Correctness pointer-поля остаются `null`, если соответствующего gold target нет.
+
+## Gold-history one-step и projected-plan metrics
+
+Gold-history диагностика разделяет две разные сущности.
+
+`gold-history one-step metrics` включают все позиции gold plan. На каждой позиции модель
+получает правильный gold prefix, а denominator operator/joint metrics равен полному числу
+gold positions. Ранний predicted `END` на одной позиции не удаляет predictions последующих
+позиций.
+
+`gold-history projected plan metrics` интерпретируют те же one-step predictions как один
+последовательный план. Для exact-plan match, executable prefix, goal success, predicted action
+count и first-error classification projected plan заканчивается на первом predicted `END`.
+Поэтому ранний `END` сохраняет `EARLY_END`, но не сокращает denominator one-step metrics.
 
 ## Free-running mode
 
@@ -149,10 +165,35 @@ optimizer identities, per-update losses, teacher-forced/free-running diagnostics
 aggregates, first-error distribution и invariance evidence. Markdown является
 детерминированным rendering JSON.
 
+Переданный полный `--implementation-commit` проверяется fail-closed: commit должен
+существовать, быть доступным и являться ancestor текущего results checkout, а его tree должен
+содержать `requirements.lock` и все diagnostic `SOURCE_FILES`. Source hashes, aggregate
+`diagnostic_source_sha256` и `requirements_lock_sha256` вычисляются из bytes implementation
+tree через `git show <commit>:<path>`, а не из текущего working tree. Validator повторяет
+этот расчёт по `payload["implementation_commit"]`, поэтому historical artifact не привязан к
+случайному состоянию текущего checkout.
+
 Schema хранится только в `planner_toy/schemas/toy_learnability_diagnostic.schema.json`.
+Она не входит в immutable source inventory quality-v0.1: quality subsystem использует явный
+historical список принадлежащих ему schemas вместо широкого `toy_*.schema.json` glob.
 
 Generated JSON/Markdown не коммитятся в implementation PR. После code freeze внешний
 reviewer передаёт remote-reachable implementation SHA и выполняет отдельную results-фазу.
+
+
+## Semantic validation derived fields
+
+Validator независимо восстанавливает derived metrics из persisted primitive fields.
+
+Для teacher-forced rows пересчитываются operator, END, arg1, arg2 и joint correctness,
+operator arity, target flags и operator NLL. Для free-running rows из
+`predicted_history_positions` восстанавливается raw predicted plan и проверяются termination,
+model-forward coverage, parser status, generation failure, failure code, counts, exact match,
+executable-prefix и first-error semantics. Persisted booleans не используются как источник
+истины.
+
+Adversarial tests изменяют derived values, заново считают aggregates и `canonical_identity`,
+после чего validator всё равно отклоняет artifact стабильным `ValueError` code.
 
 ## Ограничения выводов
 
