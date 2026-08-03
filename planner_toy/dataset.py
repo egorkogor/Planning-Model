@@ -80,9 +80,9 @@ def generate(seed: int = 17) -> dict:
 def generate_train_only(seed: int = 17) -> dict:
     """Materialize only the frozen seed-17 training split.
 
-    The helper intentionally never builds task serials 4 or 5.  The full-dataset
+    The helper intentionally never builds task serials 4 or 5. The full-dataset
     lineage hash is an immutable compatibility constant; it is not recomputed by
-    reading held-out rows.
+    reading held-out rows. Returned rows retain their historical shuffled order.
     """
     if seed != 17:
         raise ValueError("TOY_TRAIN_ONLY_SEED_UNSUPPORTED")
