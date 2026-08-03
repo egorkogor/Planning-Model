@@ -176,10 +176,11 @@ tree через `git show <commit>:<path>`, а не из текущего workin
 Schema хранится только в `planner_toy/schemas/toy_learnability_diagnostic.schema.json`.
 Она не входит в immutable source inventory quality-v0.1: quality subsystem использует явный
 historical список принадлежащих ему schemas вместо широкого `toy_*.schema.json` glob.
+Regression test фиксирует точный historical inventory из 45 файлов, его aggregate source hash
+и успешное чтение source identity из implementation commit `779172c3...`.
 
 Generated JSON/Markdown не коммитятся в implementation PR. После code freeze внешний
 reviewer передаёт remote-reachable implementation SHA и выполняет отдельную results-фазу.
-
 
 ## Semantic validation derived fields
 
