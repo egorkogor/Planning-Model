@@ -27,6 +27,10 @@
 
 Предыдущая архитектура не была бесполезной или полностью неверной: она была достаточна для технического MVP A2 и начала A3 и проверяла, можно ли добавить latent feedback path. Однако она недостаточно строго описывала claim-bearing semantic bottleneck. Расширенная архитектура не отменяет A2 или текущий A3; она отделяет технический channel prototype от semantic experiment и делает более сильную гипотезу причинно проверяемой и опровержимой. Результатом проверки может быть как `GO`, так и `STOP/REDESIGN`.
 
+Non-normative status note: [Development Quality Evaluation v0.1](../evaluations/A2_A3_A4_V0_1_DECISION_RU.md) завершена с решением `REDESIGN`. Текущий `A3a-codebook` остаётся только channel prototype; зафиксированный v0.1 setup воспроизвёл `END-only` behavior и не прошёл Stage 2A semantic gate. `A3b` остаётся gated. Следующая обязательная стадия — Development Learnability Gate для structured baseline.
+
+Эта ссылка фиксирует historical development result и не делает roadmap нормативным, не изменяет scientific lock и не вводит новые experiment obligations.
+
 Исходный технический вопрос:
 
 > Можно ли добавить латентный вектор шага и использовать его при вычислении следующего шага?
