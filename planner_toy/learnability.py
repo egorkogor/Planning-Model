@@ -40,15 +40,17 @@ from .e2e import (
 )
 from .model import LockedPlanner, canonical_task_encoding
 from .numeric_identity import (
+    TORCH_OBJECT_ENCODING_VERSION,
     canonical_state_dict_sha256,
     canonical_torch_object_sha256,
-    TORCH_OBJECT_ENCODING_VERSION,
     exact_torch_object_sha256,
 )
 from .quality import (
     _optimizer_parameter_policy,
-    _train as _quality_train,
     _validate_optimizer_state,
+)
+from .quality import (
+    _train as _quality_train,
 )
 from .training import ACTIONS, labels, state_dict_sha256
 

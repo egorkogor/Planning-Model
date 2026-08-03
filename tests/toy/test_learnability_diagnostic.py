@@ -17,7 +17,6 @@ import torch.nn.functional as F
 from planner_toy.canonical import canonical_bytes, sha256
 from planner_toy.dataset import (
     FROZEN_DATASET_LINEAGE_HASH_V1,
-    _build_task_row,
     generate,
     generate_train_only,
 )
@@ -1049,7 +1048,12 @@ def test_resealed_implementation_commit_substitution_is_rejected(smoke_root) -> 
         ),
         (
             lambda payload: payload["free_running"][0].update(
-                {"predicted_pre_end_action_count": payload["free_running"][0]["predicted_pre_end_action_count"] + 1}
+                {
+                    "predicted_pre_end_action_count": payload["free_running"][0][
+                        "predicted_pre_end_action_count"
+                    ]
+                    + 1
+                }
             ),
             "LEARNABILITY_PREDICTED_PRE_END_COUNT_MISMATCH",
         ),
