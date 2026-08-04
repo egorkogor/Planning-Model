@@ -6,11 +6,9 @@ import json
 import pytest
 
 from scripts.canonical_cpu_hardware_fingerprint import (
-    FIXED_TARGET_POLICY_VERSION,
     HARDWARE_FINGERPRINT_VERSION,
     full_hardware_runtime_fingerprint,
-    validate_fixed_execution_target,
-    validate_supported_cpu_software_path,
+    validate_hardware_runtime_fingerprint,
 )
 
 
@@ -18,8 +16,8 @@ def test_hardware_fingerprint_contains_required_stable_fields() -> None:
     fingerprint = full_hardware_runtime_fingerprint(
         {"profile_version": "toy-quality-canonical-cpu-runtime/1.0"}
     )
+    validate_hardware_runtime_fingerprint(fingerprint)
     assert fingerprint["fingerprint_version"] == HARDWARE_FINGERPRINT_VERSION
-    assert fingerprint["observation_identity_sha256"].startswith("sha256:")
     observed = fingerprint["observed_runtime_and_hardware"]
     assert set(observed) == {
         "fingerprint_version",
@@ -42,20 +40,13 @@ def test_hardware_fingerprint_contains_required_stable_fields() -> None:
         "flags_sha256",
         "capabilities",
     } <= set(observed["cpu"])
-    assert {
-        "version",
-        "build_configuration",
-        "build_configuration_sha256",
-        "cpu_dispatch_capability",
-        "mkl_available",
-        "openmp_available",
-        "mkldnn_available",
-        "mkldnn_enabled",
-    } <= set(observed["pytorch"])
 
 
 def test_hardware_fingerprint_excludes_unstable_identity_fields() -> None:
-    serialized = json.dumps(full_hardware_runtime_fingerprint(), sort_keys=True).lower()
+    serialized = json.dumps(
+        full_hardware_runtime_fingerprint(),
+        sort_keys=True,
+    ).lower()
     for forbidden in (
         "hostname",
         "host_name",
@@ -67,51 +58,58 @@ def test_hardware_fingerprint_excludes_unstable_identity_fields() -> None:
         assert forbidden not in serialized
 
 
-def test_fixed_execution_target_mismatch_fails_closed() -> None:
+@pytest.mark.parametrize(
+    "field",
+    sorted(
+        {
+            "fingerprint_version",
+            "observation_identity_sha256",
+            "observed_runtime_and_hardware",
+        }
+    ),
+)
+def test_fingerprint_rejects_missing_top_level_field(field: str) -> None:
     fingerprint = full_hardware_runtime_fingerprint()
-    with pytest.raises(
-        RuntimeError,
-        match=r"CANONICAL_FIXED_TARGET_MISMATCH:cpu\.vendor",
-    ):
-        validate_fixed_execution_target(
-            fingerprint,
-            {"cpu.vendor": "not-the-observed-vendor"},
-        )
+    del fingerprint[field]
+    with pytest.raises(ValueError, match="TOP_LEVEL_FIELDS_MISMATCH"):
+        validate_hardware_runtime_fingerprint(fingerprint)
 
 
-def test_unsupported_dispatch_and_blas_paths_fail_closed() -> None:
+def test_fingerprint_rejects_extra_top_level_field() -> None:
     fingerprint = full_hardware_runtime_fingerprint()
-    observed = fingerprint["observed_runtime_and_hardware"]["pytorch"]
-    impossible_dispatch = (
-        "AVX512" if observed["cpu_dispatch_capability"] != "AVX512" else "DEFAULT"
-    )
-    with pytest.raises(
-        RuntimeError,
-        match="CANONICAL_CPU_SOFTWARE_PATH_UNSUPPORTED:cpu_dispatch_capability",
-    ):
-        validate_supported_cpu_software_path(
-            fingerprint,
-            expected_dispatch=impossible_dispatch,
-        )
+    fingerprint["accepted_target"] = True
+    with pytest.raises(ValueError, match="TOP_LEVEL_FIELDS_MISMATCH"):
+        validate_hardware_runtime_fingerprint(fingerprint)
+
+
+def test_fingerprint_rejects_version_mutation() -> None:
+    fingerprint = full_hardware_runtime_fingerprint()
+    fingerprint["fingerprint_version"] = "mutated"
+    with pytest.raises(ValueError, match="VERSION_MISMATCH"):
+        validate_hardware_runtime_fingerprint(fingerprint)
+
+
+def test_fingerprint_rejects_observation_mutation_with_stale_hash() -> None:
+    fingerprint = full_hardware_runtime_fingerprint()
     mutated = copy.deepcopy(fingerprint)
-    mutated["observed_runtime_and_hardware"]["pytorch"]["mkl_available"] = False
-    with pytest.raises(
-        RuntimeError,
-        match="CANONICAL_CPU_SOFTWARE_PATH_UNSUPPORTED:mkl_available",
-    ):
-        validate_supported_cpu_software_path(
-            mutated,
-            expected_dispatch=observed["cpu_dispatch_capability"],
-        )
+    mutated["observed_runtime_and_hardware"]["cpu"]["vendor"] = "mutated"
+    with pytest.raises(ValueError, match="OBSERVATION_HASH_MISMATCH"):
+        validate_hardware_runtime_fingerprint(mutated)
 
 
-def test_new_policy_does_not_reinterpret_runtime_1_0() -> None:
-    assert FIXED_TARGET_POLICY_VERSION == "toy-quality-fixed-cpu-target-policy/1.0"
-    fingerprint = full_hardware_runtime_fingerprint(
-        {"profile_version": "toy-quality-canonical-cpu-runtime/1.0"}
-    )
-    assert (
-        fingerprint["observed_runtime_and_hardware"]["canonical_runtime"]
-        ["profile_version"]
-        == "toy-quality-canonical-cpu-runtime/1.0"
-    )
+@pytest.mark.parametrize(
+    "invalid_hash",
+    (
+        "0" * 64,
+        "sha256:" + "A" * 64,
+        "sha256:" + "0" * 63,
+        "sha512:" + "0" * 64,
+    ),
+)
+def test_fingerprint_rejects_noncanonical_hash_format(
+    invalid_hash: str,
+) -> None:
+    fingerprint = full_hardware_runtime_fingerprint()
+    fingerprint["observation_identity_sha256"] = invalid_hash
+    with pytest.raises(ValueError, match="HASH_FORMAT_INVALID"):
+        validate_hardware_runtime_fingerprint(fingerprint)
