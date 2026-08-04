@@ -1,0 +1,35 @@
+name: Fix Runtime Sentinel Shape
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]' && github.head_ref == 'agent/pin-canonical-cpu-execution-identity'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/pin-canonical-cpu-execution-identity
+      - name: Apply correction
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('planner_toy/canonical_runtime.py')
+          text = path.read_text()
+          old = 'logits = F.linear(contextual, projection_weight[:, :16])'
+          new = 'logits = F.linear(contextual, projection_weight.T)'
+          if text.count(old) != 1:
+              raise SystemExit('expected sentinel expression not found exactly once')
+          path.write_text(text.replace(old, new))
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add planner_toy/canonical_runtime.py
+          git commit -m 'Fix canonical sentinel projection shape'
+          git push origin HEAD:agent/pin-canonical-cpu-execution-identity
