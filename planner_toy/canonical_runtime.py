@@ -65,48 +65,51 @@ def _tensor_hashes(values: dict[str, torch.Tensor]) -> str:
     return "sha256:" + digest.hexdigest()
 
 
-def canonical_execution_sentinel_hash() -> str:
-    """Exercise representative forward, backward, clipping, and AdamW CPU paths."""
-    left = (
-        (torch.arange(0, 48 * 64, dtype=torch.float32).reshape(48, 64) % 37) - 18
-    ) / 17
-    right = (
-        (torch.arange(0, 64 * 40, dtype=torch.float32).reshape(64, 40) % 29) - 14
-    ) / 13
-    bias = ((torch.arange(40, dtype=torch.float32) % 11) - 5) / 7
-    left.requires_grad_(True)
-    right.requires_grad_(True)
-    bias.requires_grad_(True)
-
-    addmm = torch.addmm(bias, left, right)
-    normalized = F.layer_norm(addmm, (addmm.shape[-1],))
-    probabilities = torch.softmax(normalized[:, :17], dim=-1)
-    loss = (
-        probabilities.square().sum()
-        + normalized[:, 17:].sin().mean()
-        + addmm[:, ::3].cos().mean()
+def canonical_execution_sentinel_evidence() -> dict[str, str]:
+    """Exercise only kernels that occur in the canonical A2 training trace."""
+    embedding_weight = torch.nn.Parameter(
+        ((torch.arange(97 * 16, dtype=torch.float32).reshape(97, 16) % 31) - 15)
+        / 29
     )
+    token_ids = (torch.arange(48, dtype=torch.long).reshape(3, 16) * 7) % 97
+    embedded = F.embedding(token_ids, embedding_weight)
+
+    projection_weight = torch.nn.Parameter(
+        ((torch.arange(16 * 24, dtype=torch.float32).reshape(24, 16) % 37) - 18)
+        / 31
+    )
+    projection_bias = torch.nn.Parameter(
+        ((torch.arange(24, dtype=torch.float32) % 17) - 8) / 19
+    )
+    projected = F.linear(embedded, projection_weight, projection_bias)
+    activated = F.gelu(projected)
+    normalized = F.layer_norm(activated, (activated.shape[-1],))
+    attention_scores = torch.matmul(
+        normalized[:, :8, :], normalized[:, :8, :].transpose(-2, -1)
+    ) / (normalized.shape[-1] ** 0.5)
+    attention = torch.softmax(attention_scores, dim=-1)
+    contextual = torch.matmul(attention, normalized[:, :8, :])
+    logits = F.linear(contextual, projection_weight[:, :16])
+    targets = (torch.arange(logits.shape[0] * logits.shape[1]) % logits.shape[-1]).reshape(
+        logits.shape[0], logits.shape[1]
+    )
+    loss = F.cross_entropy(logits.flatten(0, 1), targets.flatten())
     loss.backward()
-    raw_gradients = {
-        "left": left.grad.detach().clone(),
-        "right": right.grad.detach().clone(),
-        "bias": bias.grad.detach().clone(),
-    }
-    gradient_norm = torch.nn.utils.clip_grad_norm_([left, right, bias], 1.0)
-    clipped_gradients = {
-        "left": left.grad.detach().clone(),
-        "right": right.grad.detach().clone(),
-        "bias": bias.grad.detach().clone(),
-    }
 
-    parameter = torch.nn.Parameter(
-        ((torch.arange(257, dtype=torch.float32) % 23) - 11) / 19
-    )
-    parameter.grad = (
-        ((torch.arange(257, dtype=torch.float32) % 31) - 15) / 29
-    )
+    parameters = [embedding_weight, projection_weight, projection_bias]
+    raw_gradients = {
+        "embedding_weight": embedding_weight.grad.detach().clone(),
+        "projection_weight": projection_weight.grad.detach().clone(),
+        "projection_bias": projection_bias.grad.detach().clone(),
+    }
+    gradient_norm = torch.nn.utils.clip_grad_norm_(parameters, 1.0)
+    clipped_gradients = {
+        "embedding_weight": embedding_weight.grad.detach().clone(),
+        "projection_weight": projection_weight.grad.detach().clone(),
+        "projection_bias": projection_bias.grad.detach().clone(),
+    }
     optimizer = torch.optim.AdamW(
-        [parameter],
+        parameters,
         lr=3e-4,
         betas=(0.9, 0.95),
         eps=1e-8,
@@ -115,25 +118,44 @@ def canonical_execution_sentinel_hash() -> str:
         fused=False,
     )
     optimizer.step()
-    state = optimizer.state[parameter]
 
-    return _tensor_hashes(
-        {
-            "addmm": addmm,
-            "normalized": normalized,
-            "probabilities": probabilities,
-            "loss": loss,
-            "raw_gradient_left": raw_gradients["left"],
-            "raw_gradient_right": raw_gradients["right"],
-            "raw_gradient_bias": raw_gradients["bias"],
-            "gradient_norm": gradient_norm,
-            "clipped_gradient_left": clipped_gradients["left"],
-            "clipped_gradient_right": clipped_gradients["right"],
-            "clipped_gradient_bias": clipped_gradients["bias"],
-            "adamw_exp_avg": state["exp_avg"],
-            "adamw_exp_avg_sq": state["exp_avg_sq"],
-            "adamw_parameter": parameter,
-        }
+    tensors: dict[str, torch.Tensor] = {
+        "embedded": embedded,
+        "projected": projected,
+        "activated": activated,
+        "normalized": normalized,
+        "attention_scores": attention_scores,
+        "attention": attention,
+        "contextual": contextual,
+        "logits": logits,
+        "loss": loss,
+        "gradient_norm": gradient_norm,
+        **{f"raw_gradient_{name}": value for name, value in raw_gradients.items()},
+        **{
+            f"clipped_gradient_{name}": value
+            for name, value in clipped_gradients.items()
+        },
+        "parameter_embedding_weight": embedding_weight,
+        "parameter_projection_weight": projection_weight,
+        "parameter_projection_bias": projection_bias,
+    }
+    for name, parameter in (
+        ("embedding_weight", embedding_weight),
+        ("projection_weight", projection_weight),
+        ("projection_bias", projection_bias),
+    ):
+        state = optimizer.state[parameter]
+        tensors[f"adamw_exp_avg_{name}"] = state["exp_avg"]
+        tensors[f"adamw_exp_avg_sq_{name}"] = state["exp_avg_sq"]
+    return {
+        name: _tensor_hashes({name: tensor})
+        for name, tensor in sorted(tensors.items())
+    }
+
+
+def canonical_execution_sentinel_hash() -> str:
+    return _sha256_bytes(
+        _canonical_json_bytes(canonical_execution_sentinel_evidence())
     )
 
 
@@ -214,9 +236,11 @@ def _runner_metadata() -> dict[str, object]:
     return {name: os.environ.get(name) for name in names}
 
 
-def canonical_cpu_runtime_fingerprint() -> dict[str, object]:
+def canonical_cpu_runtime_fingerprint(
+    *, include_execution_sentinel: bool = True
+) -> dict[str, object]:
     build_configuration = _torch_build_configuration()
-    return {
+    fingerprint: dict[str, object] = {
         "profile_version": CANONICAL_CPU_RUNTIME_VERSION,
         "deterministic_algorithms_enabled": torch.are_deterministic_algorithms_enabled(),
         "deterministic_warn_only_enabled": (
@@ -229,14 +253,16 @@ def canonical_cpu_runtime_fingerprint() -> dict[str, object]:
         "mkl_available": torch.backends.mkl.is_available(),
         "openmp_available": torch.backends.openmp.is_available(),
         "torch_build_config_sha256": _sha256_bytes(build_configuration.encode("utf-8")),
-        "execution_sentinel_sha256": canonical_execution_sentinel_hash(),
         **{name: os.environ.get(name) for name in CANONICAL_EXECUTION_ENVIRONMENT},
     }
+    if include_execution_sentinel:
+        fingerprint["execution_sentinel_sha256"] = canonical_execution_sentinel_hash()
+    return fingerprint
 
 
 def observed_runtime_and_hardware() -> dict[str, object]:
     """Collect stable host evidence without hostname, process IDs, or timestamps."""
-    runtime = canonical_cpu_runtime_fingerprint()
+    runtime = canonical_cpu_runtime_fingerprint(include_execution_sentinel=False)
     observed = {
         "os": {
             "system": platform.system(),
@@ -309,6 +335,8 @@ def _assert_environment_preconfigured() -> None:
 
 def validate_canonical_cpu_runtime_fingerprint(
     fingerprint: dict[str, object],
+    *,
+    require_reference_sentinel: bool = True,
 ) -> None:
     """Validate runtime/1.1 without accepting legacy runtime/1.0 semantics."""
     expected_values: dict[str, Any] = {
@@ -321,9 +349,12 @@ def validate_canonical_cpu_runtime_fingerprint(
         "cpu_dispatch_capability": "DEFAULT",
         "mkl_available": True,
         "openmp_available": True,
-        "execution_sentinel_sha256": CANONICAL_EXECUTION_SENTINEL_SHA256,
         **CANONICAL_EXECUTION_ENVIRONMENT,
     }
+    if require_reference_sentinel:
+        expected_values["execution_sentinel_sha256"] = (
+            CANONICAL_EXECUTION_SENTINEL_SHA256
+        )
     for name, expected in expected_values.items():
         if fingerprint.get(name) != expected:
             raise RuntimeError(
@@ -332,9 +363,12 @@ def validate_canonical_cpu_runtime_fingerprint(
             )
 
 
-def _assert_canonical_profile() -> None:
+def _assert_canonical_profile(*, require_reference_sentinel: bool = True) -> None:
     fingerprint = canonical_cpu_runtime_fingerprint()
-    validate_canonical_cpu_runtime_fingerprint(fingerprint)
+    validate_canonical_cpu_runtime_fingerprint(
+        fingerprint,
+        require_reference_sentinel=require_reference_sentinel,
+    )
     build_configuration = _torch_build_configuration()
     required_build_markers = ("BLAS_INFO=mkl", "USE_MKL=ON", "USE_OPENMP=ON")
     for marker in required_build_markers:
@@ -346,8 +380,11 @@ def _assert_canonical_profile() -> None:
         raise RuntimeError("CANONICAL_CPU_RUNTIME_TORCH_BUILD_UNSUPPORTED")
 
 
-def configure_canonical_cpu_runtime(seed: int | None = None) -> dict[str, object]:
-    """Configure runtime/1.1 exactly once and optionally reset all supported RNGs."""
+def _configure_canonical_cpu_runtime(
+    seed: int | None,
+    *,
+    require_reference_sentinel: bool,
+) -> dict[str, object]:
     global _CONFIGURED
     with _CONFIGURATION_LOCK:
         if not _CONFIGURED:
@@ -360,9 +397,29 @@ def configure_canonical_cpu_runtime(seed: int | None = None) -> dict[str, object
                 raise RuntimeError("CANONICAL_CPU_RUNTIME_CONFIGURATION_LATE") from error
             torch.backends.mkldnn.enabled = False
             _CONFIGURED = True
-        _assert_canonical_profile()
+        _assert_canonical_profile(
+            require_reference_sentinel=require_reference_sentinel
+        )
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
     return canonical_cpu_runtime_fingerprint()
+
+
+def configure_canonical_cpu_runtime(seed: int | None = None) -> dict[str, object]:
+    """Configure the sealed runtime/1.1 profile fail-closed."""
+    return _configure_canonical_cpu_runtime(
+        seed,
+        require_reference_sentinel=True,
+    )
+
+
+def configure_canonical_cpu_runtime_for_investigation(
+    seed: int | None = None,
+) -> dict[str, object]:
+    """Apply runtime/1.1 controls while recording, not sealing, the sentinel."""
+    return _configure_canonical_cpu_runtime(
+        seed,
+        require_reference_sentinel=False,
+    )
