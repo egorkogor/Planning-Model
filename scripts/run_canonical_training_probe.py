@@ -15,15 +15,16 @@ import torch.nn.functional as F
 from torch.profiler import ProfilerActivity, profile
 
 from planner_toy.canonical_runtime import (
-    LEGACY_CANONICAL_CPU_RUNTIME_VERSION,
+    CANONICAL_CPU_RUNTIME_VERSION as LEGACY_CANONICAL_CPU_RUNTIME_VERSION,
     configure_canonical_cpu_runtime,
-    full_hardware_runtime_fingerprint,
-    observed_runtime_and_hardware,
 )
 from planner_toy.dataset import generate
 from planner_toy.model import LockedPlanner, TaskEncoding, canonical_task_encoding
 from planner_toy.semantic import targets
 from planner_toy.training import ACTIONS, labels
+from scripts.canonical_cpu_hardware_fingerprint import (
+    full_hardware_runtime_fingerprint,
+)
 
 PROBE_VERSION = "toy-quality-canonical-training-probe/1.0"
 EPOCHS = 3
@@ -95,7 +96,9 @@ def _configure_legacy(seed: int) -> dict[str, object]:
     torch.manual_seed(seed)
     return {
         "profile_version": LEGACY_CANONICAL_CPU_RUNTIME_VERSION,
-        "deterministic_algorithms_enabled": torch.are_deterministic_algorithms_enabled(),
+        "deterministic_algorithms_enabled": (
+            torch.are_deterministic_algorithms_enabled()
+        ),
         "deterministic_warn_only_enabled": (
             torch.is_deterministic_algorithms_warn_only_enabled()
         ),
@@ -169,19 +172,11 @@ def _operator_trace(row: dict, seed: int) -> list[str]:
 def run_probe(*, mode: str, seed: int = 17) -> dict[str, object]:
     if mode == "canonical":
         runtime = configure_canonical_cpu_runtime(seed)
-        hardware = full_hardware_runtime_fingerprint()
     elif mode == "legacy":
         runtime = _configure_legacy(seed)
-        hardware = {
-            "fingerprint_version": "toy-quality-cpu-hardware-fingerprint/1.0",
-            "semantic_execution_identity": runtime,
-            "semantic_execution_identity_sha256": _sha256_bytes(
-                _canonical_bytes(runtime)
-            ),
-            "observed_runtime_and_hardware": observed_runtime_and_hardware(),
-        }
     else:
         raise ValueError(f"unsupported probe mode: {mode}")
+    hardware = full_hardware_runtime_fingerprint(runtime)
 
     dataset = generate(17)
     rows = sorted(dataset["train"], key=lambda item: item["task_id"])
@@ -237,8 +232,8 @@ def run_probe(*, mode: str, seed: int = 17) -> dict[str, object]:
                 if parameter.grad is not None
             }
             optimizer.step()
-            exp_avg = {}
-            exp_avg_sq = {}
+            exp_avg: dict[str, str] = {}
+            exp_avg_sq: dict[str, str] = {}
             for name, parameter in named:
                 state = optimizer.state.get(parameter)
                 if not state:
@@ -295,6 +290,16 @@ def _first_mapping_difference(
         if left.get(name) != right.get(name):
             return name
     return None
+
+
+def _hardware_identity(payload: dict[str, object]) -> object:
+    fingerprint = payload["hardware_runtime_fingerprint"]
+    if not isinstance(fingerprint, dict):
+        return None
+    return fingerprint.get(
+        "semantic_execution_identity_sha256",
+        fingerprint.get("observation_identity_sha256"),
+    )
 
 
 def compare_probes(left: dict[str, object], right: dict[str, object]) -> dict[str, object]:
@@ -367,18 +372,16 @@ def compare_probes(left: dict[str, object], right: dict[str, object]) -> dict[st
                 if first_parameter_divergence is not None:
                     break
     return {
-        "comparison_version": "toy-quality-canonical-training-probe-comparison/1.0",
+        "comparison_version": (
+            "toy-quality-canonical-training-probe-comparison/1.0"
+        ),
         "equal": first_divergence is None,
         "left_probe_identity": left["probe_identity"],
         "right_probe_identity": right["probe_identity"],
         "first_divergence": first_divergence,
         "first_parameter_divergence": first_parameter_divergence,
-        "left_semantic_execution_identity": left["hardware_runtime_fingerprint"][
-            "semantic_execution_identity_sha256"
-        ],
-        "right_semantic_execution_identity": right["hardware_runtime_fingerprint"][
-            "semantic_execution_identity_sha256"
-        ],
+        "left_semantic_execution_identity": _hardware_identity(left),
+        "right_semantic_execution_identity": _hardware_identity(right),
     }
 
 
