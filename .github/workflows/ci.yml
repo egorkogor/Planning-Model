@@ -4,13 +4,21 @@ on:
   push:
   pull_request:
 
+env:
+  OMP_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+  ATEN_CPU_CAPABILITY: default
+  MKL_CBWR: COMPATIBLE
+
 jobs:
   checks:
     timeout-minutes: 45
     strategy:
       matrix:
         python-version: ["3.11", "3.13"]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,10 +35,17 @@ jobs:
       - name: PyTorch runtime diagnostics
         run: |
           python - <<'PY'
+          import json
           import torch
+          from planner_toy.canonical_runtime import (
+              configure_canonical_cpu_runtime,
+              full_hardware_runtime_fingerprint,
+          )
+          configure_canonical_cpu_runtime()
           print(torch.__version__)
           print(torch.version.cuda)
           print(torch.cuda.is_available())
+          print(json.dumps(full_hardware_runtime_fingerprint(), sort_keys=True))
           PY
       - run: python validation/verify_release_manifest.py
       - run: python validation/validate_bundle.py --skip-nested-pytest
@@ -55,13 +70,8 @@ jobs:
           python -m pip install -e . --no-deps
           python -m pip install torch==2.12.0+cpu --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -e '.[ml]'
-      - name: Regenerate canonical quality diagnostic
+      - name: Regenerate frozen quality-v0.1 from its historical implementation
         if: matrix.python-version == '3.11'
-        env:
-          OMP_NUM_THREADS: "1"
-          MKL_NUM_THREADS: "1"
-          OPENBLAS_NUM_THREADS: "1"
-          NUMEXPR_NUM_THREADS: "1"
         run: |
           IMPLEMENTATION_SHA="$(python - <<'PY'
           import json
@@ -73,54 +83,55 @@ jobs:
           PY
           )"
           test -n "$IMPLEMENTATION_SHA"
-          if ! git cat-file -e "${IMPLEMENTATION_SHA}^{commit}" 2>/dev/null; then
-            if test "$(git rev-parse --is-shallow-repository)" = true; then
-              echo "implementation commit is unavailable because checkout history is shallow" >&2
-            else
-              echo "implementation commit is absent from the fetched repository" >&2
-            fi
-            exit 1
-          fi
-          if ! git merge-base --is-ancestor "$IMPLEMENTATION_SHA" HEAD; then
-            echo "implementation commit exists but is not an ancestor of the results checkout" >&2
-            exit 1
-          fi
-          if ! git show "$IMPLEMENTATION_SHA:requirements.lock" >/dev/null; then
-            echo "implementation tree is incomplete: requirements.lock is missing" >&2
-            exit 1
-          fi
-          RUN_CANONICAL_QUALITY_DETERMINISM=1 \
-          QUALITY_IMPLEMENTATION_COMMIT="$IMPLEMENTATION_SHA" \
-            python -m pytest -q -m canonical_quality \
-            tests/toy/test_quality_determinism.py
-          python -m scripts.run_toy_quality_evaluation \
-            --output-dir .quality-eval-ci \
-            --implementation-commit "$IMPLEMENTATION_SHA"
-          python -m scripts.run_toy_quality_evaluation \
-            --output-dir .quality-eval-ci --validate-only \
-            --compact-dir .quality-docs-ci
-          python -m scripts.run_toy_quality_evaluation \
-            --output-dir .quality-eval-ci-independent \
-            --implementation-commit "$IMPLEMENTATION_SHA"
-          python -m scripts.run_toy_quality_evaluation \
-            --output-dir .quality-eval-ci-independent --validate-only \
-            --compact-dir .quality-docs-ci-independent
-          for artifact in \
-            evaluation-config.json replay-hash.txt task-results.jsonl \
-            per-seed-summary.json aggregate-summary.json paired-comparisons.json \
-            human-readable-examples.md; do
-            cmp ".quality-eval-ci/$artifact" ".quality-eval-ci-independent/$artifact"
-          done
-          cmp .quality-docs-ci/data/a2_a3_a4_heldout_summary.json \
-            .quality-docs-ci-independent/data/a2_a3_a4_heldout_summary.json
-          cmp .quality-docs-ci/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
-            .quality-docs-ci-independent/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
-          cmp .quality-docs-ci/data/a2_a3_a4_heldout_summary.json \
-            docs/evaluations/data/a2_a3_a4_heldout_summary.json
-          cmp .quality-docs-ci/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
-            docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
-          rm -rf .quality-eval-ci .quality-docs-ci \
-            .quality-eval-ci-independent .quality-docs-ci-independent
+          git cat-file -e "${IMPLEMENTATION_SHA}^{commit}"
+          git merge-base --is-ancestor "$IMPLEMENTATION_SHA" HEAD
+          git show "$IMPLEMENTATION_SHA:requirements.lock" >/dev/null
+          WORKTREE=.quality-historical-source
+          git worktree add --detach "$WORKTREE" "$IMPLEMENTATION_SHA"
+          cleanup() {
+            git worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          (
+            cd "$WORKTREE"
+            env -u ATEN_CPU_CAPABILITY -u MKL_CBWR \
+              RUN_CANONICAL_QUALITY_DETERMINISM=1 \
+              QUALITY_IMPLEMENTATION_COMMIT="$IMPLEMENTATION_SHA" \
+              python -m pytest -q -m canonical_quality \
+              tests/toy/test_quality_determinism.py
+            env -u ATEN_CPU_CAPABILITY -u MKL_CBWR \
+              python -m scripts.run_toy_quality_evaluation \
+              --output-dir .quality-eval-ci \
+              --implementation-commit "$IMPLEMENTATION_SHA"
+            env -u ATEN_CPU_CAPABILITY -u MKL_CBWR \
+              python -m scripts.run_toy_quality_evaluation \
+              --output-dir .quality-eval-ci --validate-only \
+              --compact-dir .quality-docs-ci
+            env -u ATEN_CPU_CAPABILITY -u MKL_CBWR \
+              python -m scripts.run_toy_quality_evaluation \
+              --output-dir .quality-eval-ci-independent \
+              --implementation-commit "$IMPLEMENTATION_SHA"
+            env -u ATEN_CPU_CAPABILITY -u MKL_CBWR \
+              python -m scripts.run_toy_quality_evaluation \
+              --output-dir .quality-eval-ci-independent --validate-only \
+              --compact-dir .quality-docs-ci-independent
+            for artifact in \
+              evaluation-config.json replay-hash.txt task-results.jsonl \
+              per-seed-summary.json aggregate-summary.json paired-comparisons.json \
+              human-readable-examples.md; do
+              cmp ".quality-eval-ci/$artifact" ".quality-eval-ci-independent/$artifact"
+            done
+            cmp .quality-docs-ci/data/a2_a3_a4_heldout_summary.json \
+              .quality-docs-ci-independent/data/a2_a3_a4_heldout_summary.json
+            cmp .quality-docs-ci/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
+              .quality-docs-ci-independent/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
+            cmp .quality-docs-ci/data/a2_a3_a4_heldout_summary.json \
+              ../docs/evaluations/data/a2_a3_a4_heldout_summary.json
+            cmp .quality-docs-ci/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md \
+              ../docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
+          )
+          cleanup
+          trap - EXIT
       - name: Verify tests left a clean checkout
         run: |
           rm -rf .pytest-tmp .pytest_cache
@@ -132,13 +143,9 @@ jobs:
     strategy:
       matrix:
         worker: [a, b]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       IMPLEMENTATION_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-      OMP_NUM_THREADS: "1"
-      MKL_NUM_THREADS: "1"
-      OPENBLAS_NUM_THREADS: "1"
-      NUMEXPR_NUM_THREADS: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -148,11 +155,36 @@ jobs:
         with:
           python-version: "3.11.15"
           cache: pip
+      - name: Capture Azure region when available
+        run: |
+          REGION="$(curl --noproxy '*' --silent --show-error --max-time 2 \
+            -H Metadata:true \
+            'http://169.254.169.254/metadata/instance/compute/location?api-version=2021-02-01&format=text' \
+            || true)"
+          if test -n "$REGION"; then
+            echo "AZURE_REGION=$REGION" >> "$GITHUB_ENV"
+          fi
       - run: |
           python -m pip install -r requirements.lock
           python -m pip install -e . --no-deps
           python -m pip install torch==2.12.0+cpu --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -e '.[ml]'
+      - name: Legacy update-level probe
+        run: |
+          mkdir -p probe-evidence
+          env -u ATEN_CPU_CAPABILITY -u MKL_CBWR MKL_VERBOSE=1 \
+            python -m scripts.run_canonical_training_probe run \
+            --mode legacy --output probe-evidence/legacy-probe.json \
+            > probe-evidence/legacy-kernels.log 2>&1
+      - name: Canonical runtime/1.1 update-level probe
+        run: |
+          MKL_VERBOSE=1 python -m scripts.run_canonical_training_probe run \
+            --mode canonical --output probe-evidence/canonical-probe.json \
+            > probe-evidence/canonical-kernels.log 2>&1
+          python -m scripts.run_canonical_training_probe compare \
+            probe-evidence/legacy-probe.json \
+            probe-evidence/canonical-probe.json \
+            --output probe-evidence/runtime-migration-comparison.json
       - name: Independent canonical run
         run: |
           printf '%s\n' "$IMPLEMENTATION_SHA" > implementation-sha.txt
@@ -162,6 +194,7 @@ jobs:
             --output-dir canonical-run --validate-only --compact-dir compact
           cp implementation-sha.txt canonical-run/
           cp -R compact canonical-run/compact
+          cp -R probe-evidence canonical-run/probe-evidence
       - uses: actions/upload-artifact@v4
         with:
           name: canonical-${{ matrix.worker }}
@@ -169,13 +202,9 @@ jobs:
 
   canonical-compare:
     needs: canonical-workers
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       IMPLEMENTATION_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-      OMP_NUM_THREADS: "1"
-      MKL_NUM_THREADS: "1"
-      OPENBLAS_NUM_THREADS: "1"
-      NUMEXPR_NUM_THREADS: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -198,6 +227,57 @@ jobs:
         with:
           name: canonical-b
           path: b
+      - name: Compare update-level probes
+        run: |
+          python -m scripts.run_canonical_training_probe compare \
+            a/probe-evidence/legacy-probe.json \
+            b/probe-evidence/legacy-probe.json \
+            --output legacy-probe-comparison.json
+          python -m scripts.run_canonical_training_probe compare \
+            a/probe-evidence/canonical-probe.json \
+            b/probe-evidence/canonical-probe.json \
+            --output canonical-probe-comparison.json
+          cp a/probe-evidence/legacy-kernels.log legacy-kernels-a.log
+          cp b/probe-evidence/legacy-kernels.log legacy-kernels-b.log
+          cp a/probe-evidence/canonical-kernels.log canonical-kernels-a.log
+          cp b/probe-evidence/canonical-kernels.log canonical-kernels-b.log
+          cp a/probe-evidence/runtime-migration-comparison.json \
+            runtime-migration-comparison-a.json
+          cp b/probe-evidence/runtime-migration-comparison.json \
+            runtime-migration-comparison-b.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          left = json.loads(Path('a/probe-evidence/canonical-probe.json').read_text())
+          right = json.loads(Path('b/probe-evidence/canonical-probe.json').read_text())
+          legacy = json.loads(Path('legacy-probe-comparison.json').read_text())
+          canonical = json.loads(Path('canonical-probe-comparison.json').read_text())
+          migration_a = json.loads(
+              Path('runtime-migration-comparison-a.json').read_text()
+          )
+          migration_b = json.loads(
+              Path('runtime-migration-comparison-b.json').read_text()
+          )
+          report = {
+              'report_version': 'toy-quality-cross-worker-runtime-evidence/1.0',
+              'worker_a': left['hardware_runtime_fingerprint'],
+              'worker_b': right['hardware_runtime_fingerprint'],
+              'worker_a_probe_identity': left['probe_identity'],
+              'worker_b_probe_identity': right['probe_identity'],
+              'worker_a_operator_trace': left['operator_trace'],
+              'worker_b_operator_trace': right['operator_trace'],
+              'legacy_cross_worker_comparison': legacy,
+              'canonical_cross_worker_comparison': canonical,
+              'runtime_migration_worker_a': migration_a,
+              'runtime_migration_worker_b': migration_b,
+          }
+          Path('cross-worker-runtime-report.json').write_text(
+              json.dumps(report, sort_keys=True, separators=(',', ':')) + '\n'
+          )
+          if not canonical['equal']:
+              raise SystemExit('canonical runtime probe differs across workers')
+          PY
       - name: Compare cross-worker semantic outputs
         run: |
           cmp a/implementation-sha.txt b/implementation-sha.txt
@@ -231,4 +311,14 @@ jobs:
         if: always()
         with:
           name: canonical-cross-worker-diagnostic
-          path: cross-worker-report.json
+          path: |
+            cross-worker-report.json
+            legacy-probe-comparison.json
+            canonical-probe-comparison.json
+            cross-worker-runtime-report.json
+            runtime-migration-comparison-a.json
+            runtime-migration-comparison-b.json
+            legacy-kernels-a.log
+            legacy-kernels-b.log
+            canonical-kernels-a.log
+            canonical-kernels-b.log
