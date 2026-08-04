@@ -16,6 +16,8 @@ from torch.profiler import ProfilerActivity, profile
 
 from planner_toy.canonical_runtime import (
     CANONICAL_CPU_RUNTIME_VERSION as LEGACY_CANONICAL_CPU_RUNTIME_VERSION,
+)
+from planner_toy.canonical_runtime import (
     configure_canonical_cpu_runtime,
 )
 from planner_toy.dataset import generate
