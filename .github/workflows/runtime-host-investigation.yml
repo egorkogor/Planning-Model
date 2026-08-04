@@ -1,0 +1,143 @@
+name: Runtime Host Investigation
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  OMP_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+  ATEN_CPU_CAPABILITY: default
+  MKL_CBWR: COMPATIBLE
+
+jobs:
+  probe:
+    name: host-probe-${{ matrix.sample }}
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [1, 2, 3, 4, 5, 6, 7, 8]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.15"
+          cache: pip
+      - name: Capture Azure region
+        run: |
+          REGION="$(curl --noproxy '*' --silent --show-error --max-time 2 \
+            -H Metadata:true \
+            'http://169.254.169.254/metadata/instance/compute/location?api-version=2021-02-01&format=text' \
+            || true)"
+          if test -n "$REGION"; then
+            echo "AZURE_REGION=$REGION" >> "$GITHUB_ENV"
+          fi
+      - name: Install pinned runtime
+        run: |
+          python -m pip install -r requirements.lock
+          python -m pip install -e . --no-deps
+          python -m pip install torch==2.12.0+cpu \
+            --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e '.[ml]'
+      - name: Run unsealed update-level probe
+        run: |
+          mkdir -p evidence
+          MKL_VERBOSE=1 python - <<'PY' > evidence/kernels.log 2>&1
+          import json
+          from pathlib import Path
+          import planner_toy.canonical_runtime as runtime
+
+          runtime.CANONICAL_EXECUTION_SENTINEL_SHA256 = (
+              runtime.canonical_execution_sentinel_hash()
+          )
+          from scripts.run_canonical_training_probe import run_probe
+
+          payload = run_probe(mode="canonical", seed=17)
+          Path("evidence/probe.json").write_text(
+              json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+          )
+          print(json.dumps({
+              "probe_identity": payload["probe_identity"],
+              "runtime": payload["runtime"],
+              "cpu": payload["hardware_runtime_fingerprint"]
+                  ["observed_runtime_and_hardware"]["cpu"],
+              "runner": payload["hardware_runtime_fingerprint"]
+                  ["observed_runtime_and_hardware"]["runner"],
+          }, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-host-${{ matrix.sample }}
+          path: evidence
+
+  report:
+    needs: probe
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.15"
+      - name: Install comparison runtime
+        run: |
+          python -m pip install -r requirements.lock
+          python -m pip install -e . --no-deps
+          python -m pip install torch==2.12.0+cpu \
+            --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e '.[ml]'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: runtime-host-*
+          path: hosts
+      - name: Build report
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.run_canonical_training_probe import compare_probes
+
+          paths = sorted(Path("hosts").glob("runtime-host-*/probe.json"))
+          probes = [json.loads(path.read_text()) for path in paths]
+          if not probes:
+              raise SystemExit("no host probes")
+          baseline = probes[0]
+          comparisons = [compare_probes(baseline, item) for item in probes[1:]]
+          report = {
+              "report_version": "toy-quality-runtime-host-investigation/1.0",
+              "probe_count": len(probes),
+              "all_numerical_probes_equal": all(
+                  item["equal"] for item in comparisons
+              ),
+              "probe_identities": [item["probe_identity"] for item in probes],
+              "execution_sentinels": [
+                  item["runtime"]["execution_sentinel_sha256"] for item in probes
+              ],
+              "hosts": [
+                  item["hardware_runtime_fingerprint"]
+                      ["observed_runtime_and_hardware"]
+                  for item in probes
+              ],
+              "comparisons_to_first": comparisons,
+          }
+          Path("runtime-host-investigation-report.json").write_text(
+              json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
+          )
+          print(json.dumps(report, sort_keys=True, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-host-investigation-report
+          path: runtime-host-investigation-report.json
