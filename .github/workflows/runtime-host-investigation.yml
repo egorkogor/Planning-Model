@@ -56,6 +56,7 @@ jobs:
           from pathlib import Path
           import planner_toy.canonical_runtime as runtime
 
+          runtime.configure_canonical_cpu_runtime_for_investigation(17)
           runtime.CANONICAL_EXECUTION_SENTINEL_SHA256 = (
               runtime.canonical_execution_sentinel_hash()
           )
