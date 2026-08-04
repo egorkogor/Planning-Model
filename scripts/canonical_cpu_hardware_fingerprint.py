@@ -1,8 +1,8 @@
 """Stable CPU/runtime evidence for canonical execution investigations.
 
-This module is intentionally outside the frozen quality-v0.1 evaluator source
-inventory. It observes candidate execution targets without reinterpreting the
-historical ``toy-quality-canonical-cpu-runtime/1.0`` contract.
+This module observes investigation hosts without declaring any host an accepted
+canonical execution target. It is intentionally outside the frozen
+quality-v0.1 evaluator source inventory.
 """
 from __future__ import annotations
 
@@ -10,13 +10,18 @@ import hashlib
 import json
 import os
 import platform
+import re
 from pathlib import Path
-from typing import Any
 
 import torch
 
 HARDWARE_FINGERPRINT_VERSION = "toy-quality-cpu-hardware-fingerprint/1.0"
-FIXED_TARGET_POLICY_VERSION = "toy-quality-fixed-cpu-target-policy/1.0"
+_HASH_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_TOP_LEVEL_FIELDS = {
+    "fingerprint_version",
+    "observation_identity_sha256",
+    "observed_runtime_and_hardware",
+}
 OBSERVED_EXECUTION_ENVIRONMENT = (
     "OMP_NUM_THREADS",
     "MKL_NUM_THREADS",
@@ -72,7 +77,11 @@ def _read_os_release() -> dict[str, str]:
 
 def _read_cpu_information() -> dict[str, object]:
     path = Path("/proc/cpuinfo")
-    text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    text = (
+        path.read_text(encoding="utf-8", errors="replace")
+        if path.is_file()
+        else ""
+    )
     first_block = text.split("\n\n", 1)[0]
     fields: dict[str, str] = {}
     for line in first_block.splitlines():
@@ -164,61 +173,34 @@ def full_hardware_runtime_fingerprint(
     observation = observed_runtime_and_hardware(runtime_fingerprint)
     return {
         "fingerprint_version": HARDWARE_FINGERPRINT_VERSION,
-        "observation_identity_sha256": _sha256_bytes(_canonical_bytes(observation)),
+        "observation_identity_sha256": _sha256_bytes(
+            _canonical_bytes(observation)
+        ),
         "observed_runtime_and_hardware": observation,
     }
 
 
-def _lookup_path(value: dict[str, object], path: str) -> object:
-    current: object = value
-    for part in path.split("."):
-        if not isinstance(current, dict) or part not in current:
-            raise RuntimeError(f"CANONICAL_FIXED_TARGET_FIELD_MISSING:{path}")
-        current = current[part]
-    return current
+def validate_hardware_runtime_fingerprint(fingerprint: object) -> None:
+    """Validate fingerprint structure and observation integrity only.
 
-
-def validate_fixed_execution_target(
-    fingerprint: dict[str, object],
-    expected_fields: dict[str, object],
-) -> None:
-    """Fail closed unless every versioned target field matches exactly."""
-    if fingerprint.get("fingerprint_version") != HARDWARE_FINGERPRINT_VERSION:
-        raise RuntimeError("CANONICAL_FIXED_TARGET_FINGERPRINT_VERSION_MISMATCH")
-    observation = fingerprint.get("observed_runtime_and_hardware")
+    Passing this validator does not mean that the observed host is an accepted
+    canonical execution target.
+    """
+    if not isinstance(fingerprint, dict):
+        raise ValueError("HARDWARE_FINGERPRINT_NOT_OBJECT")
+    if set(fingerprint) != _TOP_LEVEL_FIELDS:
+        raise ValueError("HARDWARE_FINGERPRINT_TOP_LEVEL_FIELDS_MISMATCH")
+    if fingerprint["fingerprint_version"] != HARDWARE_FINGERPRINT_VERSION:
+        raise ValueError("HARDWARE_FINGERPRINT_VERSION_MISMATCH")
+    identity = fingerprint["observation_identity_sha256"]
+    if (
+        not isinstance(identity, str)
+        or _HASH_PATTERN.fullmatch(identity) is None
+    ):
+        raise ValueError("HARDWARE_FINGERPRINT_HASH_FORMAT_INVALID")
+    observation = fingerprint["observed_runtime_and_hardware"]
     if not isinstance(observation, dict):
-        raise RuntimeError("CANONICAL_FIXED_TARGET_OBSERVATION_MISSING")
-    for path, expected in sorted(expected_fields.items()):
-        actual = _lookup_path(observation, path)
-        if actual != expected:
-            raise RuntimeError(
-                "CANONICAL_FIXED_TARGET_MISMATCH:"
-                f"{path}:expected={expected}:actual={actual}"
-            )
-
-
-def validate_supported_cpu_software_path(
-    fingerprint: dict[str, object],
-    *,
-    expected_dispatch: str,
-    require_mkl: bool = True,
-    require_openmp: bool = True,
-) -> None:
-    observation = fingerprint.get("observed_runtime_and_hardware")
-    if not isinstance(observation, dict):
-        raise RuntimeError("CANONICAL_CPU_SOFTWARE_PATH_OBSERVATION_MISSING")
-    pytorch = observation.get("pytorch")
-    if not isinstance(pytorch, dict):
-        raise RuntimeError("CANONICAL_CPU_SOFTWARE_PATH_PYTORCH_MISSING")
-    checks: dict[str, Any] = {
-        "cpu_dispatch_capability": expected_dispatch,
-        "mkl_available": require_mkl,
-        "openmp_available": require_openmp,
-    }
-    for name, expected in checks.items():
-        actual = pytorch.get(name)
-        if actual != expected:
-            raise RuntimeError(
-                "CANONICAL_CPU_SOFTWARE_PATH_UNSUPPORTED:"
-                f"{name}:expected={expected}:actual={actual}"
-            )
+        raise ValueError("HARDWARE_FINGERPRINT_OBSERVATION_NOT_OBJECT")
+    expected = _sha256_bytes(_canonical_bytes(observation))
+    if identity != expected:
+        raise ValueError("HARDWARE_FINGERPRINT_OBSERVATION_HASH_MISMATCH")
