@@ -771,22 +771,15 @@ def run_quality_training_parity(
         spec=spec,
         quality_clip_parameter_order=False,
     )
-    probe_optimizer = _build_optimizer(
-        modules["torch"],
-        [],
-        spec,
-    )
-    raise_if_empty = probe_optimizer
-    del raise_if_empty
+    modules["configure"](seed)
     model = modules["LockedPlanner"](seed, "A2").cpu()
-    named = [
-        parameter
-        for parameter in model.parameters()
-        if parameter.requires_grad
-    ]
     contract_optimizer = _build_optimizer(
         modules["torch"],
-        named,
+        [
+            parameter
+            for parameter in model.parameters()
+            if parameter.requires_grad
+        ],
         spec,
     )
     contract = _execution_contract(
