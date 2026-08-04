@@ -1,174 +1,388 @@
-# Canonical CPU execution identity: investigation and migration policy
+# Investigation: canonical CPU execution identity across hosts
 
-## Статус документа
+## Статус
 
 ```text
-investigation_version: canonical-cpu-execution-identity/1.0
-runtime_contract: toy-quality-canonical-cpu-runtime/1.1
-historical_runtime_contract: toy-quality-canonical-cpu-runtime/1.0
+Investigation:
+COMPLETED
+
+Common GitHub-hosted byte-exact profile:
+NOT FOUND
+
+Selected outcome:
+VARIANT B — FIXED EXECUTION TARGET REQUIRED
+
+Fixed target provisioning:
+NOT AVAILABLE IN THIS REPOSITORY
+
+PR status:
+INCOMPLETE / MIGRATION REQUIRED
 ```
 
-Документ фиксирует отдельное расследование cross-host numerical nondeterminism,
-обнаруженного после Development Quality Evaluation v0.1. Он не меняет модель,
-обучение, метрики или исторические результаты.
+Этот документ не объявляет новый canonical runtime принятым. Он фиксирует
+результат расследования cross-host numerical nondeterminism и требования к
+следующему versioned execution target.
 
-## Исходное наблюдение
+## Исходный сбой
 
-На implementation head
-`33d0ff62c597170d46d1bdb40a05687326aa9369` CI run `30860485483`
-успешно завершил оба независимых canonical workers, но exact semantic comparison
-не прошёл. Worker A и worker B получили разные replay identities. Первое
-зафиксированное итоговое различие находилось в A2, seed 17, в AdamW
-`exp_avg[8567]`, после чего расходились trained checkpoints и replay artifacts.
+На implementation head:
 
-Одинаковыми были Python 3.11.15, PyTorch 2.12.0+cpu, single-thread settings,
-deterministic algorithms и отключённый MKLDNN. Отличались физические hosted
-workers и Azure regions. Следовательно, runtime/1.0 фиксировал software и
-threading, но не фиксировал CPU ISA dispatch и BLAS conditional numerical path.
+```text
+33d0ff62c597170d46d1bdb40a05687326aa9369
+```
 
-Исходный cross-worker diagnostic artifact был скачан и разобран. Полные
-`canonical-a` и `canonical-b` artifacts имеют размер более 1 GiB каждый и не
-прошли через используемый artifact transport с жёстким лимитом 512 MiB. Для
-update-level локализации в этом PR добавлена воспроизводимая двухworkerная проба,
-а не вывод по одному итоговому tensor index.
+CI run:
 
-## Update-level deterministic probe
+```text
+30860485483
+```
 
-`scripts/run_canonical_training_probe.py` зеркалирует A2 training policy, не
-изменяя production training loop. Для каждого update и parameter name она
-сохраняет exact SHA-256 следующих значений:
+получил:
 
-- initial parameters;
-- canonical encoded task;
-- action, arg1, arg2 и semantic forward logits;
-- action, arg1, arg2 и total loss components;
-- raw gradients до clipping;
-- gradient norm;
-- gradients после clipping;
-- AdamW `exp_avg`;
-- AdamW `exp_avg_sq`;
-- parameters после `optimizer.step()`.
+```text
+checks (3.11): success
+checks (3.13): success
+canonical-run-a: success
+canonical-run-b: success
+canonical-compare: failure
+```
 
-Проба также сохраняет CPU operator trace из public PyTorch profiler. В CI
-`MKL_VERBOSE=1` пишет фактически выбранные oneMKL kernels. Comparator exact:
-он не использует tolerance, rounding, post-hoc quantization или исключение
-optimizer/checkpoint state.
+Первое persisted расхождение было найдено в:
 
-Проба выполняется в двух режимах:
+```text
+training-runs/A2/seed-17/optimizer-state.pt
+state[0].exp_avg[8567]
+```
 
-- `legacy`: семантика runtime/1.0 без новых dispatch variables;
-- `canonical`: runtime/1.1 с новым execution profile.
+После этого разошлись trained checkpoints и replay artifacts.
 
-Так определяется первый divergent update, стадия и parameter, а также отдельно
-проверяется влияние миграции runtime/1.0 → runtime/1.1.
+## Update-level probe
 
-## Hardware и runtime fingerprint
+Добавлен read-only probe:
 
-Runtime/1.1 сохраняет две различные сущности.
+```text
+scripts/run_canonical_training_probe.py
+```
 
-### Semantic execution identity
+Он не изменяет основной training loop и сохраняет exact hashes по каждому
+update и parameter name для:
 
-Она одинакова для совместимых hosts и включает только контракт исполнения:
+```text
+initial parameters
+encoded task
+forward logits
+loss components
+raw gradients before clipping
+gradient norm
+gradients after clipping
+AdamW exp_avg
+AdamW exp_avg_sq
+parameters after optimizer.step
+```
 
-- runtime version;
-- PyTorch version и build-configuration hash;
-- ATen CPU dispatch capability;
-- execution sentinel hash;
-- deterministic/thread/MKLDNN settings;
-- canonical environment.
+Сравнение probe artifacts остаётся exact. В нём нет tolerance, rounding,
+quantization или исключения optimizer/checkpoint evidence.
 
-Hostname, process ID и timestamps запрещены.
+## Hardware/runtime fingerprint
 
-### Observed hardware evidence
-
-Она не используется для требования равенства hosts, но сохраняется для аудита:
+Probe сохраняет machine-readable fingerprint:
 
 - OS, kernel, architecture и `/etc/os-release`;
 - CPU vendor, family, model, stepping, model name и microcode;
-- canonical CPU flags hash и AVX/AVX2/AVX-512 capabilities;
+- canonical hash полного набора CPU flags;
+- AVX, AVX2, AVX-512 и FMA capabilities;
 - logical CPU count;
-- runner OS/architecture/environment, image и version;
-- Azure region, если metadata endpoint доступен;
-- Python implementation/build/compiler;
+- runner OS, architecture, environment, image и image version;
+- Azure region, когда metadata доступна;
+- Python version, implementation, compiler и build;
 - PyTorch version и полный build configuration;
-- MKL/OpenMP/MKLDNN availability;
-- фактический public ATen CPU capability;
-- все canonical environment variables.
+- BLAS, MKL, OpenMP и oneDNN availability/configuration;
+- фактический ATen CPU dispatch capability;
+- canonical environment variables.
 
-Fingerprint сериализуется canonical JSON с отсортированными ключами.
+Hostname, process ID и timestamps не входят в fingerprint или его canonical
+identity.
 
-## Runtime/1.1 execution profile
+## Официально поддерживаемый dispatch control
 
-Runtime/1.1 добавляет к runtime/1.0:
+PyTorch 2.12.0 читает:
+
+```text
+ATEN_CPU_CAPABILITY
+```
+
+в `aten/src/ATen/native/DispatchStub.cpp`. Для x86 source поддерживает значения:
+
+```text
+default
+avx2
+avx512
+```
+
+Invalid values только предупреждаются и игнорируются, поэтому runtime обязан
+дополнительно проверять фактический:
+
+```python
+torch.backends.cpu.get_cpu_capability()
+```
+
+`MKL_CBWR=COMPATIBLE` применялся только вместе с fail-closed probe и
+persisted fingerprint.
+
+## AVX2 investigation
+
+Run:
+
+```text
+30872595002
+```
+
+Профиль:
+
+```text
+ATEN_CPU_CAPABILITY=avx2
+MKL_CBWR=COMPATIBLE
+foreach=false
+fused=false
+```
+
+Были получены AMD и Intel workers под одинаковыми:
+
+```text
+Ubuntu 24.04
+Python 3.11.15
+PyTorch 2.12.0+cpu
+one Torch thread
+one interop thread
+MKLDNN disabled
+```
+
+Результат:
+
+```text
+all_numerical_probes_equal=false
+```
+
+Первое расхождение:
+
+```text
+epoch: 1
+update: 1
+task: bw-00000001
+parameter: concept_packer.bos_embedding
+stage: parameters_after_optimizer_step
+```
+
+До `optimizer.step()` совпали:
+
+- encoded task;
+- forward logits;
+- loss components;
+- raw gradients;
+- gradient norm;
+- gradients after clipping.
+
+Следовательно, AVX2 не создаёт общий byte-exact path на heterogeneous
+GitHub-hosted x86 CPUs.
+
+## DEFAULT investigation
+
+Fail-closed contract run:
+
+```text
+30907124345
+```
+
+показал, что заранее записанный execution sentinel не совпадает на всех
+host types. Runtime остановился до acceptance, как и требовалось.
+
+Observation run:
+
+```text
+30907486933
+```
+
+измерил 16 independent hosts без принятия динамического sentinel как
+canonical contract.
+
+Профиль:
 
 ```text
 ATEN_CPU_CAPABILITY=default
 MKL_CBWR=COMPATIBLE
+foreach=false
+fused=false
 ```
 
-`ATEN_CPU_CAPABILITY=default` принудительно выбирает generic ATen CPU dispatch
-вместо автоматического AVX2/AVX-512 выбора. `MKL_CBWR=COMPATIBLE` принудительно
-выбирает conditional numerical reproducibility path oneMKL. Оба значения должны
-быть установлены до первого tensor/BLAS operation.
+В выборке присутствовали:
 
-Runtime fail-closed требует:
+- AMD EPYC 7763;
+- AMD EPYC 9V74;
+- Intel Xeon Platinum 8573C;
+- Intel Xeon 6973P-C.
 
-- PyTorch `2.12.x+cpu`;
-- CPU dispatch capability `DEFAULT` через public
-  `torch.backends.cpu.get_cpu_capability()`;
-- MKL и OpenMP availability;
-- deterministic algorithms без warn-only;
-- intra-op и inter-op thread count 1;
-- MKLDNN disabled;
-- требуемые build markers `BLAS_INFO=mkl`, `USE_MKL=ON`, `USE_OPENMP=ON`;
-- exact execution sentinel identity.
+Использовались одинаковые:
 
-Sentinel отдельно упражняет matrix multiplication, layer normalization, softmax,
-backward, gradient clipping и AdamW moments. Он не заменяет cross-host probe, а
-не позволяет молча принять unsupported или проигнорированный runtime path.
+- Ubuntu 24.04.4;
+- kernel `6.17.0-1020-azure`;
+- runner image `20260720.247.2`;
+- Python 3.11.15 / GCC 13.3;
+- PyTorch 2.12.0+cpu;
+- oneAPI MKL 2024.2;
+- oneDNN 3.11.2;
+- OpenMP 4.5;
+- один intra-op и inter-op thread;
+- отключённый MKLDNN.
 
-## Совместимость с runtime/1.0
-
-`toy-quality-canonical-cpu-runtime/1.0` остаётся историческим контрактом и не
-переинтерпретируется как runtime/1.1. Runtime validator/1.1 отклоняет fingerprint
-версии 1.0.
-
-Frozen quality-v0.1 regeneration выполняется из исторического implementation
-commit в отдельном worktree с удалёнными `ATEN_CPU_CAPABILITY` и `MKL_CBWR`.
-Полученные historical JSON и Markdown сравниваются byte-for-byte с committed
-frozen artifacts.
-
-## Migration policy
-
-Новый profile может менять numerical bytes относительно runtime/1.0, потому что
-фиксирует другой ISA/BLAS execution path. CI сравнивает legacy и canonical probes
-на каждом worker.
-
-Если probe показывает изменение numerical bytes:
-
-1. frozen quality-v0.1 artifacts не переписываются;
-2. runtime/1.1 не используется для заднего переопределения v0.1;
-3. новая evaluation должна получить отдельную versioned identity;
-4. decision status фиксируется как `migration required`;
-5. scientific conclusions v0.1 остаются привязаны к historical runtime/1.0.
-
-Этот PR определяет execution contract и evidence. Он не публикует новую
-quality evaluation и не меняет frozen decision.
-
-## Acceptance evidence
-
-Final implementation head должен иметь три независимых полных CI runs. В каждом
-обязательны:
+Получены две exact probe identities:
 
 ```text
-checks (3.11)
-checks (3.13)
-canonical-run-a
-canonical-run-b
-canonical-compare
+sha256:3f5ef16415f532dc570bda69097e5637aab38ba8fb6c049213a25ce962c7970c
+sha256:c639261bf9f4fcb25f1915e9d4d66e2e3a6efc0dbca393336e8f92ce29a85d45
 ```
 
-Для каждого run сохраняются worker fingerprints, operator/MKL evidence,
-legacy/canonical probe comparisons, numerical probe identities, replay hashes и
-exact comparison report. Rerun отдельного failed job не считается независимым
-run. При любом расхождении PR остаётся `INCOMPLETE`.
+Первое расхождение:
+
+```text
+epoch: 1
+update: 1
+task: bw-00000001
+parameter: concept_packer.output_norm.bias
+stage: parameters_after_optimizer_step
+```
+
+Forward, loss, raw gradients, clipping и clipped gradients снова совпали.
+Расхождение впервые появилось в AdamW parameter update.
+
+MKL verbose evidence показывает `SGEMM` и `SGEMM_BATCH` с
+`CNR:COMPATIBLE`, однако различие возникает после уже совпавших gradients.
+Доступные artifacts не называют конкретную внутреннюю vectorized instruction
+AdamW pointwise kernel, поэтому документ не приписывает расхождение
+конкретной assembly-инструкции.
+
+## Root cause
+
+Поддерживаемый вывод:
+
+> Heterogeneous GitHub-hosted x86 CPUs выполняют AdamW pointwise parameter
+> update с различными exact float32 bytes даже при одинаковых Python,
+> PyTorch, thread settings, disabled MKLDNN, fixed ATen dispatch class,
+> compatible MKL mode и explicitly disabled foreach/fused optimizer paths.
+
+Это не расхождение:
+
+- dataset;
+- initialization;
+- forward;
+- loss;
+- backward gradients;
+- gradient norm;
+- gradient clipping.
+
+Оно впервые наблюдается в `optimizer.step()` на update 1.
+
+## Решение
+
+### Вариант A
+
+```text
+Common byte-exact GitHub-hosted CPU path:
+REJECTED
+```
+
+Проверены как минимум:
+
+- `AVX2`;
+- `DEFAULT`;
+- `MKL_CBWR=COMPATIBLE`;
+- single-thread execution;
+- `foreach=false`;
+- `fused=false`.
+
+Оба dispatch path дали cross-host drift.
+
+### Вариант B
+
+```text
+Fixed execution target:
+REQUIRED
+```
+
+Обычный `ubuntu-24.04` и container image недостаточны: они не фиксируют
+physical CPU vendor/model/stepping/flags.
+
+Следующий canonical target должен быть provisioned как self-hosted runner или
+фиксированная VM policy и fail-closed закреплять:
+
+- CPU vendor/family/model/stepping/model name;
+- canonical CPU flags hash;
+- OS/kernel/image;
+- Python build;
+- PyTorch build configuration;
+- ATen dispatch;
+- BLAS/MKL/OpenMP/oneDNN configuration;
+- all canonical environment variables;
+- accepted update-level execution sentinel.
+
+В текущем репозитории такого target нет. Поэтому runtime/1.1 не принимается и
+production CI не переводится на неподтверждённый profile.
+
+## Версионирование и migration
+
+Существующий:
+
+```text
+toy-quality-canonical-cpu-runtime/1.0
+```
+
+не переинтерпретируется.
+
+Новый контракт может получить версию:
+
+```text
+toy-quality-canonical-cpu-runtime/1.1
+```
+
+только после provisioning fixed target и трёх независимых полностью зелёных
+CI runs на одном implementation head.
+
+Новый stable target может выдавать bytes, отличающиеся от historical v0.1.
+Historical run не сохранял достаточный hardware fingerprint, поэтому его
+нельзя доказуемо отнести к новому target.
+
+Итог:
+
+```text
+migration required
+new versioned evaluation required
+```
+
+## Frozen quality-v0.1
+
+Не изменяются:
+
+```text
+docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
+docs/evaluations/data/a2_a3_a4_heldout_summary.json
+docs/evaluations/A2_A3_A4_V0_1_DECISION_RU.md
+```
+
+Historical artifacts не перегенерируются под новый target.
+
+## CI evidence status
+
+Требование:
+
+```text
+3/3 independent full runs green
+```
+
+Текущий статус:
+
+```text
+0/3
+```
+
+Полные acceptance runs не запускаются, потому что accepted fixed target ещё
+не provisioned. Повторные hosted runs не считаются решением обнаруженного
+hardware mismatch.
