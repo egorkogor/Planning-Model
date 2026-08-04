@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sample: [1, 2, 3, 4, 5, 6, 7, 8]
+        sample: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +61,6 @@ jobs:
           runtime.CANONICAL_EXECUTION_SENTINEL_SHA256 = (
               runtime.canonical_execution_sentinel_hash()
           )
-
           original_adamw = torch.optim.AdamW
 
           def single_tensor_adamw(params, *args, **kwargs):
@@ -122,7 +121,7 @@ jobs:
         with:
           pattern: runtime-host-*
           path: hosts
-      - name: Build report
+      - name: Build fail-closed report
         run: |
           python - <<'PY'
           import json
@@ -131,14 +130,25 @@ jobs:
 
           paths = sorted(Path("hosts").glob("runtime-host-*/probe.json"))
           probes = [json.loads(path.read_text()) for path in paths]
-          if not probes:
-              raise SystemExit("no host probes")
+          if len(probes) != 16:
+              raise SystemExit(f"expected 16 host probes, found {len(probes)}")
           baseline = probes[0]
           comparisons = [compare_probes(baseline, item) for item in probes[1:]]
+          hosts = [
+              item["hardware_runtime_fingerprint"]
+                  ["observed_runtime_and_hardware"]
+              for item in probes
+          ]
+          vendors = sorted({host["cpu"]["vendor"] for host in hosts})
           report = {
-              "report_version": "toy-quality-runtime-host-investigation/1.1",
+              "report_version": "toy-quality-runtime-host-investigation/1.2",
               "optimizer_path": {"foreach": False, "fused": False},
               "probe_count": len(probes),
+              "cpu_vendors": vendors,
+              "amd_and_intel_present": {
+                  "AuthenticAMD",
+                  "GenuineIntel",
+              }.issubset(vendors),
               "all_numerical_probes_equal": all(
                   item["equal"] for item in comparisons
               ),
@@ -146,19 +156,20 @@ jobs:
               "execution_sentinels": [
                   item["runtime"]["execution_sentinel_sha256"] for item in probes
               ],
-              "hosts": [
-                  item["hardware_runtime_fingerprint"]
-                      ["observed_runtime_and_hardware"]
-                  for item in probes
-              ],
+              "hosts": hosts,
               "comparisons_to_first": comparisons,
           }
           Path("runtime-host-investigation-report.json").write_text(
               json.dumps(report, sort_keys=True, separators=(",", ":")) + "\n"
           )
           print(json.dumps(report, sort_keys=True, indent=2))
+          if not report["amd_and_intel_present"]:
+              raise SystemExit("both AMD and Intel evidence are required")
+          if not report["all_numerical_probes_equal"]:
+              raise SystemExit("single-tensor probes differ across hosts")
           PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: runtime-host-investigation-report
           path: runtime-host-investigation-report.json
