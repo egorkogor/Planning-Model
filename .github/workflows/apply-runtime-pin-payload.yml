@@ -45,12 +45,12 @@ jobs:
                   raise SystemExit(f'{path}: expected {digest}, observed {observed}')
           print(f'PAYLOAD_VERIFIED files={len(expected)}')
           PY
-      - name: Publish atomic implementation commit
+      - name: Publish non-workflow implementation files
         run: |
+          git checkout HEAD -- .github/workflows/ci.yml .github/workflows/apply-runtime-pin-payload.yml
           rm -rf .runtime-pin-payload
-          rm -f .github/workflows/apply-runtime-pin-payload.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
-          git commit -m 'Pin canonical CPU execution identity across hosts'
+          git commit -m 'Add canonical CPU runtime implementation and probe'
           git push origin HEAD:agent/pin-canonical-cpu-execution-identity
