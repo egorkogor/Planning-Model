@@ -18,7 +18,7 @@ env:
 
 jobs:
   probe:
-    name: host-probe-${{ matrix.sample }}
+    name: single-tensor-probe-${{ matrix.sample }}
     strategy:
       fail-fast: false
       matrix:
@@ -48,21 +48,39 @@ jobs:
           python -m pip install torch==2.12.0+cpu \
             --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -e '.[ml]'
-      - name: Run unsealed update-level probe
+      - name: Run single-tensor update-level probe
         run: |
           mkdir -p evidence
           MKL_VERBOSE=1 python - <<'PY' > evidence/kernels.log 2>&1
           import json
           from pathlib import Path
+          import torch
           import planner_toy.canonical_runtime as runtime
 
           runtime.configure_canonical_cpu_runtime_for_investigation(17)
           runtime.CANONICAL_EXECUTION_SENTINEL_SHA256 = (
               runtime.canonical_execution_sentinel_hash()
           )
+
+          original_adamw = torch.optim.AdamW
+
+          def single_tensor_adamw(params, *args, **kwargs):
+              if kwargs.get("foreach") not in (None, False):
+                  raise RuntimeError("INVESTIGATION_FOREACH_OVERRIDE_CONFLICT")
+              if kwargs.get("fused") not in (None, False):
+                  raise RuntimeError("INVESTIGATION_FUSED_OVERRIDE_CONFLICT")
+              kwargs["foreach"] = False
+              kwargs["fused"] = False
+              return original_adamw(params, *args, **kwargs)
+
+          torch.optim.AdamW = single_tensor_adamw
           from scripts.run_canonical_training_probe import run_probe
 
           payload = run_probe(mode="canonical", seed=17)
+          payload["investigation_optimizer_path"] = {
+              "foreach": False,
+              "fused": False,
+          }
           Path("evidence/probe.json").write_text(
               json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
           )
@@ -73,6 +91,7 @@ jobs:
                   ["observed_runtime_and_hardware"]["cpu"],
               "runner": payload["hardware_runtime_fingerprint"]
                   ["observed_runtime_and_hardware"]["runner"],
+              "optimizer_path": payload["investigation_optimizer_path"],
           }, sort_keys=True))
           PY
       - uses: actions/upload-artifact@v4
@@ -117,7 +136,8 @@ jobs:
           baseline = probes[0]
           comparisons = [compare_probes(baseline, item) for item in probes[1:]]
           report = {
-              "report_version": "toy-quality-runtime-host-investigation/1.0",
+              "report_version": "toy-quality-runtime-host-investigation/1.1",
+              "optimizer_path": {"foreach": False, "fused": False},
               "probe_count": len(probes),
               "all_numerical_probes_equal": all(
                   item["equal"] for item in comparisons
