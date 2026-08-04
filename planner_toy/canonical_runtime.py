@@ -89,7 +89,7 @@ def canonical_execution_sentinel_evidence() -> dict[str, str]:
     ) / (normalized.shape[-1] ** 0.5)
     attention = torch.softmax(attention_scores, dim=-1)
     contextual = torch.matmul(attention, normalized[:, :8, :])
-    logits = F.linear(contextual, projection_weight[:, :16])
+    logits = F.linear(contextual, projection_weight.T)
     targets = (torch.arange(logits.shape[0] * logits.shape[1]) % logits.shape[-1]).reshape(
         logits.shape[0], logits.shape[1]
     )
