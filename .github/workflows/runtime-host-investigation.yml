@@ -18,7 +18,7 @@ env:
 
 jobs:
   probe:
-    name: default-single-tensor-probe-${{ matrix.sample }}
+    name: default-observation-probe-${{ matrix.sample }}
     strategy:
       fail-fast: false
       matrix:
@@ -48,16 +48,35 @@ jobs:
           python -m pip install torch==2.12.0+cpu \
             --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -e '.[ml]'
-      - name: Run generic single-tensor update-level probe
+      - name: Observe generic single-tensor update-level path
         run: |
           mkdir -p evidence
           MKL_VERBOSE=1 python - <<'PY' > evidence/kernels.log 2>&1
           import json
+          import random
           from pathlib import Path
+          import numpy as np
           import torch
           import planner_toy.canonical_runtime as runtime
 
-          runtime.configure_canonical_cpu_runtime_for_investigation(17)
+          torch.use_deterministic_algorithms(True, warn_only=False)
+          torch.set_num_threads(1)
+          torch.set_num_interop_threads(1)
+          torch.backends.mkldnn.enabled = False
+          random.seed(17)
+          np.random.seed(17)
+          torch.manual_seed(17)
+          actual_capability = torch.backends.cpu.get_cpu_capability()
+          if actual_capability != "DEFAULT":
+              raise RuntimeError(
+                  "INVESTIGATION_DEFAULT_DISPATCH_NOT_APPLIED:" + actual_capability
+              )
+          runtime._CONFIGURED = True
+          runtime.CANONICAL_EXECUTION_ENVIRONMENT["ATEN_CPU_CAPABILITY"] = "default"
+          runtime._assert_canonical_profile = lambda **kwargs: None
+          runtime.CANONICAL_EXECUTION_SENTINEL_SHA256 = (
+              runtime.canonical_execution_sentinel_hash()
+          )
           original_adamw = torch.optim.AdamW
 
           def single_tensor_adamw(params, *args, **kwargs):
@@ -140,7 +159,7 @@ jobs:
           ]
           vendors = sorted({host["cpu"]["vendor"] for host in hosts})
           report = {
-              "report_version": "toy-quality-runtime-host-investigation/1.4",
+              "report_version": "toy-quality-runtime-host-investigation/1.5",
               "execution_path": {
                   "ATEN_CPU_CAPABILITY": "default",
                   "MKL_CBWR": "COMPATIBLE",
@@ -170,7 +189,7 @@ jobs:
           if not report["amd_and_intel_present"]:
               raise SystemExit("both AMD and Intel evidence are required")
           if not report["all_numerical_probes_equal"]:
-              raise SystemExit("DEFAULT single-tensor probes differ across hosts")
+              raise SystemExit("DEFAULT probes differ across hosts")
           PY
       - uses: actions/upload-artifact@v4
         if: always()
