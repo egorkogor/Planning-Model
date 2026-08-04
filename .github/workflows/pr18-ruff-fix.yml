@@ -1,0 +1,35 @@
+name: Apply PR18 Ruff fix
+
+on:
+  push:
+    branches:
+      - agent/pin-canonical-cpu-execution-identity
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/pin-canonical-cpu-execution-identity
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.15"
+      - run: python -m pip install ruff==0.9.10
+      - name: Fix and verify
+        run: |
+          ruff check --fix scripts/run_canonical_training_probe.py
+          ruff check .
+          git diff --check
+      - name: Commit clean tree
+        run: |
+          git rm .github/workflows/pr18-ruff-fix.yml
+          git add scripts/run_canonical_training_probe.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Fix canonical probe import ordering'
+          git push origin HEAD:agent/pin-canonical-cpu-execution-identity
