@@ -128,6 +128,9 @@ def _instrument_quality_training_update(
         captured["initial_parameters"] = _ordered_tensor_hashes(
             list(model.named_parameters())
         )
+        values = original_optimizer_named_parameters(model)
+        captured["named_parameters"] = values
+        captured["parameter_names"] = [name for name, _ in values]
         original_forward = model.forward
 
         def forward(*forward_args: Any, **forward_kwargs: Any) -> Any:
@@ -263,14 +266,14 @@ def _instrument_quality_training_update(
         "encoded_task_sha256",
         "forward_logits",
         "total_loss",
-        "raw_gradients",
+      "raw_gradients",
         "gradient_clip_max_norm",
         "gradient_clip_parameter_names",
         "gradient_norm",
         "gradients_after_clipping",
-        "adamw_exp_avg",
+      "adamw_exp_avg",
         "adamw_exp_avg_sq",
-        "parameters_after_optimizer_step",
+      "parameters_after_optimizer_step",
     }
     missing = sorted(required - set(captured))
     if missing:

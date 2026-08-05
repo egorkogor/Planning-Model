@@ -6,7 +6,9 @@ profiles reproduce historical defaults or explicit investigation alternatives.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 from pathlib import Path
 
 from scripts.canonical_training_probe_contract import (
@@ -17,7 +19,7 @@ from scripts.canonical_training_probe_contract import (
     _PROFILE_SPECS,
     _canonical_bytes,
     _parse_bool,
-    compute_probe_identity,
+    _probe_identity_payload,
     validate_execution_contract,
     validate_probe_identity,
 )
@@ -26,6 +28,31 @@ from scripts.canonical_training_probe_parity import (
     _first_parity_difference,
     run_quality_training_parity,
 )
+
+
+_HASH_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
+def compute_probe_identity(payload: dict[str, object]) -> str:
+    """Build identity for comparison fixtures without accepting their contract.
+
+    Retained probe artifacts are still validated by ``validate_probe_identity``.
+    This helper only requires a self-consistent contract hash so deliberately
+    incompatible contracts can be represented and rejected by ``compare_probes``.
+    """
+    contract = payload.get("execution_contract")
+    identity = payload.get("execution_contract_sha256")
+    if not isinstance(contract, dict):
+        raise ValueError("EXECUTION_CONTRACT_NOT_OBJECT")
+    if not isinstance(identity, str) or _HASH_PATTERN.fullmatch(identity) is None:
+        raise ValueError("EXECUTION_CONTRACT_HASH_FORMAT_INVALID")
+    if identity != _sha256_bytes(_canonical_bytes(contract)):
+        raise ValueError("EXECUTION_CONTRACT_HASH_MISMATCH")
+    return _sha256_bytes(_canonical_bytes(_probe_identity_payload(payload)))
 
 __all__ = [
     "COMPARISON_VERSION",
