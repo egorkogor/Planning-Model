@@ -24,8 +24,8 @@ from scripts.canonical_training_probe_contract import (
     validate_probe_identity,
 )
 from scripts.canonical_training_probe_core import compare_probes, run_probe
-from scripts.canonical_training_probe_parity import (
-    _first_parity_difference,
+from scripts.canonical_training_probe_parity import _first_parity_difference
+from scripts.canonical_training_probe_parity_override import (
     run_quality_training_parity,
 )
 
@@ -53,6 +53,7 @@ def compute_probe_identity(payload: dict[str, object]) -> str:
     if identity != _sha256_bytes(_canonical_bytes(contract)):
         raise ValueError("EXECUTION_CONTRACT_HASH_MISMATCH")
     return _sha256_bytes(_canonical_bytes(_probe_identity_payload(payload)))
+
 
 __all__ = [
     "COMPARISON_VERSION",
