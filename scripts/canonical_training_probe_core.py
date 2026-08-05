@@ -218,7 +218,7 @@ def _run_probe_after_preflight(
         "epochs": EPOCHS,
         "ordered_train_task_ids": [row["task_id"] for row in rows],
         "parameter_names": [name for name, _ in named_parameters],
-        "initial_parameters": _ordered_tensor_hashes(list(model.named_parameters())),
+        "initial_parameters": _ordered_tensor_hashes(named_parameters),
         "updates": [],
         "execution_contract": contract,
         "execution_contract_sha256": _sha256_bytes(_canonical_bytes(contract)),
@@ -286,11 +286,25 @@ def _incomparable_report(
     }
 
 
+def _execution_contract_with_integrity(
+    payload: dict[str, object],
+) -> dict[str, object]:
+    contract = payload.get("execution_contract")
+    identity = payload.get("execution_contract_sha256")
+    if not isinstance(contract, dict):
+        raise ValueError("EXECUTION_CONTRACT_MISSING")
+    if not isinstance(identity, str):
+        raise ValueError("EXECUTION_CONTRACT_HASH_FORMAT_INVALID")
+    if identity != _sha256_bytes(_canonical_bytes(contract)):
+        raise ValueError("EXECUTION_CONTRACT_HASH_MISMATCH")
+    return contract
+
+
 def compare_probes(
     left: dict[str, object], right: dict[str, object]
 ) -> dict[str, object]:
-    left_contract = _validate_execution_contract_hash(left)
-    right_contract = _validate_execution_contract_hash(right)
+    left_contract = _execution_contract_with_integrity(left)
+    right_contract = _execution_contract_with_integrity(right)
     base: dict[str, object] = {
         "comparison_version": COMPARISON_VERSION,
         "left_probe_identity": left.get("probe_identity"),
@@ -300,8 +314,8 @@ def compare_probes(
     }
     if left_contract != right_contract:
         return _incomparable_report(base, "EXECUTION_CONTRACT_MISMATCH")
-    validate_probe_identity(left)
-    validate_probe_identity(right)
+    _validate_execution_contract_hash(left)
+    _validate_execution_contract_hash(right)
     specification_fields = (
         "probe_version",
         "variant",
@@ -333,6 +347,8 @@ def compare_probes(
         )
         first = {"stage": "initial_parameters", "parameter": name}
         first_parameter = first
+    elif len(left["updates"]) != len(right["updates"]):
+        first = {"stage": "update_count"}
     else:
         for left_update, right_update in zip(
             left["updates"], right["updates"], strict=True

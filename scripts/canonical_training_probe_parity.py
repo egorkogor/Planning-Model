@@ -154,12 +154,18 @@ def _instrument_quality_training_update(
 
     def adamw_factory(parameters: Any, *args: Any, **kwargs: Any) -> Any:
         parameter_list = list(parameters)
+        parameter_names = _parameter_names_for_objects(
+            captured["model"], parameter_list
+        )
+        if "named_parameters" not in captured:
+            captured["named_parameters"] = list(
+                zip(parameter_names, parameter_list, strict=True)
+            )
+            captured["parameter_names"] = parameter_names
         optimizer = original_adamw(parameter_list, *args, **kwargs)
         captured["optimizer"] = optimizer
         captured["optimizer_defaults"] = _normalize_value(optimizer.defaults)
-        captured["optimizer_parameter_names"] = _parameter_names_for_objects(
-            captured["model"], parameter_list
-        )
+        captured["optimizer_parameter_names"] = parameter_names
         original_zero_grad = optimizer.zero_grad
         original_step = optimizer.step
 
