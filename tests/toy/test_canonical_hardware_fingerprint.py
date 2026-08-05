@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 
 import pytest
@@ -10,6 +11,17 @@ from scripts.canonical_cpu_hardware_fingerprint import (
     full_hardware_runtime_fingerprint,
     validate_hardware_runtime_fingerprint,
 )
+
+
+def _observation_hash(observation: dict) -> str:
+    return "sha256:" + hashlib.sha256(
+        json.dumps(
+            observation,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def test_hardware_fingerprint_contains_required_stable_fields() -> None:
@@ -82,10 +94,54 @@ def test_fingerprint_rejects_extra_top_level_field() -> None:
         validate_hardware_runtime_fingerprint(fingerprint)
 
 
+@pytest.mark.parametrize(
+    "field",
+    sorted(
+        {
+            "fingerprint_version",
+            "os",
+            "cpu",
+            "runner",
+            "python",
+            "pytorch",
+            "canonical_runtime",
+            "execution_environment",
+        }
+    ),
+)
+def test_fingerprint_rejects_missing_observation_field_after_hash_recompute(
+    field: str,
+) -> None:
+    fingerprint = full_hardware_runtime_fingerprint()
+    observation = fingerprint["observed_runtime_and_hardware"]
+    del observation[field]
+    fingerprint["observation_identity_sha256"] = _observation_hash(observation)
+    with pytest.raises(ValueError, match="OBSERVATION_FIELDS_MISMATCH"):
+        validate_hardware_runtime_fingerprint(fingerprint)
+
+
+def test_fingerprint_rejects_extra_observation_field_after_hash_recompute() -> None:
+    fingerprint = full_hardware_runtime_fingerprint()
+    observation = fingerprint["observed_runtime_and_hardware"]
+    observation["accepted_target"] = True
+    fingerprint["observation_identity_sha256"] = _observation_hash(observation)
+    with pytest.raises(ValueError, match="OBSERVATION_FIELDS_MISMATCH"):
+        validate_hardware_runtime_fingerprint(fingerprint)
+
+
 def test_fingerprint_rejects_version_mutation() -> None:
     fingerprint = full_hardware_runtime_fingerprint()
     fingerprint["fingerprint_version"] = "mutated"
     with pytest.raises(ValueError, match="VERSION_MISMATCH"):
+        validate_hardware_runtime_fingerprint(fingerprint)
+
+
+def test_fingerprint_rejects_nested_version_mutation_after_hash_recompute() -> None:
+    fingerprint = full_hardware_runtime_fingerprint()
+    observation = fingerprint["observed_runtime_and_hardware"]
+    observation["fingerprint_version"] = "mutated"
+    fingerprint["observation_identity_sha256"] = _observation_hash(observation)
+    with pytest.raises(ValueError, match="OBSERVATION_VERSION_MISMATCH"):
         validate_hardware_runtime_fingerprint(fingerprint)
 
 

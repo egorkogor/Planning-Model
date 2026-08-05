@@ -22,6 +22,16 @@ _TOP_LEVEL_FIELDS = {
     "observation_identity_sha256",
     "observed_runtime_and_hardware",
 }
+_OBSERVATION_FIELDS = {
+    "fingerprint_version",
+    "os",
+    "cpu",
+    "runner",
+    "python",
+    "pytorch",
+    "canonical_runtime",
+    "execution_environment",
+}
 OBSERVED_EXECUTION_ENVIRONMENT = (
     "OMP_NUM_THREADS",
     "MKL_NUM_THREADS",
@@ -193,14 +203,15 @@ def validate_hardware_runtime_fingerprint(fingerprint: object) -> None:
     if fingerprint["fingerprint_version"] != HARDWARE_FINGERPRINT_VERSION:
         raise ValueError("HARDWARE_FINGERPRINT_VERSION_MISMATCH")
     identity = fingerprint["observation_identity_sha256"]
-    if (
-        not isinstance(identity, str)
-        or _HASH_PATTERN.fullmatch(identity) is None
-    ):
+    if not isinstance(identity, str) or _HASH_PATTERN.fullmatch(identity) is None:
         raise ValueError("HARDWARE_FINGERPRINT_HASH_FORMAT_INVALID")
     observation = fingerprint["observed_runtime_and_hardware"]
     if not isinstance(observation, dict):
         raise ValueError("HARDWARE_FINGERPRINT_OBSERVATION_NOT_OBJECT")
+    if set(observation) != _OBSERVATION_FIELDS:
+        raise ValueError("HARDWARE_FINGERPRINT_OBSERVATION_FIELDS_MISMATCH")
+    if observation["fingerprint_version"] != HARDWARE_FINGERPRINT_VERSION:
+        raise ValueError("HARDWARE_FINGERPRINT_OBSERVATION_VERSION_MISMATCH")
     expected = _sha256_bytes(_canonical_bytes(observation))
     if identity != expected:
         raise ValueError("HARDWARE_FINGERPRINT_OBSERVATION_HASH_MISMATCH")
