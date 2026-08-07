@@ -80,7 +80,15 @@ def main() -> None:
         if result["equal"] is not True:
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_bytes(_canonical_bytes(result) + b"\n")
-            raise SystemExit("quality training parity failed")
+            field = result["first_difference"]
+            quality_value = result["quality_trace"].get(field)
+            probe_value = result["probe_trace"].get(field)
+            raise SystemExit(
+                "quality training parity failed:"
+                f"first_difference={field}:"
+                f"quality={json.dumps(quality_value, sort_keys=True)}:"
+                f"probe={json.dumps(probe_value, sort_keys=True)}"
+            )
     else:
         result = compare_probes(_read_json(args.left), _read_json(args.right))
         output = args.output
