@@ -227,9 +227,7 @@ def _instrument_quality_training_update(
             exp_avg, exp_avg_sq = _optimizer_moments(optimizer, named)
             captured["adamw_exp_avg"] = exp_avg
             captured["adamw_exp_avg_sq"] = exp_avg_sq
-            captured["parameters_after_optimizer_step"] = _ordered_tensor_hashes(
-                list(captured["model"].named_parameters())
-            )
+            captured["parameters_after_optimizer_step"] = _ordered_tensor_hashes(named)
             return result
 
         optimizer.zero_grad = zero_grad
@@ -242,28 +240,32 @@ def _instrument_quality_training_update(
         return result
 
     def backward(tensor: Any, *args: Any, **kwargs: Any) -> Any:
-        named = require_captured_parameter_order()
         captured["events"].append("loss")
         captured["total_loss"] = tensor.detach().clone()
         result = original_backward(tensor, *args, **kwargs)
         captured["events"].append("backward")
-        captured["raw_gradients"] = {
-            name: _tensor_sha256(parameter.grad)
-            for name, parameter in named
-            if parameter.grad is not None
-        }
         return result
 
     def clip_grad_norm_(
         parameters: Any, max_norm: float, *args: Any, **kwargs: Any
     ) -> Any:
-        named = require_captured_parameter_order()
         parameter_list = list(parameters)
-        captured["events"].append("clip")
-        captured["gradient_clip_max_norm"] = float(max_norm)
-        captured["gradient_clip_parameter_names"] = _parameter_names_for_objects(
+        parameter_names = _parameter_names_for_objects(
             captured["model"], parameter_list
         )
+        named = _capture_parameter_order(
+            captured,
+            model=captured["model"],
+            named_parameters=list(zip(parameter_names, parameter_list, strict=True)),
+        )
+        captured["events"].append("clip")
+        captured["gradient_clip_max_norm"] = float(max_norm)
+        captured["gradient_clip_parameter_names"] = parameter_names
+        captured["raw_gradients"] = {
+            name: _tensor_sha256(parameter.grad)
+            for name, parameter in named
+            if parameter.grad is not None
+        }
         result = original_clip_grad_norm(
             parameter_list, max_norm, *args, **kwargs
         )
@@ -354,7 +356,10 @@ def _instrument_quality_training_update(
     return {
         "parameter_names": captured["parameter_names"],
         "optimizer_defaults": captured["optimizer_defaults"],
-        "initial_parameters": captured["initial_parameters"],
+        "initial_parameters": {
+            name: captured["initial_parameters"][name]
+            for name in captured["parameter_names"]
+        },
         "encoded_task_sha256": captured["encoded_task_sha256"],
         "forward_logits": captured["forward_logits"],
         "loss_components": loss_components,

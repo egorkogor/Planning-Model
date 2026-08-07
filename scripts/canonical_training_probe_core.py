@@ -185,9 +185,7 @@ def _trace_update(
         "gradients_after_clipping": clipped_gradients,
         "adamw_exp_avg": exp_avg,
         "adamw_exp_avg_sq": exp_avg_sq,
-        "parameters_after_optimizer_step": _ordered_tensor_hashes(
-            list(model.named_parameters())
-        ),
+        "parameters_after_optimizer_step": _ordered_tensor_hashes(named_parameters),
     }
 
 
