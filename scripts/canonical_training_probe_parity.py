@@ -16,8 +16,8 @@ from scripts.canonical_training_probe_contract import (
 )
 from scripts.canonical_training_probe_core import (
     _encoding_hash,
-    _optional_tensor_sha256,
     _optimizer_moments,
+    _optional_tensor_sha256,
     _ordered_tensor_hashes,
     _tensor_sha256,
     _trace_update,

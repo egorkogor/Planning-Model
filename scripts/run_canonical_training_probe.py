@@ -10,11 +10,11 @@ import json
 from pathlib import Path
 
 from scripts.canonical_training_probe_contract import (
+    _PROFILE_SPECS,
     COMPARISON_VERSION,
     EXECUTION_CONTRACT_VERSION,
     PARITY_VERSION,
     PROBE_VERSION,
-    _PROFILE_SPECS,
     _canonical_bytes,
     _parse_bool,
     compute_evidence_identity,

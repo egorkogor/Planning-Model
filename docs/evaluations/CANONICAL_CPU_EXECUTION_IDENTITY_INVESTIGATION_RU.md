@@ -1,6 +1,6 @@
-# Cross-host CPU nondeterminism: investigation and decision record
+# Investigation: cross-host CPU nondeterminism и требование fixed target
 
-## Статус
+Статус:
 
 ```text
 INVESTIGATION COMPLETED
@@ -9,77 +9,40 @@ FIXED TARGET REQUIRED
 MIGRATION REQUIRED
 ```
 
-Этот документ фиксирует investigation result. Он не объявляет новый canonical
-runtime, не утверждает, что execution identity уже pinned, и не выбирает или
-provision конкретный fixed target.
+Этот документ фиксирует investigation и retained reproduction tooling. Он не утверждает, что execution identity уже pinned, fixed target выбран или provisioned, либо `runtime/1.1` принят.
 
-`runtime/1.1` не принят.
+## Retained execution profiles
 
-## Исходный сбой
-
-Triggering canonical run:
+Probe сохраняет три именованных профиля:
 
 ```text
-workflow run: 30860485483
-commit: 33d0ff62c597170d46d1bdb40a05687326aa9369
+historical-default
+default-single-tensor
+avx2-single-tensor
 ```
 
-Результат:
+`historical-default` сохраняет исторические AdamW defaults:
 
 ```text
-checks (3.11): success
-checks (3.13): success
-canonical-run-a: success
-canonical-run-b: success
-canonical-compare: failure
+foreach=None
+fused=None
+ATEN_CPU_CAPABILITY absent
+MKL_CBWR absent
 ```
 
-Первое persisted расхождение было обнаружено в:
+Controlled profiles используют:
 
 ```text
-training-runs/A2/seed-17/optimizer-state.pt
-state[0].exp_avg[8567]
+foreach=False
+fused=False
+MKL_CBWR=COMPATIBLE
 ```
 
-После него разошлись trained checkpoints и replay artifacts.
+Для `default-single-tensor` требуется `ATEN_CPU_CAPABILITY=default`, для `avx2-single-tensor` — `ATEN_CPU_CAPABILITY=avx2`. Environment проверяется до импорта Torch. Фактический dispatch сохраняется через `torch.backends.cpu.get_cpu_capability()`.
 
-## Retained probe
+CLI `--optimizer-foreach` и `--optimizer-fused` являются только подтверждением profile contract и не могут переопределить его.
 
-Самодостаточный retained probe:
-
-```text
-scripts/run_canonical_training_probe.py
-```
-
-Он сохраняет exact evidence по каждому update и parameter name для:
-
-```text
-parameter names and order
-initial parameters
-encoded task
-forward logits
-loss components
-raw gradients
-raw gradient norm
-gradients after clipping
-AdamW exp_avg
-AdamW exp_avg_sq
-parameters after optimizer.step
-```
-
-Tolerance, rounding и quantization не используются.
-
-Удалённые temporary workflows и monkeypatch больше не являются единственным
-способом повторить investigation contracts.
-
-## Versioned execution contract
-
-Каждый probe artifact содержит:
-
-```text
-execution_contract
-execution_contract_sha256
-```
+## Execution contract
 
 Contract version:
 
@@ -87,7 +50,7 @@ Contract version:
 toy-quality-cpu-execution-contract/1.0
 ```
 
-Поля:
+Exact fields:
 
 ```text
 contract_version
@@ -104,191 +67,174 @@ torch_num_threads
 torch_num_interop_threads
 mkldnn_enabled
 deterministic_algorithms
+canonical_runtime_version
+python_implementation
+python_version
+python_compiler
+python_build
+torch_version
+torch_build_configuration_sha256
+mkl_available
+openmp_available
+mkldnn_available
 ```
 
-Validator требует exact field set, корректную contract version, canonical hash,
-поддерживаемый named profile, согласованность profile fields и ожидаемые AdamW
-hyperparameters. Missing или extra fields не могут быть легализованы простым
-пересчётом dependent hashes.
-
-`ATEN_CPU_CAPABILITY` и `MKL_CBWR` принимаются только через environment до
-импорта Torch. Probe fail-closed проверяет ожидаемые значения environment и
-после импорта Torch проверяет фактический dispatch через:
-
-```python
-torch.backends.cpu.get_cpu_capability()
-```
-
-Probe не устанавливает `ATEN_CPU_CAPABILITY` после импорта Torch.
-
-## Named profiles
-
-### historical-default
-
-Воспроизводит historical quality path:
+Для всех retained profiles canonical runtime invariants фиксированы точно:
 
 ```text
-ATEN_CPU_CAPABILITY: absent
-MKL_CBWR: absent
-foreach: None
-fused: None
-profile_kind: historical
+torch_num_threads = 1
+torch_num_interop_threads = 1
+mkldnn_enabled = false
+deterministic_algorithms.enabled = true
+deterministic_algorithms.warn_only = false
 ```
 
-### avx2-single-tensor
-
-Controlled investigation alternative:
+Software-runtime identity входит в execution contract. Поэтому два валидных artifacts с разными Python/PyTorch builds, build configuration или canonical runtime version являются несовместимыми:
 
 ```text
-ATEN_CPU_CAPABILITY=avx2
-actual_atten_cpu_capability=AVX2
-MKL_CBWR=COMPATIBLE
-foreach=False
-fused=False
-profile_kind=controlled-investigation
+comparable: false
+reason: EXECUTION_CONTRACT_MISMATCH
+equal: null
 ```
 
-### default-single-tensor
+CPU vendor/model, CPU flags, Azure region и runner hostname в execution contract не входят. Они остаются observation-only частью hardware fingerprint и могут различаться между hosts.
 
-Controlled investigation alternative:
+## Retained probe artifact
+
+Probe version:
 
 ```text
-ATEN_CPU_CAPABILITY=default
-actual_atten_cpu_capability=DEFAULT
-MKL_CBWR=COMPATIBLE
-foreach=False
-fused=False
-profile_kind=controlled-investigation
+toy-quality-canonical-training-probe/2.0
 ```
 
-CLI поддерживает явное подтверждение boolean controls:
+Exact top-level fields persisted artifact:
 
 ```text
---optimizer-foreach true|false
---optimizer-fused true|false
+probe_version
+variant
+seed
+epochs
+ordered_train_task_ids
+parameter_names
+initial_parameters
+updates
+execution_contract
+execution_contract_sha256
+runtime
+hardware_runtime_fingerprint
+probe_identity
+evidence_identity
 ```
 
-Named profile нельзя переопределить противоречащим CLI value. Controlled
-single-tensor profile с `true` и historical-default с explicit boolean
-отклоняются fail-closed. Поэтому имя profile всегда соответствует фактическому
-optimizer contract.
+`validate_probe_artifact(payload)` fail-closed проверяет exact field set и затем:
 
-Controlled profiles являются investigation alternatives. Они не выдаются за
-historical quality path и не объявляются принятым runtime contract.
+1. execution contract semantics;
+2. `execution_contract_sha256`;
+3. probe/2.0 semantics и `probe_identity`;
+4. hardware fingerprint integrity;
+5. exact runtime fingerprint;
+6. согласованность runtime version с execution contract;
+7. `evidence_identity`.
 
-## Contract-aware identity и comparison
+`probe_identity` покрывает numerical/probe identity payload и execution contract. Hardware observation не обязана входить в `probe_identity`.
 
-Полный execution contract и его hash входят в `probe_identity`.
-
-Перед comparison выполняются:
-
-1. строгая validation обоих execution contracts;
-2. проверка canonical contract hashes;
-3. полное сравнение contracts;
-4. проверка пересчитанного `probe_identity`;
-5. exact numerical comparison только для compatible artifacts.
-
-Несовместимые contracts возвращают:
-
-```json
-{
-  "comparable": false,
-  "reason": "EXECUTION_CONTRACT_MISMATCH",
-  "equal": null
-}
-```
-
-Numerical equality для них не вычисляется.
-
-Hardware fingerprint может различаться между hosts. Он не делает одинаковый
-software execution contract несовместимым.
-
-## Parity с frozen quality training
-
-`quality._train` не изменён.
-
-Parity harness исполняет один реальный update внутри `quality._train` с
-transparent instrumentation, а не локальную копию quality update. Временно и
-с обязательным восстановлением перехватываются фактические:
+`evidence_identity` определяется независимо:
 
 ```text
-LockedPlanner construction and forward
-_optimizer_named_parameters
-AdamW construction, zero_grad and step
-cross_entropy calls
-Tensor.backward
-clip_grad_norm_
+evidence_identity = sha256(canonical payload without evidence_identity)
 ```
 
-Для одного seed/task на одном process actual quality update exact-сравнивается
-с probe update под `historical-default` по:
+Поэтому hardware observation и hardware fingerprint входят в evidence identity. Resealed numerical mutation со старым `evidence_identity`, либо resealed hardware mutation со старым `evidence_identity`, отклоняется.
+
+`compare_probes(left, right)` сначала полностью валидирует оба artifacts. Повреждённый artifact выдаёт стабильный `ValueError` до comparable/incomparable classification. `EXECUTION_CONTRACT_MISMATCH` используется только для двух валидных, но разных execution contracts.
+
+## Probe/2.0 semantics
+
+Для `toy-quality-canonical-training-probe/2.0` зафиксировано:
 
 ```text
-parameter names and order
+variant = A2
+epochs = 3
+ordered_train_task_ids =
+  bw-00000001
+  bw-00000002
+  bw-00000003
+update count = 9
+```
+
+Seed остаётся explicit integer argument.
+
+Каждый update имеет exact field set и проверяется на sequential update index, epoch и canonical task order. Scalar tensor hashes используют только canonical lowercase `sha256:<64 hex>`.
+
+`raw_gradients`, `gradients_after_clipping`, `adamw_exp_avg`, `adamw_exp_avg_sq` являются subsets `parameter_names`. `initial_parameters` и `parameters_after_optimizer_step` покрывают exact `parameter_names`. Forward logits и loss components имеют exact key sets. `parameter_names` уникальны, а их порядок является частью probe identity.
+
+## Historical quality parity
+
+Retained historical parity instrumentирует frozen `planner_toy.quality._train` без изменения `planner_toy/quality.py`.
+
+Parameter capture order-independent:
+
+- `LockedPlanner` wrapper сохраняет model, initial parameters и original forward;
+- `_optimizer_named_parameters` сохраняет names/order, если helper вызывается первым;
+- AdamW wrapper независимо восстанавливает names по identity фактического parameter list;
+- если оба пути capture сработали, они обязаны совпасть;
+- `require_captured_parameter_order()` возвращает только полный проверенный порядок и никогда не допускает сырой `KeyError`;
+- instrumentation не добавляет искусственный вызов `_optimizer_named_parameters` в real quality path.
+
+Update event capture активируется только реальным `optimizer.zero_grad` training update. Любой backward, который происходит до этого в model/preflight logic, не включается в update trace.
+
+Historical parity требует exact:
+
+```text
+quality_trace == probe_trace
+```
+
+Сравниваются:
+
+```text
+parameter names/order
 optimizer defaults
 initial parameters
 encoded task
 forward logits
-loss components and total loss
+loss components
 raw gradients
 gradient norm
-clip threshold and clipped parameter order
 gradients after clipping
 AdamW exp_avg
 AdamW exp_avg_sq
-parameters after optimizer.step
-update event order
+parameters after optimizer step
+clip max norm
+clip parameter order
+event order
 ```
 
-Такой parity test ломается при изменении parameter order, optimizer defaults,
-loss construction, clipping или update semantics.
+Controlled single-tensor profiles остаются investigation alternatives и не выдаются за historical quality path.
 
-## Hardware/runtime fingerprint integrity
+## Hardware fingerprint integrity
 
-Retained function:
+Hardware fingerprint остаётся observation artifact. Его validator проверяет exact top-level/nested field sets, fingerprint version, canonical hash format и пересчитывает `observation_identity_sha256`.
+
+Успех этой проверки не означает acceptance host как canonical fixed target.
+
+## Cross-host investigation evidence
+
+### Triggering canonical failure
 
 ```text
-validate_hardware_runtime_fingerprint
+run: 30860485483
+commit: 33d0ff62c597170d46d1bdb40a05687326aa9369
 ```
-
-проверяет только observation artifact integrity:
-
-```text
-exact outer field set
-outer fingerprint version
-exact observation field set
-nested observation version
-canonical lowercase sha256:<64 hex> format
-recomputed observation_identity_sha256
-rejection of stale hash after observation mutation
-```
-
-Passing validation не объявляѵт host принятым canonical target.
-
-Premature fixed-target API отсутствует:
-
-```text
-FIXED_TARGET_POLICY_VERSION
-validate_fixed_execution_target
-validate_supported_cpu_software_path
-```
-
-До provisioning реального target частичный acceptance validator не публикуется.
-
-## Investigation evidence
-
-Temporary workflows использовались только для investigation runs ниже. Они не
-входят в retained diff.
 
 ### Controlled AVX2 experiment
 
 ```text
-workflow run: 30872595002
+run: 30872595002
 commit: df126eab5e2da8b47a3d006406f7dbe2d3ed7268
 profile: avx2-single-tensor
 ```
 
-Первое наблюдаемое cross-host расхождение:
+First observed divergence:
 
 ```text
 epoch: 1
@@ -298,27 +244,24 @@ parameter: concept_packer.bos_embedding
 stage: parameters_after_optimizer_step
 ```
 
-До `optimizer.step()` совпали encoded task, forward logits, loss components,
-raw gradients, gradient norm и clipped gradients.
-
-### Provisional DEFAULT sentinel experiment
+### Provisional DEFAULT sentinel
 
 ```text
-workflow run: 30907124345
+run: 30907124345
 commit: 2978356a7384164b4388d81cc8e75a5c0e7d03a4
 ```
 
-Provisional sentinel failed closed и не был принят как runtime contract.
+Sentinel failed closed и не был принят как runtime contract.
 
 ### Controlled DEFAULT observation
 
 ```text
-workflow run: 30907486933
+run: 30907486933
 commit: f3f27ff8428088c29c126fac6cf59bdbae35b2bc
 profile: default-single-tensor
 ```
 
-Первое наблюдаемое cross-host расхождение:
+First observed divergence:
 
 ```text
 epoch: 1
@@ -328,88 +271,26 @@ parameter: concept_packer.output_norm.bias
 stage: parameters_after_optimizer_step
 ```
 
-Forward, loss, raw gradients, clipping и clipped gradients совпали.
-
-## Поддерживаемый вывод
+Поддерживаемый вывод остаётся ограниченным:
 
 ```text
 First observed cross-host divergence occurs during AdamW parameter update.
 The underlying instruction-level cause remains unidentified.
 ```
 
-Investigation локализует первую divergence boundary. Она не идентифицирует
-конкретную vectorized instruction, assembly path или instruction-level root
-cause.
+Investigation не идентифицирует конкретную vector instruction, assembly path или instruction-level root cause.
 
-## Decision
+## Acceptance boundary
 
-Общий byte-exact profile для heterogeneous standard GitHub-hosted x86 runners
-не найден ни для controlled AVX2, ни для controlled DEFAULT experiment.
+Hosted `canonical-compare` — только observation sample конкретной пары workers. Его green или red результат не является fixed-target acceptance evidence.
 
-Будущая canonical acceptance требует одного provisioned и versioned fixed
-execution target. Конкретный target ещё не выбран и не provisioned.
-
-Будущий policy должен fail-closed закреплять как минимум:
+Fixed-target acceptance:
 
 ```text
-policy version and complete required field set
-CPU vendor/family/model/stepping/model name
-canonical CPU flags hash
-OS, kernel and image
-Python build
-PyTorch build configuration
-ATen dispatch
-BLAS, MKL, OpenMP and oneDNN configuration
-canonical environment variables
-accepted update-level execution sentinel
-observation identity recomputation
-rejection of missing and extra target fields
-```
-
-Обычный hosted runner label или container image сами по себе не фиксируют
-physical CPU identity.
-
-## Версионирование и migration
-
-Существующий runtime:
-
-```text
-toy-quality-canonical-cpu-runtime/1.0
-```
-
-не переинтерпретируется.
-
-Новый runtime contract и новая versioned evaluation возможны только после
-provisioning fixed target и отдельной acceptance-фазы.
-
-Historical v0.1 не сохранял достаточный hardware fingerprint, поэтому его
-нельзя доказуемо привязать к будущему target.
-
-## Frozen scope
-
-Не изменяются и не перегенерируются:
-
-```text
-planner_toy/canonical_runtime.py
-.github/workflows/ci.yml
-docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md
-docs/evaluations/data/a2_a3_a4_heldout_summary.json
-docs/evaluations/A2_A3_A4_V0_1_DECISION_RU.md
-```
-
-## CI и acceptance
-
-Investigation validation и canonical runtime acceptance остаются разными
-статусами:
-
-```text
-investigation tests: must pass on the current head
-canonical runtime acceptance: failed / unavailable
+unavailable
 accepted fixed-target runs: 0/3
 ```
 
-Canonical comparison не ослабляется. Tolerance не добавляется. Cross-host
-equality не требуется от retained investigation profiles до provisioning fixed
-target.
+Будущая acceptance phase требует одного provisioned, versioned fixed execution target и трёх независимых полностью green runs на одном final head.
 
-PR остаётся draft до повторного внешнего review.
+`toy-quality-canonical-cpu-runtime/1.0` не переинтерпретируется. `runtime/1.1` в этом PR не принимается.
