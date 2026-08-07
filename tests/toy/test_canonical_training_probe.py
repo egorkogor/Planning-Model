@@ -38,6 +38,10 @@ PROFILE_ENV = {
 }
 TASK_IDS = ["bw-00000001", "bw-00000002", "bw-00000003"]
 FINGERPRINT_VERSION = "toy-quality-cpu-hardware-fingerprint/1.0"
+_BUILD_CONFIGURATION = "fixture torch build configuration"
+_BUILD_CONFIGURATION_SHA256 = "sha256:" + hashlib.sha256(
+    _BUILD_CONFIGURATION.encode("utf-8")
+).hexdigest()
 
 
 def _hash(value: object) -> str:
@@ -222,7 +226,7 @@ def _contract(
         "python_compiler": "GCC 13.3.0",
         "python_build": ["main", "2026-07-01"],
         "torch_version": "2.12.0+cpu",
-        "torch_build_configuration_sha256": "sha256:" + "a" * 64,
+        "torch_build_configuration_sha256": _BUILD_CONFIGURATION_SHA256,
         "mkl_available": True,
         "openmp_available": True,
         "mkldnn_available": True,
@@ -244,16 +248,74 @@ def _runtime(version: str = "toy-quality-canonical-cpu-runtime/1.0") -> dict:
     }
 
 
-def _hardware(runtime: dict) -> dict:
+def _hardware(runtime: dict, contract: dict) -> dict:
     observation = {
         "fingerprint_version": FINGERPRINT_VERSION,
-        "os": {},
-        "cpu": {},
-        "runner": {},
-        "python": {},
-        "pytorch": {},
+        "os": {
+            "system": "Linux",
+            "release": "6.8.0",
+            "version": "fixture",
+            "machine": "x86_64",
+            "architecture": "64bit",
+            "os_release": {"ID": "ubuntu", "VERSION_ID": "24.04"},
+        },
+        "cpu": {
+            "vendor": "GenuineIntel",
+            "family": "6",
+            "model": "85",
+            "stepping": "7",
+            "model_name": "Fixture CPU",
+            "microcode": "0x1",
+            "logical_cpu_count": 2,
+            "flags_sha256": "sha256:" + "1" * 64,
+            "capabilities": {
+                "sse2": True,
+                "avx": True,
+                "avx2": True,
+                "avx512f": False,
+                "avx512dq": False,
+                "avx512bw": False,
+                "avx512vl": False,
+                "fma": True,
+            },
+        },
+        "runner": {
+            "RUNNER_OS": "Linux",
+            "RUNNER_ARCH": "X64",
+            "RUNNER_ENVIRONMENT": "github-hosted",
+            "ImageOS": "ubuntu24",
+            "ImageVersion": "20260720.247.2",
+            "AZURE_REGION": "fixture-region",
+        },
+        "python": {
+            "implementation": contract["python_implementation"],
+            "version": contract["python_version"],
+            "compiler": contract["python_compiler"],
+            "build_number": contract["python_build"][0],
+            "build_date": contract["python_build"][1],
+        },
+        "pytorch": {
+            "version": contract["torch_version"],
+            "cuda_version": None,
+            "build_configuration": _BUILD_CONFIGURATION,
+            "build_configuration_sha256": contract[
+                "torch_build_configuration_sha256"
+            ],
+            "cpu_dispatch_capability": contract["actual_atten_cpu_capability"],
+            "mkl_available": contract["mkl_available"],
+            "openmp_available": contract["openmp_available"],
+            "mkldnn_available": contract["mkldnn_available"],
+            "mkldnn_enabled": contract["mkldnn_enabled"],
+        },
         "canonical_runtime": copy.deepcopy(runtime),
-        "execution_environment": {},
+        "execution_environment": {
+            "OMP_NUM_THREADS": runtime["OMP_NUM_THREADS"],
+            "MKL_NUM_THREADS": runtime["MKL_NUM_THREADS"],
+            "OPENBLAS_NUM_THREADS": runtime["OPENBLAS_NUM_THREADS"],
+            "NUMEXPR_NUM_THREADS": runtime["NUMEXPR_NUM_THREADS"],
+            "ATEN_CPU_CAPABILITY": contract["ATEN_CPU_CAPABILITY"],
+            "MKL_CBWR": contract["MKL_CBWR"],
+        },
     }
     return {
         "fingerprint_version": FINGERPRINT_VERSION,
@@ -314,7 +376,7 @@ def _minimal_probe_fixture(contract: dict | None = None) -> dict:
         "execution_contract": selected,
         "execution_contract_sha256": _hash(selected),
         "runtime": runtime,
-        "hardware_runtime_fingerprint": _hardware(runtime),
+        "hardware_runtime_fingerprint": _hardware(runtime, selected),
     }
     payload["probe_identity"] = compute_probe_identity(payload)
     payload["evidence_identity"] = compute_evidence_identity(payload)
@@ -372,7 +434,7 @@ def test_same_contract_and_same_numbers_are_equal_across_hardware() -> None:
     left = _minimal_probe_fixture()
     right = copy.deepcopy(left)
     observation = right["hardware_runtime_fingerprint"]["observed_runtime_and_hardware"]
-    observation["cpu"] = {"model_name": "different-host"}
+    observation["cpu"]["model_name"] = "different-host"
     right["hardware_runtime_fingerprint"]["observation_identity_sha256"] = _hash(
         observation
     )
@@ -403,9 +465,7 @@ def test_execution_contract_enters_probe_identity() -> None:
     assert first["probe_identity"] != second["probe_identity"]
 
 
-def test_explicit_foreach_and_fused_cli_flags_are_persisted(
-    tmp_path: Path,
-) -> None:
+def test_explicit_foreach_and_fused_cli_flags_are_persisted(tmp_path: Path) -> None:
     output = tmp_path / "explicit.json"
     payload = _run_probe(
         "default-single-tensor",

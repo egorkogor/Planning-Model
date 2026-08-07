@@ -9,6 +9,7 @@ import argparse
 import json
 from pathlib import Path
 
+from scripts.canonical_probe_evidence_validation import validate_probe_artifact
 from scripts.canonical_training_probe_contract import (
     _PROFILE_SPECS,
     COMPARISON_VERSION,
@@ -20,10 +21,12 @@ from scripts.canonical_training_probe_contract import (
     compute_evidence_identity,
     compute_probe_identity,
     validate_execution_contract,
-    validate_probe_artifact,
     validate_probe_identity,
 )
-from scripts.canonical_training_probe_core import compare_probes, run_probe
+from scripts.canonical_training_probe_core import (
+    compare_probes as _compare_probes_base,
+    run_probe as _run_probe_base,
+)
 from scripts.canonical_training_probe_parity import run_quality_training_parity
 
 __all__ = [
@@ -40,6 +43,31 @@ __all__ = [
     "validate_probe_artifact",
     "validate_probe_identity",
 ]
+
+
+def run_probe(
+    *,
+    profile: str,
+    seed: int = 17,
+    optimizer_foreach: bool | None = None,
+    optimizer_fused: bool | None = None,
+) -> dict[str, object]:
+    result = _run_probe_base(
+        profile=profile,
+        seed=seed,
+        optimizer_foreach=optimizer_foreach,
+        optimizer_fused=optimizer_fused,
+    )
+    validate_probe_artifact(result)
+    return result
+
+
+def compare_probes(
+    left: dict[str, object], right: dict[str, object]
+) -> dict[str, object]:
+    validate_probe_artifact(left)
+    validate_probe_artifact(right)
+    return _compare_probes_base(left, right)
 
 
 def _read_json(path: Path) -> dict[str, object]:

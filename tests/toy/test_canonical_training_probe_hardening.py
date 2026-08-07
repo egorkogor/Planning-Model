@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from scripts.canonical_probe_evidence_validation import validate_runtime_cross_binding
 from scripts.canonical_training_probe_contract import (
     EXECUTION_CONTRACT_VERSION,
     PROBE_VERSION,
@@ -39,6 +40,20 @@ SOFTWARE_FIELDS = (
     "openmp_available",
     "mkldnn_available",
 )
+CONTRACT_ONLY_CROSS_BINDING_FIELDS = (
+    "python_version",
+    "python_compiler",
+    "torch_version",
+    "torch_build_configuration_sha256",
+    "actual_atten_cpu_capability",
+    "mkl_available",
+    "openmp_available",
+    "mkldnn_available",
+)
+_BUILD_CONFIGURATION = "fixture torch build configuration"
+_BUILD_CONFIGURATION_SHA256 = "sha256:" + hashlib.sha256(
+    _BUILD_CONFIGURATION.encode("utf-8")
+).hexdigest()
 
 
 def _hash(value: object) -> str:
@@ -87,7 +102,7 @@ def _contract(profile: str = "historical-default") -> dict:
         "python_compiler": "GCC 13.3.0",
         "python_build": ["main", "2026-07-01"],
         "torch_version": "2.12.0+cpu",
-        "torch_build_configuration_sha256": "sha256:" + "a" * 64,
+        "torch_build_configuration_sha256": _BUILD_CONFIGURATION_SHA256,
         "mkl_available": True,
         "openmp_available": True,
         "mkldnn_available": True,
@@ -109,16 +124,74 @@ def _runtime(version: str = "toy-quality-canonical-cpu-runtime/1.0") -> dict:
     }
 
 
-def _hardware(runtime: dict) -> dict:
+def _hardware(runtime: dict, contract: dict) -> dict:
     observation = {
         "fingerprint_version": FINGERPRINT_VERSION,
-        "os": {},
-        "cpu": {},
-        "runner": {},
-        "python": {},
-        "pytorch": {},
+        "os": {
+            "system": "Linux",
+            "release": "6.8.0",
+            "version": "fixture",
+            "machine": "x86_64",
+            "architecture": "64bit",
+            "os_release": {"ID": "ubuntu", "VERSION_ID": "24.04"},
+        },
+        "cpu": {
+            "vendor": "GenuineIntel",
+            "family": "6",
+            "model": "85",
+            "stepping": "7",
+            "model_name": "Fixture CPU",
+            "microcode": "0x1",
+            "logical_cpu_count": 2,
+            "flags_sha256": "sha256:" + "1" * 64,
+            "capabilities": {
+                "sse2": True,
+                "avx": True,
+                "avx2": True,
+                "avx512f": False,
+                "avx512dq": False,
+                "avx512bw": False,
+                "avx512vl": False,
+                "fma": True,
+            },
+        },
+        "runner": {
+            "RUNNER_OS": "Linux",
+            "RUNNER_ARCH": "X64",
+            "RUNNER_ENVIRONMENT": "github-hosted",
+            "ImageOS": "ubuntu24",
+            "ImageVersion": "20260720.247.2",
+            "AZURE_REGION": "fixture-region",
+        },
+        "python": {
+            "implementation": contract["python_implementation"],
+            "version": contract["python_version"],
+            "compiler": contract["python_compiler"],
+            "build_number": contract["python_build"][0],
+            "build_date": contract["python_build"][1],
+        },
+        "pytorch": {
+            "version": contract["torch_version"],
+            "cuda_version": None,
+            "build_configuration": _BUILD_CONFIGURATION,
+            "build_configuration_sha256": contract[
+                "torch_build_configuration_sha256"
+            ],
+            "cpu_dispatch_capability": contract["actual_atten_cpu_capability"],
+            "mkl_available": contract["mkl_available"],
+            "openmp_available": contract["openmp_available"],
+            "mkldnn_available": contract["mkldnn_available"],
+            "mkldnn_enabled": contract["mkldnn_enabled"],
+        },
         "canonical_runtime": copy.deepcopy(runtime),
-        "execution_environment": {},
+        "execution_environment": {
+            "OMP_NUM_THREADS": runtime["OMP_NUM_THREADS"],
+            "MKL_NUM_THREADS": runtime["MKL_NUM_THREADS"],
+            "OPENBLAS_NUM_THREADS": runtime["OPENBLAS_NUM_THREADS"],
+            "NUMEXPR_NUM_THREADS": runtime["NUMEXPR_NUM_THREADS"],
+            "ATEN_CPU_CAPABILITY": contract["ATEN_CPU_CAPABILITY"],
+            "MKL_CBWR": contract["MKL_CBWR"],
+        },
     }
     return {
         "fingerprint_version": FINGERPRINT_VERSION,
@@ -173,7 +246,7 @@ def _probe(contract: dict | None = None) -> dict:
         "execution_contract": selected,
         "execution_contract_sha256": _hash(selected),
         "runtime": runtime,
-        "hardware_runtime_fingerprint": _hardware(runtime),
+        "hardware_runtime_fingerprint": _hardware(runtime, selected),
     }
     payload["probe_identity"] = compute_probe_identity(payload)
     payload["evidence_identity"] = compute_evidence_identity(payload)
@@ -191,6 +264,11 @@ def _reseal_hardware(payload: dict) -> None:
     fingerprint = payload["hardware_runtime_fingerprint"]
     observation = fingerprint["observed_runtime_and_hardware"]
     fingerprint["observation_identity_sha256"] = _hash(observation)
+
+
+def _reseal_hardware_and_evidence(payload: dict) -> None:
+    _reseal_hardware(payload)
+    payload["evidence_identity"] = compute_evidence_identity(payload)
 
 
 @pytest.mark.parametrize("field", sorted(_contract()))
@@ -298,7 +376,7 @@ def test_probe_rejects_hardware_mutation_with_stale_fingerprint_hash() -> None:
     observation = payload["hardware_runtime_fingerprint"][
         "observed_runtime_and_hardware"
     ]
-    observation["cpu"] = {"model_name": "mutated"}
+    observation["cpu"]["model_name"] = "mutated"
     with pytest.raises(ValueError, match="HARDWARE_FINGERPRINT_OBSERVATION_HASH_MISMATCH"):
         validate_probe_artifact(payload)
 
@@ -308,7 +386,7 @@ def test_probe_rejects_resealed_hardware_with_stale_evidence_identity() -> None:
     observation = payload["hardware_runtime_fingerprint"][
         "observed_runtime_and_hardware"
     ]
-    observation["cpu"] = {"model_name": "mutated"}
+    observation["cpu"]["model_name"] = "mutated"
     _reseal_hardware(payload)
     with pytest.raises(ValueError, match="EVIDENCE_IDENTITY_HASH_MISMATCH"):
         validate_probe_artifact(payload)
@@ -372,37 +450,98 @@ def test_same_contract_and_resealed_mutation_compare_different() -> None:
     assert result["first_divergence"]["stage"] == "adamw_exp_avg_sq"
 
 
-@pytest.mark.parametrize("field", SOFTWARE_FIELDS)
-def test_software_runtime_contract_mutation_makes_valid_artifacts_incomparable(
-    field: str,
-) -> None:
-    left = _probe()
-    right = copy.deepcopy(left)
+@pytest.mark.parametrize("field", CONTRACT_ONLY_CROSS_BINDING_FIELDS)
+def test_resealed_contract_only_software_mutation_is_rejected(field: str) -> None:
+    payload = _probe()
     values = {
-        "canonical_runtime_version": "toy-quality-canonical-cpu-runtime/1.1",
-        "python_implementation": "PyPy",
         "python_version": "3.13.7",
         "python_compiler": "Clang 20.0",
-        "python_build": ["other", "2026-08-01"],
         "torch_version": "2.12.1+cpu",
         "torch_build_configuration_sha256": "sha256:" + "b" * 64,
+        "actual_atten_cpu_capability": "OTHER",
         "mkl_available": False,
         "openmp_available": False,
         "mkldnn_available": False,
     }
-    right["execution_contract"][field] = values[field]
-    if field == "canonical_runtime_version":
-        right["runtime"]["profile_version"] = values[field]
-        observation = right["hardware_runtime_fingerprint"][
-            "observed_runtime_and_hardware"
-        ]
-        observation["canonical_runtime"] = copy.deepcopy(right["runtime"])
-        _reseal_hardware(right)
+    payload["execution_contract"][field] = values[field]
+    _reseal(payload)
+    with pytest.raises(
+        ValueError, match=f"PROBE_RUNTIME_CROSS_BINDING_MISMATCH:{field}"
+    ):
+        validate_probe_artifact(payload)
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "error_field"),
+    (
+        (("python", "version"), "3.13.7", "python_version"),
+        (("pytorch", "version"), "2.12.1+cpu", "torch_version"),
+        (("pytorch", "cpu_dispatch_capability"), "OTHER", "actual_atten_cpu_capability"),
+        (("execution_environment", "MKL_CBWR"), "COMPATIBLE", "MKL_CBWR"),
+        (
+            ("canonical_runtime", "profile_version"),
+            "toy-quality-canonical-cpu-runtime/1.1",
+            "canonical_runtime_version",
+        ),
+    ),
+)
+def test_resealed_hardware_only_cross_binding_mutation_is_rejected(
+    path: tuple[str, str], value: object, error_field: str
+) -> None:
+    payload = _probe()
+    observation = payload["hardware_runtime_fingerprint"][
+        "observed_runtime_and_hardware"
+    ]
+    section, field = path
+    observation[section][field] = value
+    _reseal_hardware_and_evidence(payload)
+    with pytest.raises(
+        ValueError, match=f"PROBE_RUNTIME_CROSS_BINDING_MISMATCH:{error_field}"
+    ):
+        validate_probe_artifact(payload)
+
+
+def test_full_runtime_must_equal_hardware_canonical_runtime() -> None:
+    payload = _probe()
+    hardware_runtime = payload["hardware_runtime_fingerprint"][
+        "observed_runtime_and_hardware"
+    ]["canonical_runtime"]
+    hardware_runtime["profile_version"] = payload["runtime"]["profile_version"]
+    hardware_runtime = copy.deepcopy(payload["runtime"])
+    hardware_runtime["deterministic_algorithms_enabled"] = False
+    payload["hardware_runtime_fingerprint"]["observed_runtime_and_hardware"][
+        "canonical_runtime"
+    ] = hardware_runtime
+    _reseal_hardware_and_evidence(payload)
+    with pytest.raises(ValueError, match="PROBE_RUNTIME_VALUE_MISMATCH"):
+        validate_probe_artifact(payload)
+
+
+def test_software_runtime_contract_mutation_makes_valid_artifacts_incomparable() -> None:
+    left = _probe()
+    right = copy.deepcopy(left)
+    right["execution_contract"]["python_version"] = "3.13.7"
+    observation = right["hardware_runtime_fingerprint"][
+        "observed_runtime_and_hardware"
+    ]
+    observation["python"]["version"] = "3.13.7"
+    _reseal_hardware(right)
     _reseal(right)
+    validate_probe_artifact(left)
+    validate_probe_artifact(right)
     report = compare_probes(left, right)
     assert report["comparable"] is False
     assert report["reason"] == "EXECUTION_CONTRACT_MISMATCH"
     assert report["equal"] is None
+
+
+def test_runtime_cross_binding_accepts_matching_historical_dispatch() -> None:
+    payload = _probe()
+    validate_runtime_cross_binding(
+        payload["execution_contract"],
+        payload["runtime"],
+        payload["hardware_runtime_fingerprint"],
+    )
 
 
 def test_probe_2_0_requires_exact_epochs() -> None:
