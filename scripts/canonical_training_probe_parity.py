@@ -150,6 +150,7 @@ def _instrument_quality_training_update(
     captured: dict[str, Any] = {
         "events": [],
         "cross_entropy_components": [],
+        "update_active": False,
     }
 
     def require_captured_parameter_order() -> list[tuple[str, Any]]:
@@ -217,10 +218,18 @@ def _instrument_quality_training_update(
         original_step = optimizer.step
 
         def zero_grad(*zero_args: Any, **zero_kwargs: Any) -> Any:
+            if captured["update_active"]:
+                raise RuntimeError("QUALITY_PARITY_UPDATE_ALREADY_ACTIVE")
+            result = original_zero_grad(*zero_args, **zero_kwargs)
+            captured["events"].clear()
+            captured["cross_entropy_components"].clear()
+            captured["update_active"] = True
             captured["events"].append("zero_grad")
-            return original_zero_grad(*zero_args, **zero_kwargs)
+            return result
 
         def step(*step_args: Any, **step_kwargs: Any) -> Any:
+            if not captured["update_active"]:
+                return original_step(*step_args, **step_kwargs)
             named = require_captured_parameter_order()
             captured["events"].append("step")
             result = original_step(*step_args, **step_kwargs)
@@ -228,6 +237,7 @@ def _instrument_quality_training_update(
             captured["adamw_exp_avg"] = exp_avg
             captured["adamw_exp_avg_sq"] = exp_avg_sq
             captured["parameters_after_optimizer_step"] = _ordered_tensor_hashes(named)
+            captured["update_active"] = False
             return result
 
         optimizer.zero_grad = zero_grad
@@ -236,10 +246,13 @@ def _instrument_quality_training_update(
 
     def cross_entropy(*args: Any, **kwargs: Any) -> Any:
         result = original_cross_entropy(*args, **kwargs)
-        captured["cross_entropy_components"].append(result.detach().clone())
+        if captured["update_active"]:
+            captured["cross_entropy_components"].append(result.detach().clone())
         return result
 
     def backward(tensor: Any, *args: Any, **kwargs: Any) -> Any:
+        if not captured["update_active"]:
+            return original_backward(tensor, *args, **kwargs)
         captured["events"].append("loss")
         captured["total_loss"] = tensor.detach().clone()
         result = original_backward(tensor, *args, **kwargs)
@@ -250,6 +263,10 @@ def _instrument_quality_training_update(
         parameters: Any, max_norm: float, *args: Any, **kwargs: Any
     ) -> Any:
         parameter_list = list(parameters)
+        if not captured["update_active"]:
+            return original_clip_grad_norm(
+                parameter_list, max_norm, *args, **kwargs
+            )
         parameter_names = _parameter_names_for_objects(
             captured["model"], parameter_list
         )
