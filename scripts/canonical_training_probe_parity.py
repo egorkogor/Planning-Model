@@ -37,7 +37,7 @@ def _parity_trace_from_probe_update(
     return {
         "parameter_names": [name for name, _ in named_parameters],
         "optimizer_defaults": _normalize_value(optimizer.defaults),
-        "initial_parameters": _ordered_tensor_hashes(list(model.named_parameters())),
+        "initial_parameters": _ordered_tensor_hashes(named_parameters),
         "encoded_task_sha256": update["encoded_task_sha256"],
         "forward_logits": update["forward_logits"],
         "loss_components": update["loss_components"],
@@ -74,7 +74,7 @@ def _run_probe_one_update(
         [parameter for _, parameter in named_parameters],
         spec,
     )
-    initial_parameters = _ordered_tensor_hashes(list(model.named_parameters()))
+    initial_parameters = _ordered_tensor_hashes(named_parameters)
     update = _trace_update(
         model=model,
         named_parameters=named_parameters,
