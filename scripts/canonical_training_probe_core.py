@@ -15,10 +15,11 @@ from scripts.canonical_training_probe_contract import (
     _load_modules,
     _resolve_profile_before_torch_import,
     _sha256_bytes,
-    _validate_execution_contract_hash,
+    compute_evidence_identity,
     compute_probe_identity,
-    validate_probe_identity,
+    validate_probe_artifact,
 )
+
 
 def _tensor_sha256(tensor: Any) -> str:
     value = tensor.detach().cpu().contiguous()
@@ -209,7 +210,10 @@ def _run_probe_after_preflight(
         spec,
     )
     contract = _execution_contract(
-        spec=spec, optimizer=optimizer, torch_module=modules["torch"]
+        spec=spec,
+        optimizer=optimizer,
+        torch_module=modules["torch"],
+        runtime=runtime,
     )
     payload: dict[str, object] = {
         "probe_version": PROBE_VERSION,
@@ -243,8 +247,8 @@ def _run_probe_after_preflight(
     modules["validate_hardware_runtime_fingerprint"](hardware)
     payload["hardware_runtime_fingerprint"] = hardware
     payload["probe_identity"] = compute_probe_identity(payload)
-    validate_probe_identity(payload)
-    payload["evidence_identity"] = _sha256_bytes(_canonical_bytes(payload))
+    payload["evidence_identity"] = compute_evidence_identity(payload)
+    validate_probe_artifact(payload)
     return payload
 
 
@@ -286,36 +290,22 @@ def _incomparable_report(
     }
 
 
-def _execution_contract_with_integrity(
-    payload: dict[str, object],
-) -> dict[str, object]:
-    contract = payload.get("execution_contract")
-    identity = payload.get("execution_contract_sha256")
-    if not isinstance(contract, dict):
-        raise ValueError("EXECUTION_CONTRACT_MISSING")
-    if not isinstance(identity, str):
-        raise ValueError("EXECUTION_CONTRACT_HASH_FORMAT_INVALID")
-    if identity != _sha256_bytes(_canonical_bytes(contract)):
-        raise ValueError("EXECUTION_CONTRACT_HASH_MISMATCH")
-    return contract
-
-
 def compare_probes(
     left: dict[str, object], right: dict[str, object]
 ) -> dict[str, object]:
-    left_contract = _execution_contract_with_integrity(left)
-    right_contract = _execution_contract_with_integrity(right)
+    validate_probe_artifact(left)
+    validate_probe_artifact(right)
+    left_contract = left["execution_contract"]
+    right_contract = right["execution_contract"]
     base: dict[str, object] = {
         "comparison_version": COMPARISON_VERSION,
-        "left_probe_identity": left.get("probe_identity"),
-        "right_probe_identity": right.get("probe_identity"),
+        "left_probe_identity": left["probe_identity"],
+        "right_probe_identity": right["probe_identity"],
         "left_execution_contract_sha256": left["execution_contract_sha256"],
         "right_execution_contract_sha256": right["execution_contract_sha256"],
     }
     if left_contract != right_contract:
         return _incomparable_report(base, "EXECUTION_CONTRACT_MISMATCH")
-    _validate_execution_contract_hash(left)
-    _validate_execution_contract_hash(right)
     specification_fields = (
         "probe_version",
         "variant",
@@ -347,8 +337,6 @@ def compare_probes(
         )
         first = {"stage": "initial_parameters", "parameter": name}
         first_parameter = first
-    elif len(left["updates"]) != len(right["updates"]):
-        first = {"stage": "update_count"}
     else:
         for left_update, right_update in zip(
             left["updates"], right["updates"], strict=True
@@ -401,5 +389,3 @@ def compare_probes(
         "first_divergence": first,
         "first_parameter_divergence": first_parameter,
     }
-
-

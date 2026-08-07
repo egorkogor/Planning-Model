@@ -23,6 +23,7 @@ from scripts.canonical_training_probe_core import (
     _trace_update,
 )
 
+
 def _parity_trace_from_probe_update(
     *,
     model: Any,
@@ -101,6 +102,35 @@ def _parameter_names_for_objects(model: Any, values: list[Any]) -> list[str]:
         raise RuntimeError("QUALITY_PARITY_UNKNOWN_PARAMETER") from error
 
 
+def _capture_parameter_order(
+    captured: dict[str, Any],
+    *,
+    model: Any,
+    named_parameters: list[tuple[str, Any]],
+) -> list[tuple[str, Any]]:
+    if not named_parameters:
+        raise RuntimeError("QUALITY_PARITY_PARAMETER_ORDER_EMPTY")
+    names = [name for name, _ in named_parameters]
+    parameters = [parameter for _, parameter in named_parameters]
+    mapped_names = _parameter_names_for_objects(model, parameters)
+    if names != mapped_names:
+        raise RuntimeError("QUALITY_PARITY_PARAMETER_NAME_IDENTITY_MISMATCH")
+    existing = captured.get("named_parameters")
+    if existing is None:
+        captured["named_parameters"] = list(named_parameters)
+        captured["parameter_names"] = names
+        return captured["named_parameters"]
+    if not isinstance(existing, list):
+        raise RuntimeError("QUALITY_PARITY_PARAMETER_ORDER_INVALID")
+    existing_names = [name for name, _ in existing]
+    existing_ids = [id(parameter) for _, parameter in existing]
+    if existing_names != names or existing_ids != [id(value) for value in parameters]:
+        raise RuntimeError("QUALITY_PARITY_PARAMETER_ORDER_MISMATCH")
+    if captured.get("parameter_names") != names:
+        raise RuntimeError("QUALITY_PARITY_PARAMETER_NAMES_MISMATCH")
+    return existing
+
+
 def _instrument_quality_training_update(
     *,
     seed: int,
@@ -122,15 +152,23 @@ def _instrument_quality_training_update(
         "cross_entropy_components": [],
     }
 
+    def require_captured_parameter_order() -> list[tuple[str, Any]]:
+        model = captured.get("model")
+        values = captured.get("named_parameters")
+        if model is None or not isinstance(values, list) or not values:
+            raise RuntimeError("QUALITY_PARITY_PARAMETER_ORDER_UNAVAILABLE")
+        return _capture_parameter_order(
+            captured,
+            model=model,
+            named_parameters=values,
+        )
+
     def locked_planner_factory(*args: Any, **kwargs: Any) -> Any:
         model = original_locked_planner(*args, **kwargs)
         captured["model"] = model
         captured["initial_parameters"] = _ordered_tensor_hashes(
             list(model.named_parameters())
         )
-        values = original_optimizer_named_parameters(model)
-        captured["named_parameters"] = values
-        captured["parameter_names"] = [name for name, _ in values]
         original_forward = model.forward
 
         def forward(*forward_args: Any, **forward_kwargs: Any) -> Any:
@@ -150,21 +188,27 @@ def _instrument_quality_training_update(
 
     def optimizer_named_parameters(model: Any) -> list[tuple[str, Any]]:
         values = original_optimizer_named_parameters(model)
-        if "named_parameters" not in captured:
-            captured["named_parameters"] = values
-            captured["parameter_names"] = [name for name, _ in values]
+        _capture_parameter_order(
+            captured,
+            model=model,
+            named_parameters=values,
+        )
         return values
 
     def adamw_factory(parameters: Any, *args: Any, **kwargs: Any) -> Any:
         parameter_list = list(parameters)
-        parameter_names = _parameter_names_for_objects(
-            captured["model"], parameter_list
+        model = captured.get("model")
+        if model is None:
+            raise RuntimeError("QUALITY_PARITY_MODEL_UNAVAILABLE")
+        parameter_names = _parameter_names_for_objects(model, parameter_list)
+        named_parameters = list(
+            zip(parameter_names, parameter_list, strict=True)
         )
-        if "named_parameters" not in captured:
-            captured["named_parameters"] = list(
-                zip(parameter_names, parameter_list, strict=True)
-            )
-            captured["parameter_names"] = parameter_names
+        _capture_parameter_order(
+            captured,
+            model=model,
+            named_parameters=named_parameters,
+        )
         optimizer = original_adamw(parameter_list, *args, **kwargs)
         captured["optimizer"] = optimizer
         captured["optimizer_defaults"] = _normalize_value(optimizer.defaults)
@@ -177,11 +221,10 @@ def _instrument_quality_training_update(
             return original_zero_grad(*zero_args, **zero_kwargs)
 
         def step(*step_args: Any, **step_kwargs: Any) -> Any:
+            named = require_captured_parameter_order()
             captured["events"].append("step")
             result = original_step(*step_args, **step_kwargs)
-            exp_avg, exp_avg_sq = _optimizer_moments(
-                optimizer, captured["named_parameters"]
-            )
+            exp_avg, exp_avg_sq = _optimizer_moments(optimizer, named)
             captured["adamw_exp_avg"] = exp_avg
             captured["adamw_exp_avg_sq"] = exp_avg_sq
             captured["parameters_after_optimizer_step"] = _ordered_tensor_hashes(
@@ -199,13 +242,14 @@ def _instrument_quality_training_update(
         return result
 
     def backward(tensor: Any, *args: Any, **kwargs: Any) -> Any:
+        named = require_captured_parameter_order()
         captured["events"].append("loss")
         captured["total_loss"] = tensor.detach().clone()
         result = original_backward(tensor, *args, **kwargs)
         captured["events"].append("backward")
         captured["raw_gradients"] = {
             name: _tensor_sha256(parameter.grad)
-            for name, parameter in captured["named_parameters"]
+            for name, parameter in named
             if parameter.grad is not None
         }
         return result
@@ -213,6 +257,7 @@ def _instrument_quality_training_update(
     def clip_grad_norm_(
         parameters: Any, max_norm: float, *args: Any, **kwargs: Any
     ) -> Any:
+        named = require_captured_parameter_order()
         parameter_list = list(parameters)
         captured["events"].append("clip")
         captured["gradient_clip_max_norm"] = float(max_norm)
@@ -225,7 +270,7 @@ def _instrument_quality_training_update(
         captured["gradient_norm"] = _tensor_sha256(result)
         captured["gradients_after_clipping"] = {
             name: _tensor_sha256(parameter.grad)
-            for name, parameter in captured["named_parameters"]
+            for name, parameter in named
             if parameter.grad is not None
         }
         return result
@@ -266,19 +311,20 @@ def _instrument_quality_training_update(
         "encoded_task_sha256",
         "forward_logits",
         "total_loss",
-      "raw_gradients",
+        "raw_gradients",
         "gradient_clip_max_norm",
         "gradient_clip_parameter_names",
         "gradient_norm",
         "gradients_after_clipping",
-      "adamw_exp_avg",
+        "adamw_exp_avg",
         "adamw_exp_avg_sq",
-      "parameters_after_optimizer_step",
+        "parameters_after_optimizer_step",
     }
     missing = sorted(required - set(captured))
     if missing:
         raise RuntimeError(f"QUALITY_PARITY_INSTRUMENTATION_INCOMPLETE:{missing}")
-    if captured["optimizer_parameter_names"] != captured["parameter_names"]:
+    named = require_captured_parameter_order()
+    if captured["optimizer_parameter_names"] != [name for name, _ in named]:
         raise RuntimeError("QUALITY_PARITY_OPTIMIZER_PARAMETER_ORDER_MISMATCH")
     action, _, _ = modules["labels"](row)
     valid = len(row["oracle_work_plan"])
@@ -344,7 +390,6 @@ def run_quality_training_parity(*, seed: int = 17) -> dict[str, object]:
     _ensure_torch_not_imported()
     spec = _resolve_profile_before_torch_import("historical-default")
     runtime, modules = _load_modules(seed)
-    del runtime
     row = sorted(
         modules["generate"](17)["train"], key=lambda item: item["task_id"]
     )[0]
@@ -365,6 +410,7 @@ def run_quality_training_parity(*, seed: int = 17) -> dict[str, object]:
         spec=spec,
         optimizer=contract_optimizer,
         torch_module=modules["torch"],
+        runtime=runtime,
     )
     first_difference = _first_parity_difference(quality_trace, probe_trace)
     return {
@@ -377,5 +423,3 @@ def run_quality_training_parity(*, seed: int = 17) -> dict[str, object]:
         "quality_trace": quality_trace,
         "probe_trace": probe_trace,
     }
-
-
