@@ -9,7 +9,6 @@ import argparse
 import json
 from pathlib import Path
 
-from scripts.canonical_probe_evidence_validation import validate_probe_artifact
 from scripts.canonical_training_probe_contract import (
     _PROFILE_SPECS,
     COMPARISON_VERSION,
@@ -43,6 +42,14 @@ __all__ = [
     "validate_probe_artifact",
     "validate_probe_identity",
 ]
+
+
+def validate_probe_artifact(payload: object) -> dict[str, object]:
+    from scripts.canonical_probe_evidence_validation import (
+        validate_probe_artifact as _validate_probe_artifact,
+    )
+
+    return _validate_probe_artifact(payload)
 
 
 def run_probe(
