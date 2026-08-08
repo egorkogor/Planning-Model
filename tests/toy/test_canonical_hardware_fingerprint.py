@@ -9,6 +9,7 @@ import pytest
 from scripts.canonical_cpu_hardware_fingerprint import (
     HARDWARE_FINGERPRINT_VERSION,
     full_hardware_runtime_fingerprint,
+    observed_runtime_and_hardware,
     validate_hardware_runtime_fingerprint,
 )
 
@@ -47,6 +48,17 @@ def _reseal_observation(fingerprint: dict) -> None:
     fingerprint["observation_identity_sha256"] = _observation_hash(
         fingerprint["observed_runtime_and_hardware"]
     )
+
+
+def test_retained_fingerprint_factory_output_validates() -> None:
+    validate_hardware_runtime_fingerprint(full_hardware_runtime_fingerprint(_runtime()))
+
+
+def test_retained_fingerprint_factories_require_canonical_runtime() -> None:
+    with pytest.raises(TypeError):
+        observed_runtime_and_hardware()  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        full_hardware_runtime_fingerprint()  # type: ignore[call-arg]
 
 
 def test_hardware_fingerprint_contains_required_stable_fields() -> None:
