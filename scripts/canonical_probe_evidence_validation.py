@@ -1,9 +1,7 @@
 """Cross-binding validation for retained canonical training-probe evidence."""
 from __future__ import annotations
 
-from scripts.canonical_training_probe_contract import (
-    validate_probe_artifact as _validate_probe_artifact_base,
-)
+from scripts.canonical_training_probe_contract import _validate_probe_artifact_base
 
 
 def _require_equal(field: str, *values: object) -> None:
@@ -80,7 +78,7 @@ def validate_runtime_cross_binding(
 
 
 def validate_probe_artifact(payload: object) -> dict[str, object]:
-    """Validate and cross-bind a fully sealed retained probe artifact."""
+    """Authoritatively validate and cross-bind a sealed retained probe artifact."""
     validated = _validate_probe_artifact_base(payload)
     validate_runtime_cross_binding(
         validated["execution_contract"],
