@@ -478,11 +478,6 @@ def test_resealed_contract_only_software_mutation_is_rejected(field: str) -> Non
         (("pytorch", "version"), "2.12.1+cpu", "torch_version"),
         (("pytorch", "cpu_dispatch_capability"), "OTHER", "actual_atten_cpu_capability"),
         (("execution_environment", "MKL_CBWR"), "COMPATIBLE", "MKL_CBWR"),
-        (
-            ("canonical_runtime", "profile_version"),
-            "toy-quality-canonical-cpu-runtime/1.1",
-            "canonical_runtime_version",
-        ),
     ),
 )
 def test_resealed_hardware_only_cross_binding_mutation_is_rejected(
@@ -498,6 +493,19 @@ def test_resealed_hardware_only_cross_binding_mutation_is_rejected(
     with pytest.raises(
         ValueError, match=f"PROBE_RUNTIME_CROSS_BINDING_MISMATCH:{error_field}"
     ):
+        validate_probe_artifact(payload)
+
+
+def test_resealed_hardware_runtime_version_mutation_is_rejected() -> None:
+    payload = _probe()
+    observation = payload["hardware_runtime_fingerprint"][
+        "observed_runtime_and_hardware"
+    ]
+    observation["canonical_runtime"]["profile_version"] = (
+        "toy-quality-canonical-cpu-runtime/1.1"
+    )
+    _reseal_hardware_and_evidence(payload)
+    with pytest.raises(ValueError, match="PROBE_RUNTIME_VERSION_MISMATCH"):
         validate_probe_artifact(payload)
 
 
