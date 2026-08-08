@@ -336,10 +336,10 @@ def validate_execution_contract(contract: object) -> dict[str, object]:
         raise ValueError("EXECUTION_CONTRACT_DETERMINISTIC_FIELDS_MISMATCH")
     if deterministic != {"enabled": True, "warn_only": False}:
         raise ValueError("EXECUTION_CONTRACT_DETERMINISTIC_VALUE_MISMATCH")
-    _require_nonempty_string(
-        contract["canonical_runtime_version"],
-        "EXECUTION_CONTRACT_SOFTWARE_FIELD_INVALID:canonical_runtime_version",
-    )
+    if contract["canonical_runtime_version"] != CANONICAL_RUNTIME_VERSION:
+        raise ValueError(
+            "EXECUTION_CONTRACT_CANONICAL_RUNTIME_VERSION_MISMATCH"
+        )
     for name in (
         "python_implementation",
         "python_version",
@@ -564,7 +564,8 @@ def validate_runtime_fingerprint(runtime: object) -> dict[str, object]:
         raise ValueError("PROBE_RUNTIME_NOT_OBJECT")
     if set(runtime) != _RUNTIME_FIELDS:
         raise ValueError("PROBE_RUNTIME_FIELDS_MISMATCH")
-    _require_nonempty_string(runtime["profile_version"], "PROBE_RUNTIME_VERSION_INVALID")
+    if runtime["profile_version"] != CANONICAL_RUNTIME_VERSION:
+        raise ValueError("PROBE_RUNTIME_VERSION_MISMATCH")
     expected_values = {
         "deterministic_algorithms_enabled": True,
         "deterministic_warn_only_enabled": False,
