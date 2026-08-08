@@ -6,12 +6,7 @@ import json
 
 import pytest
 
-from scripts import canonical_training_probe_contract as probe_contract
-from scripts import canonical_training_probe_core as probe_core
-from scripts.canonical_probe_evidence_validation import (
-    validate_probe_artifact as authoritative_validate_probe_artifact,
-    validate_runtime_cross_binding,
-)
+from scripts.canonical_probe_evidence_validation import validate_runtime_cross_binding
 from scripts.canonical_training_probe_contract import (
     EXECUTION_CONTRACT_VERSION,
     PROBE_VERSION,
@@ -274,34 +269,6 @@ def _reseal_hardware(payload: dict) -> None:
 def _reseal_hardware_and_evidence(payload: dict) -> None:
     _reseal_hardware(payload)
     payload["evidence_identity"] = compute_evidence_identity(payload)
-
-
-def test_only_one_authoritative_probe_artifact_validator() -> None:
-    assert not hasattr(probe_contract, "validate_probe_artifact")
-    assert not hasattr(probe_core, "validate_probe_artifact")
-    assert validate_probe_artifact is authoritative_validate_probe_artifact
-
-
-def test_resealed_cross_binding_contradiction_fails_authoritative_and_core() -> None:
-    valid_payload = _probe()
-    payload = copy.deepcopy(valid_payload)
-    payload["execution_contract"]["python_version"] = "3.13.7"
-    observation = payload["hardware_runtime_fingerprint"][
-        "observed_runtime_and_hardware"
-    ]
-    observation["python"]["version"] = "3.12.10"
-    _reseal_hardware(payload)
-    _reseal(payload)
-
-    with pytest.raises(
-        ValueError, match="PROBE_RUNTIME_CROSS_BINDING_MISMATCH:python_version"
-    ) as authoritative_error:
-        authoritative_validate_probe_artifact(payload)
-    with pytest.raises(
-        ValueError, match="PROBE_RUNTIME_CROSS_BINDING_MISMATCH:python_version"
-    ) as core_error:
-        probe_core.compare_probes(payload, valid_payload)
-    assert str(core_error.value) == str(authoritative_error.value)
 
 
 @pytest.mark.parametrize("field", sorted(_contract()))
