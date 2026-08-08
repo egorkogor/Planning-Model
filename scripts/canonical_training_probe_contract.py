@@ -590,7 +590,7 @@ def compute_evidence_identity(payload: dict[str, object]) -> str:
     return _sha256_bytes(_canonical_bytes(_evidence_identity_payload(payload)))
 
 
-def validate_probe_artifact(payload: object) -> dict[str, object]:
+def _validate_probe_artifact_base(payload: object) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise ValueError("PROBE_NOT_OBJECT")
     if set(payload) != _PROBE_ARTIFACT_FIELDS:
