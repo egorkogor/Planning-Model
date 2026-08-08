@@ -213,9 +213,9 @@ def _runner_metadata() -> dict[str, object]:
 
 
 def observed_runtime_and_hardware(
-    runtime_fingerprint: dict[str, object] | None = None,
+    runtime_fingerprint: dict[str, object],
 ) -> dict[str, object]:
-    """Collect deterministic evidence without hostname, PID, or timestamps."""
+    """Collect retained evidence without hostname, PID, or timestamps."""
     build_configuration = _torch_build_configuration()
     return {
         "fingerprint_version": HARDWARE_FINGERPRINT_VERSION,
@@ -252,7 +252,7 @@ def observed_runtime_and_hardware(
 
 
 def full_hardware_runtime_fingerprint(
-    runtime_fingerprint: dict[str, object] | None = None,
+    runtime_fingerprint: dict[str, object],
 ) -> dict[str, object]:
     observation = observed_runtime_and_hardware(runtime_fingerprint)
     return {
