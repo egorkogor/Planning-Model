@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from scripts import canonical_probe_evidence_validation as evidence_validation
 from scripts.canonical_training_probe_contract import (
     COMPARISON_VERSION,
     EPOCHS,
@@ -17,7 +18,6 @@ from scripts.canonical_training_probe_contract import (
     _sha256_bytes,
     compute_evidence_identity,
     compute_probe_identity,
-    validate_probe_artifact,
 )
 
 
@@ -246,7 +246,7 @@ def _run_probe_after_preflight(
     payload["hardware_runtime_fingerprint"] = hardware
     payload["probe_identity"] = compute_probe_identity(payload)
     payload["evidence_identity"] = compute_evidence_identity(payload)
-    validate_probe_artifact(payload)
+    evidence_validation.validate_probe_artifact(payload)
     return payload
 
 
@@ -291,8 +291,8 @@ def _incomparable_report(
 def compare_probes(
     left: dict[str, object], right: dict[str, object]
 ) -> dict[str, object]:
-    validate_probe_artifact(left)
-    validate_probe_artifact(right)
+    evidence_validation.validate_probe_artifact(left)
+    evidence_validation.validate_probe_artifact(right)
     left_contract = left["execution_contract"]
     right_contract = right["execution_contract"]
     base: dict[str, object] = {
