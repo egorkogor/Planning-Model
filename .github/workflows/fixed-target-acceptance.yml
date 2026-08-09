@@ -1,0 +1,114 @@
+name: Fixed canonical CPU target acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      implementation_sha:
+        description: Exact repository commit to validate on the fixed target
+        required: true
+        type: string
+      target_contract_path:
+        description: Committed concrete fixed-target contract
+        required: true
+        default: configs/fixed-cpu-target-1.0.json
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: planning-model-canonical-cpu-v1
+  cancel-in-progress: false
+
+jobs:
+  fixed-target-preflight:
+    if: github.repository == 'egorkogor/Planning-Model'
+    runs-on: [self-hosted, linux, x64, planning-model-canonical-cpu-v1]
+    timeout-minutes: 30
+    env:
+      FIXED_TARGET_RUNNER_LABELS: linux,planning-model-canonical-cpu-v1,self-hosted,x64
+    steps:
+      - name: Refuse absent runner image identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -r /etc/planning-model-runner-image-id
+          image_id="$(cat /etc/planning-model-runner-image-id)"
+          test -n "$image_id"
+          echo "FIXED_TARGET_RUNNER_IMAGE=$image_id" >> "$GITHUB_ENV"
+
+      - name: Checkout exact repository commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.implementation_sha }}
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Validate trusted exact commit
+        shell: bash
+        env:
+          IMPLEMENTATION_SHA: ${{ inputs.implementation_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$IMPLEMENTATION_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$IMPLEMENTATION_SHA"
+          git cat-file -e "${IMPLEMENTATION_SHA}^{commit}"
+          test -z "$(git status --porcelain)"
+
+      - name: Clean attempt workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .fixed-target-venv .fixed-target-attempt .pytest-tmp .pytest_cache
+          git clean -ffdx
+          test -z "$(git status --porcelain)"
+
+      - name: Require committed concrete target contract
+        shell: bash
+        env:
+          TARGET_CONTRACT_PATH: ${{ inputs.target_contract_path }}
+        run: |
+          set -euo pipefail
+          test "$TARGET_CONTRACT_PATH" = "configs/fixed-cpu-target-1.0.json"
+          test -f "$TARGET_CONTRACT_PATH"
+          git ls-files --error-unmatch "$TARGET_CONTRACT_PATH"
+
+      - name: Install pinned validation runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv .fixed-target-venv
+          .fixed-target-venv/bin/python -m pip install --upgrade pip
+          .fixed-target-venv/bin/python -m pip install -r requirements.lock
+          .fixed-target-venv/bin/python -m pip install -e . --no-deps
+          .fixed-target-venv/bin/python -m pip install torch==2.12.0+cpu --index-url https://download.pytorch.org/whl/cpu
+          .fixed-target-venv/bin/python -m pip install -e '.[ml]'
+
+      - name: Validate target before any training
+        shell: bash
+        env:
+          IMPLEMENTATION_SHA: ${{ inputs.implementation_sha }}
+          TARGET_CONTRACT_PATH: ${{ inputs.target_contract_path }}
+        run: |
+          set -euo pipefail
+          mkdir -p .fixed-target-attempt
+          .fixed-target-venv/bin/python -m scripts.run_fixed_target_acceptance preflight \
+            --target-contract "$TARGET_CONTRACT_PATH" \
+            --implementation-commit "$IMPLEMENTATION_SHA" \
+            --output .fixed-target-attempt/preflight.json
+
+      - name: Do not count preflight as acceptance
+        shell: bash
+        run: |
+          echo "FIXED_TARGET_ACCEPTANCE_EXECUTION_NOT_ENABLED"
+          echo "Preflight success is not an acceptance attempt. Enable full runtime/1.1 evaluation only after a concrete target is provisioned and externally reviewed."
+          exit 78
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          rm -rf .fixed-target-venv .fixed-target-attempt .pytest-tmp .pytest_cache
+          git reset --hard HEAD
+          git clean -ffdx
