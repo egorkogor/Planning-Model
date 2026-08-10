@@ -1,0 +1,20 @@
+{
+  "acceptance_identity": "sha256:9cd5809caacc1b2d6b66a60b4d5a8950847a457b0b58f6dfc0d6bb7d1457bd03",
+  "acceptance_version": "toy-quality-fixed-target-acceptance/1.0",
+  "accepted": false,
+  "attempts": [],
+  "blocker": {
+    "code": "FIXED_RUNNER_NOT_PROVISIONED",
+    "required_action": "Provision one dedicated Linux x86_64 VM or bare-metal GitHub Actions self-hosted runner for egorkogor/Planning-Model; register labels self-hosted, linux, x64, planning-model-canonical-cpu-v1; pin the VM image, kernel, CPU identity/microcode policy, CPython 3.11 build and torch 2.12.0+cpu build; grant repository Actions access sufficient to inspect/dispatch that runner; then commit the observed concrete fixed-target contract and run three independent workflow_dispatch attempts on one unchanged implementation SHA."
+  },
+  "cross_attempt_comparison": {
+    "mismatches": [],
+    "status": "NOT_RUN"
+  },
+  "implementation_commit": null,
+  "runtime_contract": null,
+  "runtime_contract_sha256": null,
+  "status": "BLOCKED_ON_FIXED_RUNNER_PROVISIONING",
+  "target_contract": null,
+  "target_contract_sha256": null
+}

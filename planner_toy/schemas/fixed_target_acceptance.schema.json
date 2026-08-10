@@ -1,0 +1,425 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://planning-model.local/schemas/fixed_target_acceptance.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "acceptance_version",
+    "status",
+    "implementation_commit",
+    "target_contract",
+    "target_contract_sha256",
+    "runtime_contract",
+    "runtime_contract_sha256",
+    "attempts",
+    "cross_attempt_comparison",
+    "accepted",
+    "blocker",
+    "acceptance_identity"
+  ],
+  "properties": {
+    "acceptance_version": {
+      "const": "toy-quality-fixed-target-acceptance/1.0"
+    },
+    "status": {
+      "enum": [
+        "BLOCKED_ON_FIXED_RUNNER_PROVISIONING",
+        "TARGET_PROVISIONED",
+        "FIXED_TARGET_ACCEPTED"
+      ]
+    },
+    "implementation_commit": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_contract": {
+      "oneOf": [
+        {
+          "$ref": "fixed_target_cpu_target.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_contract_sha256": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "runtime_contract": {
+      "oneOf": [
+        {
+          "$ref": "fixed_target_runtime.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "runtime_contract_sha256": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "attempts": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "attempt_index",
+          "workflow_run_id",
+          "job_id",
+          "implementation_commit",
+          "target_contract_sha256",
+          "runtime_contract_sha256",
+          "target_observation",
+          "target_observation_sha256",
+          "source_inventory_sha256",
+          "execution_evidence_sha256",
+          "observed_optimizer_foreach",
+          "observed_optimizer_fused",
+          "canonical_result_identity",
+          "claim_identities",
+          "training_execution_mode",
+          "checkpoint_origin_run_hash",
+          "reuse_source_manifest_hash",
+          "successful_full_evaluation",
+          "result"
+        ],
+        "properties": {
+          "attempt_index": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          },
+          "workflow_run_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "job_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "implementation_commit": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "target_contract_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "runtime_contract_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "target_observation": {
+            "$ref": "fixed_target_observation.schema.json"
+          },
+          "target_observation_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "source_inventory_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "observed_optimizer_foreach": {
+            "type": "boolean"
+          },
+          "observed_optimizer_fused": {
+            "type": "boolean"
+          },
+          "canonical_result_identity": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "claim_identities": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "initialization_identities_sha256",
+              "training_config_sha256",
+              "ordered_tasks_sha256",
+              "checkpoint_identities_sha256",
+              "optimizer_state_identities_sha256",
+              "canonical_state_dict_identities_sha256",
+              "evaluation_task_results_sha256",
+              "replay_hash",
+              "canonical_semantic_payload_sha256",
+              "derived_summaries_sha256"
+            ],
+            "properties": {
+              "initialization_identities_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "training_config_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "ordered_tasks_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "checkpoint_identities_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "optimizer_state_identities_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "canonical_state_dict_identities_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "evaluation_task_results_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "replay_hash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "canonical_semantic_payload_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "derived_summaries_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          },
+          "training_execution_mode": {
+            "enum": [
+              "TRAINED_IN_RUN",
+              "REUSED"
+            ]
+          },
+          "checkpoint_origin_run_hash": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reuse_source_manifest_hash": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "successful_full_evaluation": {
+            "type": "boolean"
+          },
+          "result": {
+            "enum": [
+              "PASS",
+              "FAIL"
+            ]
+          },
+          "execution_evidence_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "cross_attempt_comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "mismatches"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "NOT_RUN",
+            "PASS",
+            "FAIL"
+          ]
+        },
+        "mismatches": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "accepted": {
+      "type": "boolean"
+    },
+    "blocker": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "required_action"
+          ],
+          "properties": {
+            "code": {
+              "const": "FIXED_RUNNER_NOT_PROVISIONED"
+            },
+            "required_action": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "acceptance_identity": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "accepted": {
+            "const": true
+          }
+        },
+        "required": [
+          "accepted"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "FIXED_TARGET_ACCEPTED"
+          },
+          "attempts": {
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "cross_attempt_comparison": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "PASS"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "blocker": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "BLOCKED_ON_FIXED_RUNNER_PROVISIONING"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "implementation_commit": {
+            "type": "null"
+          },
+          "target_contract": {
+            "type": "null"
+          },
+          "target_contract_sha256": {
+            "type": "null"
+          },
+          "runtime_contract": {
+            "type": "null"
+          },
+          "runtime_contract_sha256": {
+            "type": "null"
+          },
+          "attempts": {
+            "maxItems": 0
+          },
+          "cross_attempt_comparison": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "NOT_RUN"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "accepted": {
+            "const": false
+          },
+          "blocker": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "TARGET_PROVISIONED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "accepted": {
+            "const": false
+          }
+        }
+      }
+    }
+  ]
+}

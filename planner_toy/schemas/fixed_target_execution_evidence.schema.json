@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://planning-model.local/schemas/fixed_target_execution_evidence.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "execution_evidence_version",
+    "implementation_commit",
+    "target_contract_sha256",
+    "runtime_contract_sha256",
+    "target_observation_sha256",
+    "source_inventory_sha256",
+    "scientific_policy",
+    "scientific_policy_sha256",
+    "evaluator_version",
+    "evaluator_source_sha256",
+    "requirements_lock_sha256",
+    "dataset_identity",
+    "variants",
+    "seeds",
+    "epochs",
+    "updates_per_run",
+    "optimizer_class",
+    "optimizer_hyperparameters",
+    "gradient_clipping",
+    "observed_optimizer_foreach",
+    "observed_optimizer_fused",
+    "evaluation_root_identity",
+    "execution_evidence_sha256"
+  ],
+  "properties": {
+    "execution_evidence_version": {
+      "const": "toy-quality-fixed-target-execution-evidence/1.0"
+    },
+    "implementation_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "target_contract_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "runtime_contract_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "target_observation_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "source_inventory_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "scientific_policy": {
+      "$ref": "fixed_target_scientific_policy.schema.json"
+    },
+    "scientific_policy_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "evaluator_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evaluator_source_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "requirements_lock_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "dataset_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dataset_hash",
+        "ordered_train_task_ids",
+        "ordered_eval_task_ids"
+      ],
+      "properties": {
+        "dataset_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "ordered_train_task_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "ordered_eval_task_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "variants": {
+      "const": [
+        "A2",
+        "A3",
+        "A4"
+      ]
+    },
+    "seeds": {
+      "const": [
+        17,
+        29,
+        43
+      ]
+    },
+    "epochs": {
+      "const": 3
+    },
+    "updates_per_run": {
+      "const": 9
+    },
+    "optimizer_class": {
+      "const": "AdamW"
+    },
+    "optimizer_hyperparameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "learning_rate",
+        "betas",
+        "eps",
+        "weight_decay"
+      ],
+      "properties": {
+        "learning_rate": {
+          "const": 0.0003
+        },
+        "betas": {
+          "const": [
+            0.9,
+            0.95
+          ]
+        },
+        "eps": {
+          "const": 1e-08
+        },
+        "weight_decay": {
+          "const": 0.01
+        }
+      }
+    },
+    "gradient_clipping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "max_norm"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "clip_grad_norm_"
+        },
+        "max_norm": {
+          "const": 1.0
+        }
+      }
+    },
+    "observed_optimizer_foreach": {
+      "const": false
+    },
+    "observed_optimizer_fused": {
+      "const": false
+    },
+    "evaluation_root_identity": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "execution_evidence_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

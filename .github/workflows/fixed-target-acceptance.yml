@@ -1,0 +1,121 @@
+name: Fixed canonical CPU target acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      implementation_sha:
+        description: Exact protected-main commit to validate on the fixed target
+        required: true
+        type: string
+      target_contract_path:
+        description: Committed concrete fixed-target contract
+        required: true
+        default: configs/fixed-cpu-target-1.0.json
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: planning-model-canonical-cpu-v1
+  cancel-in-progress: false
+
+jobs:
+  fixed-target-preflight:
+    if: github.repository == 'egorkogor/Planning-Model'
+    runs-on: [self-hosted, linux, x64, planning-model-canonical-cpu-v1]
+    timeout-minutes: 30
+    steps:
+      - name: Refuse absent immutable runner identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -r /etc/planning-model-runner-image-id
+          image_id="$(cat /etc/planning-model-runner-image-id)"
+          test -n "$image_id"
+          echo "FIXED_TARGET_RUNNER_IMAGE=$image_id" >> "$GITHUB_ENV"
+
+      - name: Checkout protected main for trust decision
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Require implementation reachable from protected main
+        shell: bash
+        env:
+          IMPLEMENTATION_SHA: ${{ inputs.implementation_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$IMPLEMENTATION_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin main
+          git cat-file -e "${IMPLEMENTATION_SHA}^{commit}"
+          git merge-base --is-ancestor "$IMPLEMENTATION_SHA" origin/main
+
+      - name: Checkout exact trusted implementation
+        shell: bash
+        env:
+          IMPLEMENTATION_SHA: ${{ inputs.implementation_sha }}
+        run: |
+          set -euo pipefail
+          git checkout --detach "$IMPLEMENTATION_SHA"
+          test "$(git rev-parse HEAD)" = "$IMPLEMENTATION_SHA"
+          git reset --hard "$IMPLEMENTATION_SHA"
+          git clean -ffdx
+          test -z "$(git status --porcelain)"
+
+      - name: Require committed concrete target contract
+        shell: bash
+        env:
+          TARGET_CONTRACT_PATH: ${{ inputs.target_contract_path }}
+        run: |
+          set -euo pipefail
+          test "$TARGET_CONTRACT_PATH" = "configs/fixed-cpu-target-1.0.json"
+          test -f "$TARGET_CONTRACT_PATH"
+          git ls-files --error-unmatch "$TARGET_CONTRACT_PATH"
+
+      - name: Verify immutable validation runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import importlib.metadata
+          import jsonschema
+          import referencing
+          import torch
+
+          print("python runtime available")
+          print("pip=" + importlib.metadata.version("pip"))
+          print("torch=" + torch.__version__)
+          PY
+
+      - name: Validate target before any training
+        shell: bash
+        env:
+          IMPLEMENTATION_SHA: ${{ inputs.implementation_sha }}
+          TARGET_CONTRACT_PATH: ${{ inputs.target_contract_path }}
+        run: |
+          set -euo pipefail
+          mkdir -p .fixed-target-attempt
+          python -m scripts.run_fixed_target_acceptance preflight \
+            --target-contract "$TARGET_CONTRACT_PATH" \
+            --implementation-commit "$IMPLEMENTATION_SHA" \
+            --protected-ref origin/main \
+            --output .fixed-target-attempt/preflight.json
+
+      - name: Do not count preflight as acceptance
+        shell: bash
+        run: |
+          echo "FIXED_TARGET_ACCEPTANCE_EXECUTION_NOT_ENABLED"
+          echo "PR19 installs the acceptance foundation only; full runtime/1.1 acceptance is a later phase."
+          exit 78
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          rm -rf .fixed-target-attempt .pytest-tmp .pytest_cache
+          git reset --hard HEAD
+          git clean -ffdx

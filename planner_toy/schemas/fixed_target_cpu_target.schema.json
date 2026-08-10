@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://planning-model.local/schemas/fixed_target_cpu_target.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "target_contract_version",
+    "target_name",
+    "os",
+    "os_version",
+    "kernel_policy",
+    "architecture",
+    "cpu_vendor",
+    "cpu_family",
+    "cpu_model",
+    "cpu_stepping",
+    "cpu_model_name",
+    "microcode_policy",
+    "required_cpu_flags",
+    "forbidden_or_irrelevant_flags_policy",
+    "logical_cpu_count_policy",
+    "runner_type",
+    "required_runner_labels",
+    "runner_image",
+    "python_implementation",
+    "python_version",
+    "python_build",
+    "python_compiler",
+    "pip_version",
+    "torch_version",
+    "torch_build_configuration_sha256",
+    "mkl_available",
+    "openmp_available",
+    "mkldnn_available",
+    "ATEN_CPU_CAPABILITY",
+    "actual_atten_cpu_capability",
+    "MKL_CBWR",
+    "torch_num_threads",
+    "torch_num_interop_threads",
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "mkldnn_enabled",
+    "deterministic_algorithms",
+    "deterministic_warn_only",
+    "optimizer_foreach",
+    "optimizer_fused"
+  ],
+  "properties": {
+    "target_contract_version": {
+      "const": "toy-quality-fixed-cpu-target/1.0"
+    },
+    "target_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "os": {
+      "const": "Linux"
+    },
+    "os_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kernel_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "value"
+      ],
+      "properties": {
+        "mode": {
+          "const": "exact"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "architecture": {
+      "const": "x86_64"
+    },
+    "cpu_vendor": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cpu_family": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cpu_model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cpu_stepping": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cpu_model_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "microcode_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "value"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "exact",
+            "minimum",
+            "observed-only-acceptance-invalid-on-change"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "required_cpu_flags": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "forbidden_or_irrelevant_flags_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "forbidden_flags"
+      ],
+      "properties": {
+        "mode": {
+          "const": "ignore-unlisted-reject-forbidden"
+        },
+        "forbidden_flags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "logical_cpu_count_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "value"
+      ],
+      "properties": {
+        "mode": {
+          "const": "exact"
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "runner_type": {
+      "const": "self-hosted-dedicated"
+    },
+    "required_runner_labels": {
+      "type": "array",
+      "minItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "runner_image": {
+      "type": "string",
+      "minLength": 1
+    },
+    "python_implementation": {
+      "const": "CPython"
+    },
+    "python_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "python_build": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "python_compiler": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pip_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "torch_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "torch_build_configuration_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "mkl_available": {
+      "type": "boolean"
+    },
+    "openmp_available": {
+      "type": "boolean"
+    },
+    "mkldnn_available": {
+      "type": "boolean"
+    },
+    "ATEN_CPU_CAPABILITY": {
+      "enum": [
+        "default",
+        "avx2"
+      ]
+    },
+    "actual_atten_cpu_capability": {
+      "enum": [
+        "DEFAULT",
+        "AVX2"
+      ]
+    },
+    "MKL_CBWR": {
+      "const": "COMPATIBLE"
+    },
+    "torch_num_threads": {
+      "const": 1
+    },
+    "torch_num_interop_threads": {
+      "const": 1
+    },
+    "OMP_NUM_THREADS": {
+      "const": "1"
+    },
+    "MKL_NUM_THREADS": {
+      "const": "1"
+    },
+    "OPENBLAS_NUM_THREADS": {
+      "const": "1"
+    },
+    "NUMEXPR_NUM_THREADS": {
+      "const": "1"
+    },
+    "mkldnn_enabled": {
+      "const": false
+    },
+    "deterministic_algorithms": {
+      "const": true
+    },
+    "deterministic_warn_only": {
+      "const": false
+    },
+    "optimizer_foreach": {
+      "const": false
+    },
+    "optimizer_fused": {
+      "const": false
+    }
+  }
+}
