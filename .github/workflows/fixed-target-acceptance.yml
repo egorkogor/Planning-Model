@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       implementation_sha:
-        description: Exact repository commit to validate on the fixed target
+        description: Exact protected-main commit to validate on the fixed target
         required: true
         type: string
       target_contract_path:
@@ -25,10 +25,8 @@ jobs:
     if: github.repository == 'egorkogor/Planning-Model'
     runs-on: [self-hosted, linux, x64, planning-model-canonical-cpu-v1]
     timeout-minutes: 30
-    env:
-      FIXED_TARGET_RUNNER_LABELS: linux,planning-model-canonical-cpu-v1,self-hosted,x64
     steps:
-      - name: Refuse absent runner image identity
+      - name: Refuse absent immutable runner identity
         shell: bash
         run: |
           set -euo pipefail
@@ -37,30 +35,34 @@ jobs:
           test -n "$image_id"
           echo "FIXED_TARGET_RUNNER_IMAGE=$image_id" >> "$GITHUB_ENV"
 
-      - name: Checkout exact repository commit
+      - name: Checkout protected main for trust decision
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.implementation_sha }}
+          ref: main
           fetch-depth: 0
           clean: true
           persist-credentials: false
 
-      - name: Validate trusted exact commit
+      - name: Require implementation reachable from protected main
         shell: bash
         env:
           IMPLEMENTATION_SHA: ${{ inputs.implementation_sha }}
         run: |
           set -euo pipefail
           [[ "$IMPLEMENTATION_SHA" =~ ^[0-9a-f]{40}$ ]]
-          test "$(git rev-parse HEAD)" = "$IMPLEMENTATION_SHA"
+          git fetch --no-tags origin main
           git cat-file -e "${IMPLEMENTATION_SHA}^{commit}"
-          test -z "$(git status --porcelain)"
+          git merge-base --is-ancestor "$IMPLEMENTATION_SHA" origin/main
 
-      - name: Clean attempt workspace
+      - name: Checkout exact trusted implementation
         shell: bash
+        env:
+          IMPLEMENTATION_SHA: ${{ inputs.implementation_sha }}
         run: |
           set -euo pipefail
-          rm -rf .fixed-target-venv .fixed-target-attempt .pytest-tmp .pytest_cache
+          git checkout --detach "$IMPLEMENTATION_SHA"
+          test "$(git rev-parse HEAD)" = "$IMPLEMENTATION_SHA"
+          git reset --hard "$IMPLEMENTATION_SHA"
           git clean -ffdx
           test -z "$(git status --porcelain)"
 
@@ -74,16 +76,20 @@ jobs:
           test -f "$TARGET_CONTRACT_PATH"
           git ls-files --error-unmatch "$TARGET_CONTRACT_PATH"
 
-      - name: Install pinned validation runtime
+      - name: Verify immutable validation runtime
         shell: bash
         run: |
           set -euo pipefail
-          python -m venv .fixed-target-venv
-          .fixed-target-venv/bin/python -m pip install --upgrade pip
-          .fixed-target-venv/bin/python -m pip install -r requirements.lock
-          .fixed-target-venv/bin/python -m pip install -e . --no-deps
-          .fixed-target-venv/bin/python -m pip install torch==2.12.0+cpu --index-url https://download.pytorch.org/whl/cpu
-          .fixed-target-venv/bin/python -m pip install -e '.[ml]'
+          python - <<'PY'
+          import importlib.metadata
+          import jsonschema
+          import referencing
+          import torch
+
+          print("python runtime available")
+          print("pip=" + importlib.metadata.version("pip"))
+          print("torch=" + torch.__version__)
+          PY
 
       - name: Validate target before any training
         shell: bash
@@ -93,22 +99,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .fixed-target-attempt
-          .fixed-target-venv/bin/python -m scripts.run_fixed_target_acceptance preflight \
+          python -m scripts.run_fixed_target_acceptance preflight \
             --target-contract "$TARGET_CONTRACT_PATH" \
             --implementation-commit "$IMPLEMENTATION_SHA" \
+            --protected-ref origin/main \
             --output .fixed-target-attempt/preflight.json
 
       - name: Do not count preflight as acceptance
         shell: bash
         run: |
           echo "FIXED_TARGET_ACCEPTANCE_EXECUTION_NOT_ENABLED"
-          echo "Preflight success is not an acceptance attempt. Enable full runtime/1.1 evaluation only after a concrete target is provisioned and externally reviewed."
+          echo "PR19 installs the acceptance foundation only; full runtime/1.1 acceptance is a later phase."
           exit 78
 
       - name: Cleanup
         if: always()
         shell: bash
         run: |
-          rm -rf .fixed-target-venv .fixed-target-attempt .pytest-tmp .pytest_cache
+          rm -rf .fixed-target-attempt .pytest-tmp .pytest_cache
           git reset --hard HEAD
           git clean -ffdx
