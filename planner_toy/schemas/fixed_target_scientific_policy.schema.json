@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://planning-model.local/schemas/fixed_target_scientific_policy.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scientific_policy_version",
+    "historical_quality_implementation_commit",
+    "historical_evaluator_version",
+    "historical_evaluator_source_sha256",
+    "dataset_seed",
+    "dataset_hash",
+    "variants",
+    "seeds",
+    "epochs",
+    "updates_per_run",
+    "checkpoint_policy",
+    "training_execution_mode",
+    "optimizer",
+    "gradient_clipping",
+    "frozen_semantics_binding",
+    "execution_migration",
+    "scientific_policy_sha256"
+  ],
+  "properties": {
+    "scientific_policy_version": {
+      "const": "toy-quality-fixed-target-scientific-policy/1.0"
+    },
+    "historical_quality_implementation_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "historical_evaluator_version": {
+      "const": "development-quality-evaluation/0.1"
+    },
+    "historical_evaluator_source_sha256": {
+      "const": "sha256:9205ad312fc37fa9927505e9c44a599e29fc5e31180db9d2e49ebfcc247b4570"
+    },
+    "dataset_seed": {
+      "const": 17
+    },
+    "dataset_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "variants": {
+      "const": [
+        "A2",
+        "A3",
+        "A4"
+      ]
+    },
+    "seeds": {
+      "const": [
+        17,
+        29,
+        43
+      ]
+    },
+    "epochs": {
+      "const": 3
+    },
+    "updates_per_run": {
+      "const": 9
+    },
+    "checkpoint_policy": {
+      "const": "final_epoch_only_no_heldout_selection"
+    },
+    "training_execution_mode": {
+      "const": "TRAINED_IN_RUN"
+    },
+    "optimizer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "class",
+        "learning_rate",
+        "betas",
+        "eps",
+        "weight_decay"
+      ],
+      "properties": {
+        "class": {
+          "const": "AdamW"
+        },
+        "learning_rate": {
+          "const": 0.0003
+        },
+        "betas": {
+          "const": [
+            0.9,
+            0.95
+          ]
+        },
+        "eps": {
+          "const": 1e-08
+        },
+        "weight_decay": {
+          "const": 0.01
+        }
+      }
+    },
+    "gradient_clipping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "max_norm"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "clip_grad_norm_"
+        },
+        "max_norm": {
+          "const": 1.0
+        }
+      }
+    },
+    "frozen_semantics_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "initialization",
+        "dtype",
+        "loss",
+        "decoding",
+        "train_split",
+        "heldout_split"
+      ],
+      "properties": {
+        "model": {
+          "const": "historical-quality-v0.1-evaluator-source"
+        },
+        "initialization": {
+          "const": "historical-quality-v0.1-evaluator-source"
+        },
+        "dtype": {
+          "const": "historical-quality-v0.1-evaluator-source"
+        },
+        "loss": {
+          "const": "historical-quality-v0.1-evaluator-source"
+        },
+        "decoding": {
+          "const": "historical-quality-v0.1-evaluator-source"
+        },
+        "train_split": {
+          "const": "historical-dataset-seed-17"
+        },
+        "heldout_split": {
+          "const": "historical-dataset-seed-17"
+        }
+      }
+    },
+    "execution_migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_version",
+        "fixed_target",
+        "optimizer_foreach",
+        "optimizer_fused"
+      ],
+      "properties": {
+        "runtime_version": {
+          "const": "toy-quality-canonical-cpu-runtime/1.1"
+        },
+        "fixed_target": {
+          "const": true
+        },
+        "optimizer_foreach": {
+          "const": false
+        },
+        "optimizer_fused": {
+          "const": false
+        }
+      }
+    },
+    "scientific_policy_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

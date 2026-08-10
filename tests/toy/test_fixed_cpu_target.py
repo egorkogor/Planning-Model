@@ -10,15 +10,21 @@ import pytest
 import scripts.fixed_target_contract as ft
 from scripts.fixed_target_contract import (
     CLAIM_IDENTITY_FIELDS,
+    EXECUTION_EVIDENCE_VERSION,
     FIXED_TARGET_ACCEPTANCE_VERSION,
+    HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT,
+    RUNTIME_1_1_EXECUTION_GATE,
     TARGET_CONTRACT_VERSION,
     TARGET_OBSERVATION_VERSION,
     acceptance_identity_sha256,
     attempt_manifest_sha256,
     build_runtime_contract,
+    build_scientific_policy,
     canonical_result_identity,
+    execution_evidence_sha256,
     fixed_target_source_paths,
     observation_sha256,
+    require_semantic_validation_checkout,
     require_trusted_implementation_commit,
     runtime_contract_sha256,
     source_inventory_at_commit,
@@ -26,8 +32,11 @@ from scripts.fixed_target_contract import (
     validate_acceptance_bundle,
     validate_acceptance_record,
     validate_attempt_manifest,
+    validate_execution_binding_contract,
+    validate_execution_evidence_manifest,
     validate_observation_against_contract,
     validate_runtime_contract,
+    validate_scientific_policy,
     validate_target_contract,
     validate_target_observation,
 )
@@ -167,7 +176,7 @@ def valid_acceptance(*, accepted: bool = True) -> dict:
                 "source_inventory_sha256": H2,
                 "observed_optimizer_foreach": False,
                 "observed_optimizer_fused": False,
-                "probe_identity": H2,
+                "execution_evidence_sha256": H2,
                 "canonical_result_identity": canonical_result_identity(common_claims),
                 "claim_identities": copy.deepcopy(common_claims),
                 "training_execution_mode": "TRAINED_IN_RUN",
@@ -248,7 +257,7 @@ def test_preflight_cannot_self_attest_optimizer_execution() -> None:
 
 
 def test_fully_synthetic_three_of_three_record_requires_bundle() -> None:
-    with pytest.raises(ValueError, match="FIXED_TARGET_ACCEPTED_REQUIRES_BUNDLE"):
+    with pytest.raises(ValueError, match=RUNTIME_1_1_EXECUTION_GATE):
         validate_acceptance_record(valid_acceptance())
 
 
@@ -280,23 +289,15 @@ def _write_bundle_shell(root: Path, acceptance: dict) -> None:
         (attempt / "evaluation").mkdir()
         (attempt / "attempt_manifest.json").write_text("{}", encoding="utf-8")
         (attempt / "preflight.json").write_text("{}", encoding="utf-8")
-        (attempt / "probe.json").write_text("{}", encoding="utf-8")
+        (attempt / "execution-evidence.json").write_text("{}", encoding="utf-8")
 
 
-def test_consistent_fake_claim_hashes_rejected_by_bundle_validator(
+def test_final_bundle_is_explicitly_gated_before_runtime_1_1_semantics(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     acceptance = valid_acceptance()
     _write_bundle_shell(tmp_path, acceptance)
-    monkeypatch.setattr(ft, "require_trusted_implementation_commit", lambda commit: commit)
-    monkeypatch.setattr(ft, "_validate_attempt_shape", lambda path: None)
-    monkeypatch.setattr(ft, "validate_attempt_manifest", lambda root, manifest, index: None)
-    monkeypatch.setattr(ft, "_validate_preflight", lambda *args, **kwargs: None)
-    monkeypatch.setattr(ft, "_derive_optimizer_execution", lambda root: (False, False))
-    monkeypatch.setattr(ft, "_derive_probe_identity", lambda path: H2)
-    monkeypatch.setattr(ft, "_derive_claim_identities", lambda root: claims("3"))
-    with pytest.raises(ValueError, match="FIXED_TARGET_DERIVED_CLAIM_IDENTITY_MISMATCH"):
+    with pytest.raises(ValueError, match=RUNTIME_1_1_EXECUTION_GATE):
         validate_acceptance_bundle(tmp_path)
 
 
@@ -314,7 +315,7 @@ def _attempt_shape(root: Path) -> Path:
             for name in ft._TRAINING_RUN_FILES:
                 (run_dir / name).write_bytes(b"x")
     (attempt / "preflight.json").write_bytes(b"{}")
-    (attempt / "probe.json").write_bytes(b"{}")
+    (attempt / "execution-evidence.json").write_bytes(b"{}")
     manifest = {
         "attempt_manifest_version": ft.ATTEMPT_MANIFEST_VERSION,
         "attempt_index": 1,
@@ -519,3 +520,263 @@ def test_frozen_v0_1_artifact_blob_guards_when_running_in_repo() -> None:
             check=True,
         )
         assert completed.stdout.strip() == expected
+
+
+def _valid_execution_evidence(acceptance: dict, attempt: dict) -> dict:
+    policy = build_scientific_policy()
+    value = {
+        "execution_evidence_version": EXECUTION_EVIDENCE_VERSION,
+        "implementation_commit": attempt["implementation_commit"],
+        "target_contract_sha256": attempt["target_contract_sha256"],
+        "runtime_contract_sha256": attempt["runtime_contract_sha256"],
+        "target_observation_sha256": attempt["target_observation_sha256"],
+        "source_inventory_sha256": attempt["source_inventory_sha256"],
+        "scientific_policy": policy,
+        "scientific_policy_sha256": policy["scientific_policy_sha256"],
+        "evaluator_version": "future-runtime-1.1-evaluator/1.0",
+        "evaluator_source_sha256": H3,
+        "requirements_lock_sha256": H,
+        "dataset_identity": {
+            "dataset_hash": policy["dataset_hash"],
+            "ordered_train_task_ids": ["train-1", "train-2", "train-3"],
+            "ordered_eval_task_ids": ["eval-1", "eval-2"],
+        },
+        "variants": ["A2", "A3", "A4"],
+        "seeds": [17, 29, 43],
+        "epochs": 3,
+        "updates_per_run": 9,
+        "optimizer_class": "AdamW",
+        "optimizer_hyperparameters": {
+            "learning_rate": 3e-4,
+            "betas": [0.9, 0.95],
+            "eps": 1e-8,
+            "weight_decay": 0.01,
+        },
+        "gradient_clipping": {"algorithm": "clip_grad_norm_", "max_norm": 1.0},
+        "observed_optimizer_foreach": False,
+        "observed_optimizer_fused": False,
+        "evaluation_root_identity": H2,
+        "execution_evidence_sha256": "",
+    }
+    value["execution_evidence_sha256"] = execution_evidence_sha256(value)
+    validate_execution_evidence_manifest(value)
+    return value
+
+
+def _binding_inputs(monkeypatch: pytest.MonkeyPatch) -> tuple[dict, dict, dict, dict, list[dict]]:
+    acceptance = valid_acceptance(accepted=False)
+    attempt = acceptance["attempts"][0]
+    evidence = _valid_execution_evidence(acceptance, attempt)
+    attempt["execution_evidence_sha256"] = evidence["execution_evidence_sha256"]
+    reseal(acceptance)
+    preflight = {
+        "implementation_commit": attempt["implementation_commit"],
+        "target_contract_sha256": attempt["target_contract_sha256"],
+        "runtime_contract_sha256": attempt["runtime_contract_sha256"],
+        "target_observation": attempt["target_observation"],
+        "source_inventory": {"source_inventory_sha256": attempt["source_inventory_sha256"]},
+    }
+    policy = evidence["scientific_policy"]
+    optimizer = {
+        "name": "AdamW",
+        "learning_rate": 3e-4,
+        "betas": [0.9, 0.95],
+        "eps": 1e-8,
+        "weight_decay": 0.01,
+        "gradient_clip_norm": 1.0,
+    }
+    evaluation_config = {
+        "implementation_commit": attempt["implementation_commit"],
+        "evaluator_version": evidence["evaluator_version"],
+        "evaluator_source_sha256": evidence["evaluator_source_sha256"],
+        "requirements_lock_sha256": H,
+        "dataset_manifest_hash": policy["dataset_hash"],
+        "train_task_ids": evidence["dataset_identity"]["ordered_train_task_ids"],
+        "eval_task_ids": evidence["dataset_identity"]["ordered_eval_task_ids"],
+        "variants": ["A2", "A3", "A4"],
+        "seeds": [17, 29, 43],
+        "optimizer": optimizer,
+        "checkpoint_policy": policy["checkpoint_policy"],
+        "training_execution_mode": "TRAINED_IN_RUN",
+    }
+    training_configs = []
+    for variant in ("A2", "A3", "A4"):
+        for seed in (17, 29, 43):
+            training_configs.append(
+                {
+                    "variant_identity": {"implementation_variant": variant},
+                    "seed": seed,
+                    "dataset_hash": policy["dataset_hash"],
+                    "train_task_ids": evidence["dataset_identity"]["ordered_train_task_ids"],
+                    "epochs": 3,
+                    "updates": 9,
+                    "optimizer": optimizer,
+                    "checkpoint_policy": policy["checkpoint_policy"],
+                }
+            )
+    monkeypatch.setattr(ft, "requirements_lock_sha256_at_commit", lambda commit: H)
+    return acceptance, evidence, preflight, evaluation_config, training_configs
+
+
+def test_fixed_target_schemas_do_not_enter_historical_quality_source_files() -> None:
+    from planner_toy import quality
+
+    schema_names = {path.name for path in ft.SCHEMA_ROOT.glob("fixed_target_*.schema.json")}
+    assert schema_names
+    assert all(not name.startswith("toy_") for name in schema_names)
+    assert not any(
+        path.startswith("planner_toy/schemas/fixed_target_") for path in quality.SOURCE_FILES
+    )
+    current = quality.source_identity()
+    historical = quality.source_identity_at_commit(HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT)
+    assert current["evaluator_source_sha256"] == ft._QUALITY_SOURCE_LOCK_SHA256
+    assert historical["evaluator_source_sha256"] == ft._QUALITY_SOURCE_LOCK_SHA256
+
+
+def test_historical_quality_source_lock_is_exact() -> None:
+    assert ft._QUALITY_SOURCE_LOCK_SHA256 == (
+        "sha256:9205ad312fc37fa9927505e9c44a599e29fc5e31180db9d2e49ebfcc247b4570"
+    )
+    locked = json.loads(ft.QUALITY_LOCK_PATH.read_text(encoding="utf-8"))
+    assert locked["implementation_commit"] == HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT
+    assert locked["evaluator_source_sha256"] == ft._QUALITY_SOURCE_LOCK_SHA256
+    assert ft.sha256_value(locked["evaluator_source_files"]) == ft._QUALITY_SOURCE_LOCK_SHA256
+
+
+def test_fixed_target_schema_mutation_changes_fixed_target_source_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, first = _temp_repo(tmp_path)
+    schema_dir = repo / "planner_toy/schemas"
+    schema_dir.mkdir()
+    schema = schema_dir / "fixed_target_runtime.schema.json"
+    schema.write_text('{"v":1}\n', encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "add fixed target schema")
+    first = _git(repo, "rev-parse", "HEAD")
+    monkeypatch.setattr(ft, "ROOT", repo)
+    monkeypatch.setattr(
+        ft,
+        "fixed_target_source_paths",
+        lambda: ("planner_toy/schemas/fixed_target_runtime.schema.json", "pyproject.toml"),
+    )
+    before = source_inventory_at_commit(first)["source_inventory_sha256"]
+    schema.write_text('{"v":2}\n', encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "mutate fixed target schema")
+    second = _git(repo, "rev-parse", "HEAD")
+    after = source_inventory_at_commit(second)["source_inventory_sha256"]
+    assert before != after
+
+
+def test_wrong_scientific_policy_rejected() -> None:
+    policy = build_scientific_policy()
+    policy["epochs"] = 4
+    policy["scientific_policy_sha256"] = ft.scientific_policy_sha256(policy)
+    with pytest.raises(ValueError, match="FIXED_TARGET_SCIENTIFIC_POLICY"):
+        validate_scientific_policy(policy)
+
+
+def test_execution_implementation_mismatch_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    acceptance, evidence, preflight, config, training = _binding_inputs(monkeypatch)
+    evidence["implementation_commit"] = "b" * 40
+    evidence["execution_evidence_sha256"] = execution_evidence_sha256(evidence)
+    with pytest.raises(ValueError, match="FIXED_TARGET_EXECUTION_IMPLEMENTATION_MISMATCH"):
+        validate_execution_binding_contract(
+            evidence,
+            acceptance=acceptance,
+            attempt=acceptance["attempts"][0],
+            preflight=preflight,
+            evaluation_config=config,
+            target_observation=acceptance["attempts"][0]["target_observation"],
+            training_configs=training,
+        )
+
+
+def test_execution_runtime_contract_mismatch_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    acceptance, evidence, preflight, config, training = _binding_inputs(monkeypatch)
+    evidence["runtime_contract_sha256"] = H3
+    evidence["execution_evidence_sha256"] = execution_evidence_sha256(evidence)
+    with pytest.raises(ValueError, match="FIXED_TARGET_EXECUTION_RUNTIME_MISMATCH"):
+        validate_execution_binding_contract(
+            evidence,
+            acceptance=acceptance,
+            attempt=acceptance["attempts"][0],
+            preflight=preflight,
+            evaluation_config=config,
+            target_observation=acceptance["attempts"][0]["target_observation"],
+            training_configs=training,
+        )
+
+
+def test_execution_target_observation_mismatch_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    acceptance, evidence, preflight, config, training = _binding_inputs(monkeypatch)
+    evidence["target_observation_sha256"] = H3
+    evidence["execution_evidence_sha256"] = execution_evidence_sha256(evidence)
+    with pytest.raises(ValueError, match="FIXED_TARGET_EXECUTION_OBSERVATION_MISMATCH"):
+        validate_execution_binding_contract(
+            evidence,
+            acceptance=acceptance,
+            attempt=acceptance["attempts"][0],
+            preflight=preflight,
+            evaluation_config=config,
+            target_observation=acceptance["attempts"][0]["target_observation"],
+            training_configs=training,
+        )
+
+
+def test_execution_source_inventory_mismatch_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    acceptance, evidence, preflight, config, training = _binding_inputs(monkeypatch)
+    evidence["source_inventory_sha256"] = H3
+    evidence["execution_evidence_sha256"] = execution_evidence_sha256(evidence)
+    with pytest.raises(ValueError, match="FIXED_TARGET_EXECUTION_SOURCE_INVENTORY_MISMATCH"):
+        validate_execution_binding_contract(
+            evidence,
+            acceptance=acceptance,
+            attempt=acceptance["attempts"][0],
+            preflight=preflight,
+            evaluation_config=config,
+            target_observation=acceptance["attempts"][0]["target_observation"],
+            training_configs=training,
+        )
+
+
+def test_historical_probe_2_not_in_runtime_1_1_acceptance_contract() -> None:
+    value = valid_acceptance(accepted=False)
+    value["attempts"][0]["probe_identity"] = H2
+    reseal(value)
+    with pytest.raises(ValueError, match="FIXED_TARGET_ACCEPTANCE_SCHEMA_INVALID"):
+        validate_acceptance_record(value)
+
+
+def test_semantic_validation_wrong_head_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, first = _temp_repo(tmp_path)
+    (repo / "pyproject.toml").write_text("[build-system]\nrequires=[]\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "second")
+    monkeypatch.setattr(ft, "ROOT", repo)
+    with pytest.raises(ValueError, match="FIXED_TARGET_SEMANTIC_VALIDATION_HEAD_MISMATCH"):
+        require_semantic_validation_checkout(first)
+
+
+def test_semantic_validation_dirty_tracked_tree_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, commit = _temp_repo(tmp_path)
+    (repo / "pyproject.toml").write_text("[build-system]\nrequires=[]\n", encoding="utf-8")
+    monkeypatch.setattr(ft, "ROOT", repo)
+    with pytest.raises(ValueError, match="FIXED_TARGET_SEMANTIC_VALIDATION_DIRTY_TREE"):
+        require_semantic_validation_checkout(commit)
+
+
+def test_semantic_validation_exact_clean_checkout_allowed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, commit = _temp_repo(tmp_path)
+    monkeypatch.setattr(ft, "ROOT", repo)
+    assert require_semantic_validation_checkout(commit) == commit

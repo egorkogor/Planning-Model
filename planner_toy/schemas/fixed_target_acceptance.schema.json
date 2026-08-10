@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://planning-model.local/schemas/toy_quality_fixed_target_acceptance.schema.json",
+  "$id": "https://planning-model.local/schemas/fixed_target_acceptance.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -42,7 +42,7 @@
     "target_contract": {
       "oneOf": [
         {
-          "$ref": "toy_quality_fixed_cpu_target.schema.json"
+          "$ref": "fixed_target_cpu_target.schema.json"
         },
         {
           "type": "null"
@@ -63,7 +63,7 @@
     "runtime_contract": {
       "oneOf": [
         {
-          "$ref": "toy_quality_fixed_runtime.schema.json"
+          "$ref": "fixed_target_runtime.schema.json"
         },
         {
           "type": "null"
@@ -97,9 +97,9 @@
           "target_observation",
           "target_observation_sha256",
           "source_inventory_sha256",
+          "execution_evidence_sha256",
           "observed_optimizer_foreach",
           "observed_optimizer_fused",
-          "probe_identity",
           "canonical_result_identity",
           "claim_identities",
           "training_execution_mode",
@@ -135,7 +135,7 @@
             "pattern": "^sha256:[0-9a-f]{64}$"
           },
           "target_observation": {
-            "$ref": "toy_quality_fixed_target_observation.schema.json"
+            "$ref": "fixed_target_observation.schema.json"
           },
           "target_observation_sha256": {
             "type": "string",
@@ -150,10 +150,6 @@
           },
           "observed_optimizer_fused": {
             "type": "boolean"
-          },
-          "probe_identity": {
-            "type": "string",
-            "pattern": "^sha256:[0-9a-f]{64}$"
           },
           "canonical_result_identity": {
             "type": "string",
@@ -253,6 +249,10 @@
               "PASS",
               "FAIL"
             ]
+          },
+          "execution_evidence_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
           }
         }
       }

@@ -27,6 +27,10 @@ FIXED_RUNTIME_VERSION = "toy-quality-canonical-cpu-runtime/1.1"
 FIXED_TARGET_ACCEPTANCE_VERSION = "toy-quality-fixed-target-acceptance/1.0"
 SOURCE_INVENTORY_VERSION = "toy-quality-fixed-target-source-inventory/1.0"
 ATTEMPT_MANIFEST_VERSION = "toy-quality-fixed-target-attempt-manifest/1.0"
+EXECUTION_EVIDENCE_VERSION = "toy-quality-fixed-target-execution-evidence/1.0"
+SCIENTIFIC_POLICY_VERSION = "toy-quality-fixed-target-scientific-policy/1.0"
+HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT = "779172c3bbca3d03552deaed6421e82fcf19a932"
+RUNTIME_1_1_EXECUTION_GATE = "FIXED_TARGET_RUNTIME_1_1_EXECUTION_NOT_ENABLED"
 
 _HASH_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _SHA_RE = re.compile(r"[0-9a-f]{40}\Z")
@@ -55,18 +59,16 @@ _FIXED_TARGET_SOURCE_ADDITIONS = {
     ".github/workflows/fixed-target-acceptance.yml",
     "planner_toy/__init__.py",
     "scripts/__init__.py",
-    "planner_toy/schemas/toy_quality_fixed_cpu_target.schema.json",
-    "planner_toy/schemas/toy_quality_fixed_runtime.schema.json",
-    "planner_toy/schemas/toy_quality_fixed_target_acceptance.schema.json",
-    "planner_toy/schemas/toy_quality_fixed_target_observation.schema.json",
+    "planner_toy/schemas/fixed_target_cpu_target.schema.json",
+    "planner_toy/schemas/fixed_target_runtime.schema.json",
+    "planner_toy/schemas/fixed_target_acceptance.schema.json",
+    "planner_toy/schemas/fixed_target_observation.schema.json",
+    "planner_toy/schemas/fixed_target_execution_evidence.schema.json",
+    "planner_toy/schemas/fixed_target_scientific_policy.schema.json",
     "requirements.lock",
     "pyproject.toml",
     "scripts/fixed_target_contract.py",
     "scripts/run_fixed_target_acceptance.py",
-    # Bundle validation treats the retained probe as claim-bearing evidence.
-    "scripts/canonical_training_probe_contract.py",
-    "scripts/canonical_probe_evidence_validation.py",
-    "scripts/canonical_cpu_hardware_fingerprint.py",
 }
 _QUALITY_SOURCE_LOCK_SHA256 = (
     "sha256:9205ad312fc37fa9927505e9c44a599e29fc5e31180db9d2e49ebfcc247b4570"
@@ -125,7 +127,7 @@ def _schema(name: str) -> dict[str, Any]:
 
 def _schema_registry() -> Registry:
     registry = Registry()
-    for path in sorted(SCHEMA_ROOT.glob("toy_quality_fixed_*.schema.json")):
+    for path in sorted(SCHEMA_ROOT.glob("fixed_target_*.schema.json")):
         schema = json.loads(path.read_text(encoding="utf-8"))
         registry = registry.with_resource(schema["$id"], Resource.from_contents(schema))
     return registry
@@ -249,6 +251,228 @@ def validate_source_inventory(
     return inventory
 
 
+def requirements_lock_sha256_at_commit(commit: str) -> str:
+    require_existing_commit(commit)
+    process = _git_bytes("show", f"{commit}:requirements.lock")
+    if process.returncode:
+        raise ValueError("FIXED_TARGET_REQUIREMENTS_LOCK_MISSING")
+    return sha256_bytes(process.stdout)
+
+
+def scientific_policy_sha256(policy: dict[str, Any]) -> str:
+    return sha256_value(_payload_without_hash(policy, "scientific_policy_sha256"))
+
+
+def build_scientific_policy() -> dict[str, Any]:
+    locked = json.loads(QUALITY_LOCK_PATH.read_text(encoding="utf-8"))
+    value: dict[str, Any] = {
+        "scientific_policy_version": SCIENTIFIC_POLICY_VERSION,
+        "historical_quality_implementation_commit": locked["implementation_commit"],
+        "historical_evaluator_version": locked["evaluator_version"],
+        "historical_evaluator_source_sha256": locked["evaluator_source_sha256"],
+        "dataset_seed": 17,
+        "dataset_hash": locked["dataset_hash"],
+        "variants": ["A2", "A3", "A4"],
+        "seeds": [17, 29, 43],
+        "epochs": 3,
+        "updates_per_run": 9,
+        "checkpoint_policy": "final_epoch_only_no_heldout_selection",
+        "training_execution_mode": "TRAINED_IN_RUN",
+        "optimizer": {
+            "class": "AdamW",
+            "learning_rate": 3e-4,
+            "betas": [0.9, 0.95],
+            "eps": 1e-8,
+            "weight_decay": 0.01,
+        },
+        "gradient_clipping": {"algorithm": "clip_grad_norm_", "max_norm": 1.0},
+        "frozen_semantics_binding": {
+            "model": "historical-quality-v0.1-evaluator-source",
+            "initialization": "historical-quality-v0.1-evaluator-source",
+            "dtype": "historical-quality-v0.1-evaluator-source",
+            "loss": "historical-quality-v0.1-evaluator-source",
+            "decoding": "historical-quality-v0.1-evaluator-source",
+            "train_split": "historical-dataset-seed-17",
+            "heldout_split": "historical-dataset-seed-17",
+        },
+        "execution_migration": {
+            "runtime_version": FIXED_RUNTIME_VERSION,
+            "fixed_target": True,
+            "optimizer_foreach": False,
+            "optimizer_fused": False,
+        },
+        "scientific_policy_sha256": "",
+    }
+    value["scientific_policy_sha256"] = scientific_policy_sha256(value)
+    return value
+
+
+def validate_scientific_policy(policy: dict[str, Any]) -> None:
+    _validate_schema(
+        "fixed_target_scientific_policy.schema.json",
+        policy,
+        "FIXED_TARGET_SCIENTIFIC_POLICY_SCHEMA_INVALID",
+    )
+    if policy["scientific_policy_version"] != SCIENTIFIC_POLICY_VERSION:
+        raise ValueError("FIXED_TARGET_SCIENTIFIC_POLICY_VERSION_MISMATCH")
+    if policy["scientific_policy_sha256"] != scientific_policy_sha256(policy):
+        raise ValueError("FIXED_TARGET_SCIENTIFIC_POLICY_HASH_MISMATCH")
+    if policy != build_scientific_policy():
+        raise ValueError("FIXED_TARGET_SCIENTIFIC_POLICY_MISMATCH")
+
+
+def execution_evidence_sha256(evidence: dict[str, Any]) -> str:
+    return sha256_value(_payload_without_hash(evidence, "execution_evidence_sha256"))
+
+
+def validate_execution_evidence_manifest(evidence: dict[str, Any]) -> None:
+    _validate_schema(
+        "fixed_target_execution_evidence.schema.json",
+        evidence,
+        "FIXED_TARGET_EXECUTION_EVIDENCE_SCHEMA_INVALID",
+    )
+    if evidence["execution_evidence_version"] != EXECUTION_EVIDENCE_VERSION:
+        raise ValueError("FIXED_TARGET_EXECUTION_EVIDENCE_VERSION_MISMATCH")
+    if evidence["execution_evidence_sha256"] != execution_evidence_sha256(evidence):
+        raise ValueError("FIXED_TARGET_EXECUTION_EVIDENCE_HASH_MISMATCH")
+    validate_scientific_policy(evidence["scientific_policy"])
+    if (
+        evidence["scientific_policy_sha256"]
+        != evidence["scientific_policy"]["scientific_policy_sha256"]
+    ):
+        raise ValueError("FIXED_TARGET_SCIENTIFIC_POLICY_HASH_MISMATCH")
+
+
+def require_semantic_validation_checkout(implementation_commit: str) -> str:
+    require_existing_commit(implementation_commit)
+    head = _git_text("rev-parse", "HEAD")
+    if head.returncode or head.stdout.strip() != implementation_commit:
+        raise ValueError("FIXED_TARGET_SEMANTIC_VALIDATION_HEAD_MISMATCH")
+    dirty = _git_text("status", "--porcelain=v1", "--untracked-files=no")
+    if dirty.returncode:
+        raise ValueError("FIXED_TARGET_SEMANTIC_VALIDATION_GIT_STATUS_FAILED")
+    if dirty.stdout.strip():
+        raise ValueError("FIXED_TARGET_SEMANTIC_VALIDATION_DIRTY_TREE")
+    return implementation_commit
+
+
+def validate_execution_binding_contract(
+    evidence: dict[str, Any],
+    *,
+    acceptance: dict[str, Any],
+    attempt: dict[str, Any],
+    preflight: dict[str, Any],
+    evaluation_config: dict[str, Any],
+    target_observation: dict[str, Any],
+    training_configs: list[dict[str, Any]],
+) -> None:
+    """Foundation-only cross-binding contract for a future runtime/1.1 evaluator."""
+    validate_execution_evidence_manifest(evidence)
+    policy = evidence["scientific_policy"]
+    implementation = evidence["implementation_commit"]
+    if (
+        implementation != acceptance["implementation_commit"]
+        or implementation != attempt["implementation_commit"]
+    ):
+        raise ValueError("FIXED_TARGET_EXECUTION_IMPLEMENTATION_MISMATCH")
+    if preflight.get("implementation_commit") != implementation:
+        raise ValueError("FIXED_TARGET_EXECUTION_IMPLEMENTATION_MISMATCH")
+    if evidence["target_contract_sha256"] != acceptance["target_contract_sha256"]:
+        raise ValueError("FIXED_TARGET_EXECUTION_TARGET_MISMATCH")
+    if evidence["target_contract_sha256"] != attempt["target_contract_sha256"]:
+        raise ValueError("FIXED_TARGET_EXECUTION_TARGET_MISMATCH")
+    if preflight.get("target_contract_sha256") != evidence["target_contract_sha256"]:
+        raise ValueError("FIXED_TARGET_EXECUTION_TARGET_MISMATCH")
+    if evidence["runtime_contract_sha256"] != acceptance["runtime_contract_sha256"]:
+        raise ValueError("FIXED_TARGET_EXECUTION_RUNTIME_MISMATCH")
+    if evidence["runtime_contract_sha256"] != attempt["runtime_contract_sha256"]:
+        raise ValueError("FIXED_TARGET_EXECUTION_RUNTIME_MISMATCH")
+    if preflight.get("runtime_contract_sha256") != evidence["runtime_contract_sha256"]:
+        raise ValueError("FIXED_TARGET_EXECUTION_RUNTIME_MISMATCH")
+    validate_target_observation(target_observation)
+    observation_hash = target_observation["observation_sha256"]
+    if evidence["target_observation_sha256"] != observation_hash:
+        raise ValueError("FIXED_TARGET_EXECUTION_OBSERVATION_MISMATCH")
+    if attempt["target_observation_sha256"] != observation_hash:
+        raise ValueError("FIXED_TARGET_EXECUTION_OBSERVATION_MISMATCH")
+    if preflight.get("target_observation") != target_observation:
+        raise ValueError("FIXED_TARGET_EXECUTION_OBSERVATION_MISMATCH")
+    inventory = preflight.get("source_inventory")
+    if not isinstance(inventory, dict) or evidence["source_inventory_sha256"] != inventory.get(
+        "source_inventory_sha256"
+    ):
+        raise ValueError("FIXED_TARGET_EXECUTION_SOURCE_INVENTORY_MISMATCH")
+    if attempt["source_inventory_sha256"] != evidence["source_inventory_sha256"]:
+        raise ValueError("FIXED_TARGET_EXECUTION_SOURCE_INVENTORY_MISMATCH")
+    if evidence["evaluator_version"] != evaluation_config.get("evaluator_version"):
+        raise ValueError("FIXED_TARGET_EXECUTION_EVALUATOR_MISMATCH")
+    if evidence["evaluator_source_sha256"] != evaluation_config.get("evaluator_source_sha256"):
+        raise ValueError("FIXED_TARGET_EXECUTION_EVALUATOR_MISMATCH")
+    expected_requirements = requirements_lock_sha256_at_commit(implementation)
+    if evidence["requirements_lock_sha256"] != expected_requirements:
+        raise ValueError("FIXED_TARGET_EXECUTION_REQUIREMENTS_MISMATCH")
+    if evaluation_config.get("requirements_lock_sha256") != expected_requirements:
+        raise ValueError("FIXED_TARGET_EXECUTION_REQUIREMENTS_MISMATCH")
+    dataset = evidence["dataset_identity"]
+    if dataset["dataset_hash"] != policy["dataset_hash"]:
+        raise ValueError("FIXED_TARGET_EXECUTION_DATASET_MISMATCH")
+    if dataset["dataset_hash"] != evaluation_config.get("dataset_manifest_hash"):
+        raise ValueError("FIXED_TARGET_EXECUTION_DATASET_MISMATCH")
+    if dataset["ordered_train_task_ids"] != evaluation_config.get("train_task_ids"):
+        raise ValueError("FIXED_TARGET_EXECUTION_TRAIN_SPLIT_MISMATCH")
+    if dataset["ordered_eval_task_ids"] != evaluation_config.get("eval_task_ids"):
+        raise ValueError("FIXED_TARGET_EXECUTION_EVAL_SPLIT_MISMATCH")
+    if (
+        evidence["variants"] != evaluation_config.get("variants")
+        or evidence["variants"] != policy["variants"]
+    ):
+        raise ValueError("FIXED_TARGET_EXECUTION_VARIANTS_MISMATCH")
+    if evidence["seeds"] != evaluation_config.get("seeds") or evidence["seeds"] != policy["seeds"]:
+        raise ValueError("FIXED_TARGET_EXECUTION_SEEDS_MISMATCH")
+    expected_optimizer = {
+        "name": policy["optimizer"]["class"],
+        "learning_rate": policy["optimizer"]["learning_rate"],
+        "betas": policy["optimizer"]["betas"],
+        "eps": policy["optimizer"]["eps"],
+        "weight_decay": policy["optimizer"]["weight_decay"],
+        "gradient_clip_norm": policy["gradient_clipping"]["max_norm"],
+    }
+    if evaluation_config.get("optimizer") != expected_optimizer:
+        raise ValueError("FIXED_TARGET_SCIENTIFIC_POLICY_MISMATCH")
+    if evaluation_config.get("checkpoint_policy") != policy["checkpoint_policy"]:
+        raise ValueError("FIXED_TARGET_SCIENTIFIC_POLICY_MISMATCH")
+    if evaluation_config.get("training_execution_mode") != policy["training_execution_mode"]:
+        raise ValueError("FIXED_TARGET_SCIENTIFIC_POLICY_MISMATCH")
+    expected_runs = {(variant, seed) for variant in policy["variants"] for seed in policy["seeds"]}
+    observed_runs: set[tuple[str, int]] = set()
+    for config in training_configs:
+        variant_identity = config.get("variant_identity")
+        if not isinstance(variant_identity, dict):
+            raise ValueError("FIXED_TARGET_TRAINING_CONFIG_BINDING_MISMATCH")
+        key = (variant_identity.get("implementation_variant"), config.get("seed"))
+        observed_runs.add(key)
+        if config.get("dataset_hash") != dataset["dataset_hash"]:
+            raise ValueError("FIXED_TARGET_TRAINING_CONFIG_BINDING_MISMATCH")
+        if config.get("train_task_ids") != dataset["ordered_train_task_ids"]:
+            raise ValueError("FIXED_TARGET_TRAINING_CONFIG_BINDING_MISMATCH")
+        if (
+            config.get("epochs") != policy["epochs"]
+            or config.get("updates") != policy["updates_per_run"]
+        ):
+            raise ValueError("FIXED_TARGET_TRAINING_CONFIG_BINDING_MISMATCH")
+        if config.get("optimizer") != expected_optimizer:
+            raise ValueError("FIXED_TARGET_TRAINING_CONFIG_BINDING_MISMATCH")
+        if config.get("checkpoint_policy") != policy["checkpoint_policy"]:
+            raise ValueError("FIXED_TARGET_TRAINING_CONFIG_BINDING_MISMATCH")
+    if observed_runs != expected_runs or len(training_configs) != len(expected_runs):
+        raise ValueError("FIXED_TARGET_TRAINING_CONFIG_COVERAGE_MISMATCH")
+    if (
+        evidence["observed_optimizer_foreach"] is not False
+        or evidence["observed_optimizer_fused"] is not False
+    ):
+        raise ValueError("FIXED_TARGET_OPTIMIZER_EXECUTION_MISMATCH")
+
+
 def target_contract_sha256(contract: dict[str, Any]) -> str:
     validate_target_contract(contract)
     return sha256_value(contract)
@@ -256,7 +480,7 @@ def target_contract_sha256(contract: dict[str, Any]) -> str:
 
 def validate_target_contract(contract: dict[str, Any]) -> None:
     _validate_schema(
-        "toy_quality_fixed_cpu_target.schema.json",
+        "fixed_target_cpu_target.schema.json",
         contract,
         "FIXED_TARGET_CONTRACT_SCHEMA_INVALID",
     )
@@ -310,7 +534,7 @@ def validate_runtime_contract(
     target_contract: dict[str, Any] | None = None,
 ) -> None:
     _validate_schema(
-        "toy_quality_fixed_runtime.schema.json",
+        "fixed_target_runtime.schema.json",
         runtime,
         "FIXED_TARGET_RUNTIME_SCHEMA_INVALID",
     )
@@ -331,7 +555,7 @@ def observation_sha256(observation: dict[str, Any]) -> str:
 
 def validate_target_observation(observation: dict[str, Any]) -> None:
     _validate_schema(
-        "toy_quality_fixed_target_observation.schema.json",
+        "fixed_target_observation.schema.json",
         observation,
         "FIXED_TARGET_OBSERVATION_SCHEMA_INVALID",
     )
@@ -569,7 +793,7 @@ def _validate_acceptance_record_structure(
     allow_final_accepted: bool,
 ) -> None:
     _validate_schema(
-        "toy_quality_fixed_target_acceptance.schema.json",
+        "fixed_target_acceptance.schema.json",
         acceptance,
         "FIXED_TARGET_ACCEPTANCE_SCHEMA_INVALID",
     )
@@ -628,7 +852,6 @@ def _validate_acceptance_record_structure(
         raise ValueError("FIXED_TARGET_ACCEPTANCE_DUPLICATE_JOB")
 
     claim_blocks: list[dict[str, str]] = []
-    probe_identities: list[str] = []
     for attempt in attempts:
         if attempt["implementation_commit"] != implementation:
             raise ValueError("FIXED_TARGET_ACCEPTANCE_IMPLEMENTATION_MISMATCH")
@@ -648,12 +871,10 @@ def _validate_acceptance_record_structure(
         ):
             raise ValueError("FIXED_TARGET_ACCEPTANCE_REUSED_LINEAGE")
         _require_hash(
-            attempt["source_inventory_sha256"],
-            "FIXED_TARGET_SOURCE_INVENTORY_HASH_INVALID",
+            attempt["source_inventory_sha256"], "FIXED_TARGET_SOURCE_INVENTORY_HASH_INVALID"
         )
         _require_hash(
-            attempt["probe_identity"],
-            "FIXED_TARGET_PROBE_IDENTITY_INVALID",
+            attempt["execution_evidence_sha256"], "FIXED_TARGET_EXECUTION_EVIDENCE_HASH_INVALID"
         )
         if type(attempt["observed_optimizer_foreach"]) is not bool:
             raise ValueError("FIXED_TARGET_OPTIMIZER_OBSERVATION_INVALID:foreach")
@@ -666,35 +887,21 @@ def _validate_acceptance_record_structure(
         if attempt["result"] == "PASS" and not attempt["successful_full_evaluation"]:
             raise ValueError("FIXED_TARGET_ACCEPTANCE_FAILED_ATTEMPT")
         claim_blocks.append(claims)
-        probe_identities.append(attempt["probe_identity"])
 
     exact_equal = (
         len(attempts) == 3
-        and claim_blocks
+        and bool(claim_blocks)
         and all(claim == claim_blocks[0] for claim in claim_blocks)
-        and len(set(probe_identities)) == 1
     )
     comparison = acceptance["cross_attempt_comparison"]
     if comparison["status"] == "PASS" and (not exact_equal or comparison["mismatches"]):
         raise ValueError("FIXED_TARGET_CROSS_ATTEMPT_COMPARISON_MISMATCH")
     if accepted:
-        if not allow_final_accepted:
-            raise ValueError("FIXED_TARGET_ACCEPTED_REQUIRES_BUNDLE")
-        if status != "FIXED_TARGET_ACCEPTED":
-            raise ValueError("FIXED_TARGET_ACCEPTED_STATUS_MISMATCH")
-        if len(attempts) != 3:
-            raise ValueError("FIXED_TARGET_ACCEPTANCE_ATTEMPT_COUNT_MISMATCH")
-        if any(
-            attempt["result"] != "PASS" or not attempt["successful_full_evaluation"]
-            for attempt in attempts
-        ):
-            raise ValueError("FIXED_TARGET_ACCEPTANCE_FAILED_ATTEMPT")
-        if comparison["status"] != "PASS" or not exact_equal:
-            raise ValueError("FIXED_TARGET_CROSS_ATTEMPT_COMPARISON_MISMATCH")
-        if acceptance["blocker"] is not None:
-            raise ValueError("FIXED_TARGET_ACCEPTED_BLOCKER_PRESENT")
-    elif status == "FIXED_TARGET_ACCEPTED":
+        raise ValueError(RUNTIME_1_1_EXECUTION_GATE)
+    if status == "FIXED_TARGET_ACCEPTED":
         raise ValueError("FIXED_TARGET_ACCEPTED_STATUS_MISMATCH")
+    if allow_final_accepted:
+        raise ValueError(RUNTIME_1_1_EXECUTION_GATE)
 
 
 def validate_acceptance_record(acceptance: dict[str, Any]) -> None:
@@ -804,7 +1011,7 @@ def _validate_attempt_shape(attempt_root: Path) -> None:
     if not attempt_root.is_dir():
         raise ValueError("FIXED_TARGET_ATTEMPT_DIRECTORY_MISSING")
     top = {path.name for path in attempt_root.iterdir()}
-    if top != {"attempt_manifest.json", "preflight.json", "probe.json", "evaluation"}:
+    if top != {"attempt_manifest.json", "preflight.json", "execution-evidence.json", "evaluation"}:
         raise ValueError("FIXED_TARGET_ATTEMPT_TOP_LEVEL_COVERAGE_MISMATCH")
     evaluation = attempt_root / "evaluation"
     top_files = {path.name for path in evaluation.iterdir() if path.is_file()}
@@ -1065,13 +1272,10 @@ def _derive_claim_identities(evaluation_root: Path) -> dict[str, str]:
     }
 
 
-def _derive_probe_identity(probe_path: Path) -> str:
-    from scripts.canonical_probe_evidence_validation import (  # noqa: PLC0415
-        validate_probe_artifact,
-    )
-    from scripts.canonical_training_probe_contract import (  # noqa: PLC0415
-        compute_probe_identity,
-    )
+def _historical_probe_2_identity_for_investigation_only(probe_path: Path) -> str:
+    """Validate retained PR18 probe/2.0 without treating it as runtime/1.1 evidence."""
+    from scripts.canonical_probe_evidence_validation import validate_probe_artifact  # noqa: PLC0415
+    from scripts.canonical_training_probe_contract import compute_probe_identity  # noqa: PLC0415
 
     probe = _read_json(probe_path, "FIXED_TARGET_PROBE_INVALID")
     validate_probe_artifact(probe)
@@ -1119,72 +1323,55 @@ def _validate_preflight(
 
 
 def validate_acceptance_bundle(root: Path) -> dict[str, Any]:
-    """Validate real 3/3 evidence. This is the only validator that may accept."""
+    """Validate foundation bundle structure; final runtime/1.1 semantics remain gated."""
     root = Path(root)
-    acceptance = _read_json(
-        root / "acceptance.json",
-        "FIXED_TARGET_ACCEPTANCE_FILE_INVALID",
-    )
-    _validate_acceptance_record_structure(acceptance, allow_final_accepted=True)
-    if not acceptance["accepted"]:
-        raise ValueError("FIXED_TARGET_BUNDLE_NOT_FINAL_ACCEPTED")
-    implementation = require_trusted_implementation_commit(acceptance["implementation_commit"])
+    acceptance = _read_json(root / "acceptance.json", "FIXED_TARGET_ACCEPTANCE_FILE_INVALID")
+    _validate_acceptance_record_structure(acceptance, allow_final_accepted=False)
+    if acceptance["accepted"]:
+        raise ValueError(RUNTIME_1_1_EXECUTION_GATE)
+    if acceptance["status"] == "BLOCKED_ON_FIXED_RUNNER_PROVISIONING":
+        if {path.name for path in root.iterdir()} != {"acceptance.json"}:
+            raise ValueError("FIXED_TARGET_BUNDLE_ROOT_COVERAGE_MISMATCH")
+        return {"valid": True, "accepted": False, "status": acceptance["status"]}
 
-    expected_root = {
-        "acceptance.json",
-        "attempt-1",
-        "attempt-2",
-        "attempt-3",
+    implementation = require_trusted_implementation_commit(acceptance["implementation_commit"])
+    expected_root = {"acceptance.json"} | {
+        f"attempt-{index}" for index in range(1, len(acceptance["attempts"]) + 1)
     }
     if {path.name for path in root.iterdir()} != expected_root:
         raise ValueError("FIXED_TARGET_BUNDLE_ROOT_COVERAGE_MISMATCH")
 
-    derived_claims: list[dict[str, str]] = []
-    derived_probes: list[str] = []
     for index, attempt in enumerate(acceptance["attempts"], start=1):
         attempt_root = root / f"attempt-{index}"
         _validate_attempt_shape(attempt_root)
         manifest = _read_json(
-            attempt_root / "attempt_manifest.json",
-            "FIXED_TARGET_ATTEMPT_MANIFEST_INVALID",
+            attempt_root / "attempt_manifest.json", "FIXED_TARGET_ATTEMPT_MANIFEST_INVALID"
         )
         validate_attempt_manifest(attempt_root, manifest, index)
-        preflight = _read_json(
-            attempt_root / "preflight.json",
-            "FIXED_TARGET_PREFLIGHT_INVALID",
-        )
+        preflight = _read_json(attempt_root / "preflight.json", "FIXED_TARGET_PREFLIGHT_INVALID")
         _validate_preflight(preflight, acceptance=acceptance, attempt=attempt)
+        execution = _read_json(
+            attempt_root / "execution-evidence.json",
+            "FIXED_TARGET_EXECUTION_EVIDENCE_INVALID",
+        )
+        validate_execution_evidence_manifest(execution)
+        if execution["execution_evidence_sha256"] != attempt["execution_evidence_sha256"]:
+            raise ValueError("FIXED_TARGET_EXECUTION_EVIDENCE_HASH_MISMATCH")
+        if execution["implementation_commit"] != acceptance["implementation_commit"]:
+            raise ValueError("FIXED_TARGET_EXECUTION_IMPLEMENTATION_MISMATCH")
+        if execution["target_contract_sha256"] != acceptance["target_contract_sha256"]:
+            raise ValueError("FIXED_TARGET_EXECUTION_TARGET_MISMATCH")
+        if execution["runtime_contract_sha256"] != acceptance["runtime_contract_sha256"]:
+            raise ValueError("FIXED_TARGET_EXECUTION_RUNTIME_MISMATCH")
+        if execution["target_observation_sha256"] != attempt["target_observation_sha256"]:
+            raise ValueError("FIXED_TARGET_EXECUTION_OBSERVATION_MISMATCH")
+        if execution["source_inventory_sha256"] != attempt["source_inventory_sha256"]:
+            raise ValueError("FIXED_TARGET_EXECUTION_SOURCE_INVENTORY_MISMATCH")
 
-        claims = _derive_claim_identities(attempt_root / "evaluation")
-        if claims != attempt["claim_identities"]:
-            raise ValueError("FIXED_TARGET_DERIVED_CLAIM_IDENTITY_MISMATCH")
-        if canonical_result_identity(claims) != attempt["canonical_result_identity"]:
-            raise ValueError("FIXED_TARGET_CANONICAL_RESULT_IDENTITY_MISMATCH")
-
-        foreach, fused = _derive_optimizer_execution(attempt_root / "evaluation")
-        if (
-            foreach != acceptance["runtime_contract"]["optimizer_foreach"]
-            or fused != acceptance["runtime_contract"]["optimizer_fused"]
-            or foreach != attempt["observed_optimizer_foreach"]
-            or fused != attempt["observed_optimizer_fused"]
-        ):
-            raise ValueError("FIXED_TARGET_OPTIMIZER_EXECUTION_MISMATCH")
-
-        probe_identity = _derive_probe_identity(attempt_root / "probe.json")
-        if probe_identity != attempt["probe_identity"]:
-            raise ValueError("FIXED_TARGET_PROBE_IDENTITY_MISMATCH")
-        derived_claims.append(claims)
-        derived_probes.append(probe_identity)
-
-    if not all(claim == derived_claims[0] for claim in derived_claims):
-        raise ValueError("FIXED_TARGET_CROSS_ATTEMPT_COMPARISON_MISMATCH")
-    if len(set(derived_probes)) != 1:
-        raise ValueError("FIXED_TARGET_CROSS_ATTEMPT_COMPARISON_MISMATCH")
     return {
         "valid": True,
-        "accepted": True,
+        "accepted": False,
         "status": acceptance["status"],
         "implementation_commit": implementation,
-        "canonical_result_identity": canonical_result_identity(derived_claims[0]),
-        "probe_identity": derived_probes[0],
+        "runtime_1_1_execution_validation": "DISABLED",
     }

@@ -7,54 +7,40 @@ TARGET CONTRACT FRAMEWORK DEFINED
 TARGET NOT PROVISIONED
 ACCEPTANCE 0/3
 RUNTIME/1.1 NOT ACCEPTED
-
 BLOCKED ON FIXED RUNNER PROVISIONING
 ```
 
 ```text
 PR19 = acceptance foundation
-future phase = concrete target + 3/3 acceptance
+future acceptance phase = runtime/1.1 execution semantics
 ```
 
-This PR does not perform fixed-target acceptance.
-It installs the trusted acceptance foundation on the default branch.
-
-PR №19 не provision runner, не создаёт concrete hardware identity и не принимает
-`toy-quality-canonical-cpu-runtime/1.1`. GitHub-hosted runners остаются только
-regression/observation environment и не являются fixed-target evidence.
+PR №19 не provision runner, не создаёт concrete hardware identity и не выполняет runtime/1.1 evaluation. Final runtime/1.1 execution evidence validation remains disabled until the separate post-provisioning acceptance phase. Historical probe/2.0 is not accepted as runtime/1.1 evidence.
 
 ## Lifecycle
 
-`workflow_dispatch` исполняет workflow с default branch, поэтому acceptance не
-является pre-merge gate этого PR. Нормативный lifecycle:
-
 ```text
 PR19
-  define contracts
-  define schemas
-  define fail-closed preflight
-  define acceptance evidence format
-  define trusted dispatcher
-  status BLOCKED / 0/3
+  contracts + schemas
+  fail-closed preflight
+  source closure
+  scientific policy
+  execution-evidence interface
+  trusted dispatcher
+  acceptance status BLOCKED / 0/3
 → external review
 → merge to main
-
-THEN
-
-runner provisioning
-
-THEN separate acceptance phase:
-  concrete target contract
-  runtime/1.1 full execution
-  three attempts
+→ runner provisioning
+→ separate acceptance phase
+  concrete target
+  versioned runtime/1.1 evaluator/probe if needed
+  three independent full runs
   final acceptance artifact
 ```
 
-Следующий PR или acceptance phase в этом раунде не создаются.
+`workflow_dispatch` — post-merge mechanism. PR19 не является pre-merge fixed-target acceptance gate.
 
-## Contracts
-
-Foundation определяет:
+## Versioned foundation contracts
 
 ```text
 toy-quality-fixed-cpu-target/1.0
@@ -63,108 +49,166 @@ toy-quality-canonical-cpu-runtime/1.1
 toy-quality-fixed-target-acceptance/1.0
 toy-quality-fixed-target-source-inventory/1.0
 toy-quality-fixed-target-attempt-manifest/1.0
+toy-quality-fixed-target-scientific-policy/1.0
+toy-quality-fixed-target-execution-evidence/1.0
 ```
 
-Target contract фиксирует CPU/software/runtime policy и
-`required_runner_labels`. Scheduler labels являются scheduling requirement, а
-не самостоятельно измеренной hardware observation.
-
-Preflight observation измеряет CPU, kernel, immutable runner image identity,
-CPython build/compiler, exact `pip` version, PyTorch version/build,
-ATen dispatch, MKL/OpenMP/MKLDNN и thread/deterministic controls. Она не
-утверждает фактический optimizer path: AdamW на preflight не создаётся.
-
-Runtime/1.1 требует:
+Fixed-target schemas deliberately live under `planner_toy/schemas/fixed_target_*.schema.json`. Они не match historical `toy_*.schema.json`, поэтому frozen `planner_toy.quality.SOURCE_FILES` и historical evaluator source identity остаются неизменными:
 
 ```text
-optimizer_class = AdamW
-optimizer_foreach = false
-optimizer_fused = false
-MKL_CBWR = COMPATIBLE
-threads = 1
-mkldnn_enabled = false
-deterministic_algorithms = true
-deterministic_warn_only = false
+sha256:9205ad312fc37fa9927505e9c44a599e29fc5e31180db9d2e49ebfcc247b4570
+historical implementation = 779172c3bbca3d03552deaed6421e82fcf19a932
 ```
 
-Фактические `observed_optimizer_foreach` и `observed_optimizer_fused`
-появляются только в full attempt evidence и извлекаются из persisted real
-optimizer state. `None/None` не эквивалентно `false/false`.
+## Runtime/1.1 boundary
 
-## Record vs bundle validation
-
-`validate_acceptance_record(...)` проверяет schema, exact fields, hashes,
-attempt order, duplicate run/job IDs, status transitions и internal binding.
-Он намеренно отклоняет `accepted=true` с
-`FIXED_TARGET_ACCEPTED_REQUIRES_BUNDLE`.
-
-Final acceptance может подтвердить только:
+Target/runtime contract по-прежнему требует fixed target и:
 
 ```text
-validate_acceptance_bundle(root)
+AdamW
+foreach=false
+fused=false
+MKL_CBWR=COMPATIBLE
+threads=1
+mkldnn_enabled=false
+deterministic_algorithms=true
+deterministic_warn_only=false
 ```
 
-Bundle должен содержать:
+Preflight не self-attest optimizer execution. Actual foreach/fused должны появиться только в future full execution evidence.
+
+PR19 не имеет code path, способного подтвердить final `accepted=true`. `validate_acceptance_record(...)` и `validate_acceptance_bundle(...)` fail closed с:
 
 ```text
-acceptance.json
-attempt-1/
-attempt-2/
-attempt-3/
+FIXED_TARGET_RUNTIME_1_1_EXECUTION_NOT_ENABLED
 ```
 
-Каждый attempt содержит versioned `attempt_manifest.json`, `preflight.json`,
-полный `evaluation/` bundle и `probe.json`. Attempt manifest рекурсивно
-покрывает фактические файлы и их hashes; symlinks запрещены.
+Blocked record и future non-final structural evidence могут валидироваться; claim-bearing final semantics остаются disabled до отдельной acceptance phase.
 
-Bundle validator читает реальные artifacts и independently derives:
+## Historical probe/2.0
 
-- initialization identities;
-- training config identity;
-- ordered task identity;
-- trained checkpoint identities;
-- optimizer-state identities;
-- canonical state-dict identities;
-- evaluation task-result identity;
-- replay hash;
-- probe identity;
-- canonical semantic payload identity;
-- derived summaries identity.
+`toy-quality-canonical-training-probe/2.0` относится к historical `toy-quality-canonical-cpu-runtime/1.0`. Он может быть валидирован как retained investigation evidence PR18, но:
 
-Значения из `acceptance.json` не являются authority: они сравниваются с
-derived values. Checkpoint/optimizer files дополнительно cross-bind к
-checkpoint manifests. Missing/extra training-run claim files, stale attempt
-manifest, reused lineage и altered evidence fail closed.
+- `probe.json` не является обязательной частью fixed-target acceptance bundle;
+- `probe_identity` отсутствует в runtime/1.1 acceptance decision contract;
+- probe/2.0 не участвует в exact-equality acceptance decision;
+- probe/3.0 в PR19 не создаётся.
+
+## Scientific policy
+
+`toy-quality-fixed-target-scientific-policy/1.0` bind’ит migration к frozen quality-v0.1 scientific semantics, а не создаёт новый эксперимент.
+
+Нормативно сохраняются:
+
+```text
+variants = [A2, A3, A4]
+seeds = [17, 29, 43]
+dataset seed = 17
+historical dataset identity and frozen train/held-out split
+epochs = 3
+updates per run = 9
+checkpoint policy = final_epoch_only_no_heldout_selection
+training execution = TRAINED_IN_RUN
+
+optimizer = AdamW
+learning_rate = 3e-4
+betas = [0.9, 0.95]
+eps = 1e-8
+weight_decay = 0.01
+gradient clipping = clip_grad_norm_(max_norm=1.0)
+```
+
+Model, initialization, dtype, loss, decoding и split semantics не переопределяются PR19: они bind’ятся к immutable historical evaluator source identity и dataset identity. Единственная execution migration:
+
+```text
+runtime/1.1
+fixed target
+foreach=false
+fused=false
+```
+
+Три одинаковых run неправильного эксперимента поэтому не могут стать acceptance.
+
+## Future execution-evidence interface
+
+PR19 определяет schema/interface, но не генерирует real execution manifest. Future attempt обязан предоставить versioned `execution-evidence.json`, bind’ящий минимум:
+
+```text
+execution_evidence_version
+implementation_commit
+target_contract_sha256
+runtime_contract_sha256
+target_observation_sha256
+source_inventory_sha256
+scientific_policy + scientific_policy_sha256
+
+evaluator_version
+evaluator_source_sha256
+requirements_lock_sha256
+
+dataset_hash
+ordered_train_task_ids
+ordered_eval_task_ids
+variants
+seeds
+epochs
+updates_per_run
+
+optimizer_class
+optimizer_hyperparameters
+gradient_clipping
+observed_optimizer_foreach
+observed_optimizer_fused
+
+evaluation_root_identity
+```
+
+Future validator должен cross-bind manifest к acceptance, attempt, preflight, evaluation-config, all nine training configs/artifacts и target observation. Foundation helper `validate_execution_binding_contract(...)` уже задаёт exact interface, но final acceptance execution gate остаётся закрытым.
+
+## Commit-bound semantic validation
+
+Claim-bearing semantic revalidation в future phase допускается только кодом implementation commit, evidence которого проверяется. Foundation invariant:
+
+```text
+git rev-parse HEAD == acceptance.implementation_commit
+tracked working tree clean
+```
+
+`require_semantic_validation_checkout(...)` fail closed на другом HEAD и на dirty tracked tree. Альтернатива future phase — isolated clean worktree exact implementation commit. Historical evidence нельзя revalidate произвольным более новым checkout.
 
 ## Source closure
 
-Fixed-target source inventory строится не из нового вручную урезанного списка.
-База — version-locked `evaluator_source_files` frozen quality-v0.1 artifact с
-проверкой его `evaluator_source_sha256`. К ней добавляются fixed-target
-workflow/scripts/schemas, `requirements.lock`, `pyproject.toml`, package
-initializers и transitive probe validators.
+Fixed-target source inventory:
 
-Для каждого final attempt:
+```text
+historical locked quality evaluator source inventory
++
+fixed-target workflow
+fixed-target scripts
+fixed_target_*.schema.json
+requirements.lock
+pyproject.toml
+planner_toy/__init__.py
+scripts/__init__.py
+```
 
-1. implementation SHA должен существовать как Git commit;
-2. `source_inventory_at_commit(implementation_commit)` регенерируется через
-   `git show <commit>:<path>`;
-3. inventory и `source_inventory_sha256` должны совпасть exactly с preflight
-   evidence;
-4. missing source или nonexistent 40-hex SHA отклоняется.
+Historical source identity проверяется отдельно и не меняется из-за fixed-target schemas. Mutation `pyproject.toml` или fixed-target schema меняет fixed-target source identity.
 
 ## Trusted dispatcher
 
-Acceptance workflow предназначен для работы после merge foundation в default
-branch. Он не исполняет arbitrary same-repository SHA.
-
-Policy:
+Policy сохраняется:
 
 ```text
-implementation SHA must be reachable from protected main
+workflow_dispatch only
+runs-on: self-hosted/linux/x64/planning-model-canonical-cpu-v1
+implementation SHA must be ancestor of protected main
+persist-credentials=false
+immutable runner image identity required
+no mutable package installation
+cleanup always
 ```
 
-До checkout requested implementation workflow делает:
+Перед detached checkout:
 
 ```text
 git fetch --no-tags origin main
@@ -172,32 +216,17 @@ git cat-file -e "${IMPLEMENTATION_SHA}^{commit}"
 git merge-base --is-ancestor "$IMPLEMENTATION_SHA" origin/main
 ```
 
-Только после этого выполняется detached checkout exact SHA.
-
-Dispatch доступен через repository `workflow_dispatch`; выполняться может
-только commit из protected-main history. Fork PR code и unmerged branch code
-на permanent canonical runner не исполняются. Workflow не использует
-`pull_request`/`pull_request_target`, не требует secrets, checkout credentials
-не сохраняются, workspace очищается после invocation.
-
-## Reproducible runner image
-
-Canonical acceptance не выполняет mutable package installation. Workflow не
-делает `pip install`, не обновляет pip и не запускает dependency resolver.
-
-Будущий immutable/versioned runner image должен уже содержать exact CPython,
-pip, PyTorch wheel и native runtime libraries. Workflow только наблюдает и
-проверяет их identities против concrete target contract. Image identity
-читается из:
+После preflight full execution остаётся disabled:
 
 ```text
-/etc/planning-model-runner-image-id
+FIXED_TARGET_ACCEPTANCE_EXECUTION_NOT_ENABLED
 ```
 
-## Blocked artifact
+Это ожидаемое поведение foundation PR.
 
-`docs/evaluations/data/fixed-target-acceptance.json` остаётся честным blocked
-record:
+## Blocked evidence
+
+`docs/evaluations/data/fixed-target-acceptance.json` остаётся без hypothetical values:
 
 ```text
 status = BLOCKED_ON_FIXED_RUNNER_PROVISIONING
@@ -208,45 +237,18 @@ runtime_contract = null
 cross_attempt_comparison = NOT_RUN
 ```
 
-Fictitious hardware values не добавляются.
-
-## Full execution disabled
-
-До отдельной post-merge acceptance phase workflow заканчивается fail-closed:
-
-```text
-FIXED_TARGET_ACCEPTANCE_EXECUTION_NOT_ENABLED
-```
-
-Успешный preflight не является acceptance attempt.
-
 ## Historical lineage
-
-Historical runtime остаётся:
 
 ```text
 runtime/1.0 = historical lineage
 runtime/1.1 = future fixed-target execution lineage
 ```
 
-Поддерживаемый вывод investigation PR №18 не меняется:
+Historical compact artifacts и evaluator source identity должны regeneratе byte-identically на implementation commit `779172c3bbca3d03552deaed6421e82fcf19a932`. Frozen quality-v0.1 files не переписываются.
+
+Поддерживаемый вывод PR18 не меняется:
 
 ```text
 First observed cross-host divergence occurs during AdamW parameter update.
 The underlying instruction-level cause remains unidentified.
 ```
-
-Frozen v0.1 artifacts не переписываются.
-
-## Provisioning handoff
-
-После merge PR №19 отдельная фаза должна provision dedicated Linux x86_64
-target без плавающей CPU identity/live migration, назначить scheduler labels,
-зафиксировать immutable image identity, CPU vendor/family/model/stepping,
-microcode policy, kernel, flags, logical CPU policy, CPython/pip/PyTorch/native
-runtime identities и создать concrete `configs/fixed-cpu-target-1.0.json` из
-реальной observation.
-
-Только затем отдельная acceptance phase включает full runtime/1.1 execution и
-создаёт три independent attempts с `TRAINED_IN_RUN`, без checkpoint reuse и
-без rerun-as-new-attempt. До этого accepted attempts остаются `0/3`.
