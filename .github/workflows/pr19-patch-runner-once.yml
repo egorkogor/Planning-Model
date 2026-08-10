@@ -43,15 +43,22 @@ jobs:
 
           path = Path('scripts/fixed_target_contract.py')
           lines = path.read_text(encoding='utf-8').splitlines()
-          needle = '  raise ValueError("FIXED_TARGET_TRAINING_CONFIG_BINDING_MISMATCH")'
-          changed = 0
+          repaired = 0
           for index, line in enumerate(lines):
-              if line == needle:
-                  lines[index] = '            raise ValueError("FIXED_TARGET_TRAINING_CONFIG_BINDING_MISMATCH")'
-                  changed += 1
-          if changed != 6:
-              raise SystemExit(f'expected 6 generated indentation fixes, got {changed}')
+              if not line.startswith('  raise ValueError('):
+                  continue
+              previous = index - 1
+              while previous >= 0 and not lines[previous].strip():
+                  previous -= 1
+              if previous < 0 or not lines[previous].rstrip().endswith(':'):
+                  raise SystemExit(f'cannot infer generated raise indentation at line {index + 1}')
+              previous_indent = len(lines[previous]) - len(lines[previous].lstrip(' '))
+              lines[index] = ' ' * (previous_indent + 4) + line.lstrip()
+              repaired += 1
+          if repaired < 6:
+              raise SystemExit(f'expected at least 6 generated raise indentation repairs, got {repaired}')
           path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          print(f'repaired generated raise indentation: {repaired}')
           PY
           python -m py_compile scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
           python -m pip install ruff==0.9.10
