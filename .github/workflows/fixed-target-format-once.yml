@@ -23,8 +23,23 @@ jobs:
       - name: Format fixed-target implementation
         run: |
           ruff format scripts/fixed_target_contract.py tests/toy/test_fixed_cpu_target.py
-          ruff check --fix scripts/fixed_target_contract.py tests/toy/test_fixed_cpu_target.py
-          sed -i '1i# ruff: noqa: E501' tests/toy/test_fixed_cpu_target.py
+          ruff check --fix --ignore E501 scripts/fixed_target_contract.py tests/toy/test_fixed_cpu_target.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/toy/test_fixed_cpu_target.py')
+          lines = path.read_text().splitlines()
+          targets = {
+              'A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md',
+              'a2_a3_a4_heldout_summary.json',
+          }
+          lines = [
+              line + '  # noqa: E501'
+              if any(target in line for target in targets) and '# noqa: E501' not in line
+              else line
+              for line in lines
+          ]
+          path.write_text('\n'.join(lines) + '\n')
+          PY
           ruff check scripts/fixed_target_contract.py tests/toy/test_fixed_cpu_target.py
       - name: Commit formatting
         run: |
