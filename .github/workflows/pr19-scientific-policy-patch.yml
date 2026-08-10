@@ -1,0 +1,281 @@
+name: PR19 scientific policy patch
+on:
+  push:
+    branches:
+      - agent/fixed-canonical-cpu-target
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fixed-canonical-cpu-target
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Apply exact scientific policy regression patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/toy/test_fixed_cpu_target.py')
+          text = path.read_text()
+          old = '''            "ordered_train_task_ids": ["train-1", "train-2", "train-3"],
+                      "ordered_eval_task_ids": ["eval-1", "eval-2"],'''
+          new = '''            "ordered_train_task_ids": list(policy["ordered_train_task_ids"]),
+                      "ordered_eval_task_ids": list(policy["ordered_eval_task_ids"]),'''
+          if old not in text:
+              raise SystemExit('expected synthetic split fixture not found')
+          text = text.replace(old, new, 1)
+
+          old = '''    assert "scripts/__init__.py" in expected
+          '''
+          new = '''    assert "scripts/__init__.py" in expected
+              assert ft.QUALITY_LOCK_RELATIVE_PATH in expected
+          '''
+          if old not in text:
+              raise SystemExit('inventory assertion anchor not found')
+          text = text.replace(old, new, 1)
+
+          old = '''    assert not any(
+                  path.startswith("planner_toy/schemas/fixed_target_") for path in quality.SOURCE_FILES
+              )
+          '''
+          new = '''    assert not any(
+                  path.startswith("planner_toy/schemas/fixed_target_") for path in quality.SOURCE_FILES
+              )
+              assert ft.QUALITY_LOCK_RELATIVE_PATH not in quality.SOURCE_FILES
+          '''
+          if old not in text:
+              raise SystemExit('historical SOURCE_FILES anchor not found')
+          text = text.replace(old, new, 1)
+
+          old = '''    assert locked["implementation_commit"] == HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT
+              assert locked["evaluator_source_sha256"] == ft._QUALITY_SOURCE_LOCK_SHA256
+              assert ft.sha256_value(locked["evaluator_source_files"]) == ft._QUALITY_SOURCE_LOCK_SHA256
+          '''
+          new = '''    assert locked["implementation_commit"] == HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT
+              assert locked["evaluator_version"] == ft.HISTORICAL_QUALITY_EVALUATOR_VERSION
+              assert locked["evaluator_source_sha256"] == ft._QUALITY_SOURCE_LOCK_SHA256
+              assert locked["dataset_hash"] == ft.HISTORICAL_QUALITY_DATASET_HASH
+              assert ft.sha256_value(locked["evaluator_source_files"]) == ft._QUALITY_SOURCE_LOCK_SHA256
+              assert ft.validate_historical_quality_lock(locked) == locked
+          '''
+          if old not in text:
+              raise SystemExit('historical lock assertion anchor not found')
+          text = text.replace(old, new, 1)
+
+          append = r'''
+
+          def _call_binding(
+              acceptance: dict,
+              evidence: dict,
+              preflight: dict,
+              config: dict,
+              training: list[dict],
+          ) -> None:
+              validate_execution_binding_contract(
+                  evidence,
+                  acceptance=acceptance,
+                  attempt=acceptance["attempts"][0],
+                  preflight=preflight,
+                  evaluation_config=config,
+                  target_observation=acceptance["attempts"][0]["target_observation"],
+                  training_configs=training,
+              )
+
+
+          def _mutate_split_and_reseal(
+              evidence: dict,
+              config: dict,
+              training: list[dict],
+              *,
+              train_ids: list[str] | None = None,
+              eval_ids: list[str] | None = None,
+          ) -> None:
+              if train_ids is not None:
+                  evidence["dataset_identity"]["ordered_train_task_ids"] = list(train_ids)
+                  config["train_task_ids"] = list(train_ids)
+                  for training_config in training:
+                      training_config["train_task_ids"] = list(train_ids)
+              if eval_ids is not None:
+                  evidence["dataset_identity"]["ordered_eval_task_ids"] = list(eval_ids)
+                  config["eval_task_ids"] = list(eval_ids)
+              evidence["execution_evidence_sha256"] = execution_evidence_sha256(evidence)
+
+
+          def test_real_frozen_ordered_split_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+              acceptance, evidence, preflight, config, training = _binding_inputs(monkeypatch)
+              assert evidence["dataset_identity"]["ordered_train_task_ids"] == list(
+                  ft.HISTORICAL_ORDERED_TRAIN_TASK_IDS
+              )
+              assert evidence["dataset_identity"]["ordered_eval_task_ids"] == list(
+                  ft.HISTORICAL_ORDERED_EVAL_TASK_IDS
+              )
+              _call_binding(acceptance, evidence, preflight, config, training)
+
+
+          @pytest.mark.parametrize(
+              ("train_ids", "code"),
+              [
+                  (["bw-00000002", "bw-00000001", "bw-00000003"], "FIXED_TARGET_EXECUTION_TRAIN_SPLIT_MISMATCH"),
+                  (["bw-00000001", "bw-00000002"], "FIXED_TARGET_EXECUTION_TRAIN_SPLIT_MISMATCH"),
+              ],
+          )
+          def test_fully_resealed_wrong_train_split_rejected(
+              monkeypatch: pytest.MonkeyPatch,
+              train_ids: list[str],
+              code: str,
+          ) -> None:
+              acceptance, evidence, preflight, config, training = _binding_inputs(monkeypatch)
+              _mutate_split_and_reseal(evidence, config, training, train_ids=train_ids)
+              with pytest.raises(ValueError, match=code):
+                  _call_binding(acceptance, evidence, preflight, config, training)
+
+
+          @pytest.mark.parametrize(
+              "eval_ids",
+              [
+                  ["bw-00000004", "bw-00000099"],
+                  ["bw-00000005", "bw-00000004"],
+              ],
+          )
+          def test_fully_resealed_wrong_heldout_split_rejected(
+              monkeypatch: pytest.MonkeyPatch,
+              eval_ids: list[str],
+          ) -> None:
+              acceptance, evidence, preflight, config, training = _binding_inputs(monkeypatch)
+              _mutate_split_and_reseal(evidence, config, training, eval_ids=eval_ids)
+              with pytest.raises(ValueError, match="FIXED_TARGET_EXECUTION_EVAL_SPLIT_MISMATCH"):
+                  _call_binding(acceptance, evidence, preflight, config, training)
+
+
+          def _mutated_quality_lock(
+              tmp_path: Path,
+              monkeypatch: pytest.MonkeyPatch,
+              mutate,
+          ) -> dict:
+              locked = json.loads(ft.QUALITY_LOCK_PATH.read_text(encoding="utf-8"))
+              mutate(locked)
+              path = tmp_path / "quality-lock.json"
+              path.write_text(json.dumps(locked), encoding="utf-8")
+              monkeypatch.setattr(ft, "QUALITY_LOCK_PATH", path)
+              return locked
+
+
+          def test_historical_quality_lock_implementation_mutation_rejected(
+              tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+          ) -> None:
+              _mutated_quality_lock(
+                  tmp_path,
+                  monkeypatch,
+                  lambda locked: locked.__setitem__("implementation_commit", "b" * 40),
+              )
+              with pytest.raises(ValueError, match="QUALITY_SOURCE_LOCK_IMPLEMENTATION_MISMATCH"):
+                  build_scientific_policy()
+
+
+          def test_historical_quality_lock_dataset_mutation_rejected(
+              tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+          ) -> None:
+              _mutated_quality_lock(
+                  tmp_path,
+                  monkeypatch,
+                  lambda locked: locked.__setitem__("dataset_hash", H3),
+              )
+              with pytest.raises(ValueError, match="QUALITY_SOURCE_LOCK_DATASET_MISMATCH"):
+                  build_scientific_policy()
+
+
+          def test_historical_quality_lock_evaluator_version_mutation_rejected(
+              tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+          ) -> None:
+              _mutated_quality_lock(
+                  tmp_path,
+                  monkeypatch,
+                  lambda locked: locked.__setitem__("evaluator_version", "development-quality-evaluation/0.2"),
+              )
+              with pytest.raises(ValueError, match="QUALITY_SOURCE_LOCK_EVALUATOR_VERSION_MISMATCH"):
+                  build_scientific_policy()
+
+
+          def test_historical_quality_lock_source_hash_mutation_rejected(
+              tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+          ) -> None:
+              _mutated_quality_lock(
+                  tmp_path,
+                  monkeypatch,
+                  lambda locked: locked.__setitem__("evaluator_source_sha256", H3),
+              )
+              with pytest.raises(ValueError, match="QUALITY_SOURCE_LOCK_VERSION_MISMATCH"):
+                  build_scientific_policy()
+
+
+          def test_historical_quality_lock_resealed_source_list_rejected(
+              tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+          ) -> None:
+              def mutate(locked: dict) -> None:
+                  locked["evaluator_source_files"][0]["path"] = "mutated/source.py"
+                  locked["evaluator_source_sha256"] = ft.sha256_value(
+                      locked["evaluator_source_files"]
+                  )
+
+              _mutated_quality_lock(tmp_path, monkeypatch, mutate)
+              with pytest.raises(ValueError, match="QUALITY_SOURCE_LOCK_VERSION_MISMATCH"):
+                  build_scientific_policy()
+
+
+          def test_quality_lock_artifact_mutation_changes_fixed_target_source_inventory(
+              tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+          ) -> None:
+              repo, _ = _temp_repo(tmp_path)
+              lock_path = repo / ft.QUALITY_LOCK_RELATIVE_PATH
+              lock_path.parent.mkdir(parents=True)
+              lock_path.write_text('{"lock":1}\n', encoding="utf-8")
+              _git(repo, "add", ".")
+              _git(repo, "commit", "-m", "add quality lock")
+              first = _git(repo, "rev-parse", "HEAD")
+              monkeypatch.setattr(ft, "ROOT", repo)
+              monkeypatch.setattr(
+                  ft,
+                  "fixed_target_source_paths",
+                  lambda: (ft.QUALITY_LOCK_RELATIVE_PATH, "pyproject.toml"),
+              )
+              before = source_inventory_at_commit(first)["source_inventory_sha256"]
+              lock_path.write_text('{"lock":2}\n', encoding="utf-8")
+              _git(repo, "add", ".")
+              _git(repo, "commit", "-m", "mutate quality lock")
+              second = _git(repo, "rev-parse", "HEAD")
+              after = source_inventory_at_commit(second)["source_inventory_sha256"]
+              assert before != after
+
+
+          def test_scientific_parent_identity_is_exact() -> None:
+              policy = build_scientific_policy()
+              expected_parent = {
+                  "implementation_commit": HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT,
+                  "evaluator_version": ft.HISTORICAL_QUALITY_EVALUATOR_VERSION,
+                  "evaluator_source_sha256": ft._QUALITY_SOURCE_LOCK_SHA256,
+                  "dataset_hash": ft.HISTORICAL_QUALITY_DATASET_HASH,
+                  "ordered_train_task_ids": list(ft.HISTORICAL_ORDERED_TRAIN_TASK_IDS),
+                  "ordered_eval_task_ids": list(ft.HISTORICAL_ORDERED_EVAL_TASK_IDS),
+              }
+              assert policy["ordered_train_task_ids"] == expected_parent["ordered_train_task_ids"]
+              assert policy["ordered_eval_task_ids"] == expected_parent["ordered_eval_task_ids"]
+              assert policy["frozen_scientific_parent"] == expected_parent
+              validate_scientific_policy(policy)
+          '''
+          if 'def test_real_frozen_ordered_split_accepted' in text:
+              raise SystemExit('new regression block already present')
+          text += append
+          path.write_text(text)
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/pr19-scientific-policy-patch.yml
+          git add tests/toy/test_fixed_cpu_target.py
+          git commit -m "Bind fixed-target policy to frozen quality split"
+          git push origin HEAD:agent/fixed-canonical-cpu-target
