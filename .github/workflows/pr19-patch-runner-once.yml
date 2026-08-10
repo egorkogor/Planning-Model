@@ -38,7 +38,21 @@ jobs:
           Path('/tmp/pr19_patch.py').write_text('\n'.join(payload) + '\n', encoding='utf-8')
           PY
           python /tmp/pr19_patch.py
-          nl -ba scripts/fixed_target_contract.py | sed -n '425,455p'
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('scripts/fixed_target_contract.py')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          needle = '  raise ValueError("FIXED_TARGET_TRAINING_CONFIG_BINDING_MISMATCH")'
+          changed = 0
+          for index, line in enumerate(lines):
+              if line == needle:
+                  lines[index] = '            raise ValueError("FIXED_TARGET_TRAINING_CONFIG_BINDING_MISMATCH")'
+                  changed += 1
+          if changed != 6:
+              raise SystemExit(f'expected 6 generated indentation fixes, got {changed}')
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
           python -m py_compile scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
           python -m pip install ruff==0.9.10
           ruff format scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
