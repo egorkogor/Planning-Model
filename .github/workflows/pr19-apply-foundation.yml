@@ -27,7 +27,9 @@ jobs:
           set -euo pipefail
           cat .pr19-payload/chunk-* | base64 -d > /tmp/pr19.tar.gz
           tar xzf /tmp/pr19.tar.gz -C .
-          rm -rf .pr19-payload .github/workflows/pr19-apply-foundation.yml
+          git checkout -- .github/workflows/fixed-target-acceptance.yml
+          git checkout -- .github/workflows/pr19-apply-foundation.yml
+          rm -rf .pr19-payload
           python -m py_compile scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
           python - <<'PY'
           import json
