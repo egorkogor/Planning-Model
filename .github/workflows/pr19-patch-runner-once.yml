@@ -41,24 +41,27 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          path = Path('scripts/fixed_target_contract.py')
-          lines = path.read_text(encoding='utf-8').splitlines()
-          repaired = 0
-          for index, line in enumerate(lines):
-              if not line.startswith('  raise ValueError('):
-                  continue
-              previous = index - 1
-              while previous >= 0 and not lines[previous].strip():
-                  previous -= 1
-              if previous < 0 or not lines[previous].rstrip().endswith(':'):
-                  raise SystemExit(f'cannot infer generated raise indentation at line {index + 1}')
-              previous_indent = len(lines[previous]) - len(lines[previous].lstrip(' '))
-              lines[index] = ' ' * (previous_indent + 4) + line.lstrip()
-              repaired += 1
-          if repaired < 6:
-              raise SystemExit(f'expected at least 6 generated raise indentation repairs, got {repaired}')
-          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-          print(f'repaired generated raise indentation: {repaired}')
+          repaired_total = 0
+          for filename in ('scripts/fixed_target_contract.py', 'tests/toy/test_fixed_cpu_target.py'):
+              path = Path(filename)
+              lines = path.read_text(encoding='utf-8').splitlines()
+              repaired = 0
+              for index, line in enumerate(lines):
+                  if not line.startswith('  raise '):
+                      continue
+                  previous = index - 1
+                  while previous >= 0 and not lines[previous].strip():
+                      previous -= 1
+                  if previous < 0 or not lines[previous].rstrip().endswith(':'):
+                      raise SystemExit(f'cannot infer generated raise indentation in {filename}:{index + 1}')
+                  previous_indent = len(lines[previous]) - len(lines[previous].lstrip(' '))
+                  lines[index] = ' ' * (previous_indent + 4) + line.lstrip()
+                  repaired += 1
+              path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+              print(f'{filename}: repaired generated raise indentation: {repaired}')
+              repaired_total += repaired
+          if repaired_total < 27:
+              raise SystemExit(f'expected generated indentation repairs, got {repaired_total}')
           PY
           python -m py_compile scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
           python -m pip install ruff==0.9.10
