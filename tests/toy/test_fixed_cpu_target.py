@@ -146,24 +146,26 @@ def valid_acceptance(*, attempts: int = 3, accepted: bool = True) -> dict:
     rows = []
     for index in range(1, attempts + 1):
         observation = valid_observation(contract)
-        rows.append({
-            "attempt_index": index,
-            "workflow_run_id": 1000 + index,
-            "job_id": 2000 + index,
-            "implementation_commit": COMMIT,
-            "target_contract_sha256": target_hash,
-            "runtime_contract_sha256": runtime_hash,
-            "target_observation": observation,
-            "target_observation_sha256": observation["observation_sha256"],
-            "probe_identity": H2,
-            "canonical_result_identity": canonical_result_identity(common_claims),
-            "claim_identities": copy.deepcopy(common_claims),
-            "training_execution_mode": "TRAINED_IN_RUN",
-            "checkpoint_origin_run_hash": None,
-            "reuse_source_manifest_hash": None,
-            "successful_full_evaluation": True,
-            "result": "PASS",
-        })
+        rows.append(
+            {
+                "attempt_index": index,
+                "workflow_run_id": 1000 + index,
+                "job_id": 2000 + index,
+                "implementation_commit": COMMIT,
+                "target_contract_sha256": target_hash,
+                "runtime_contract_sha256": runtime_hash,
+                "target_observation": observation,
+                "target_observation_sha256": observation["observation_sha256"],
+                "probe_identity": H2,
+                "canonical_result_identity": canonical_result_identity(common_claims),
+                "claim_identities": copy.deepcopy(common_claims),
+                "training_execution_mode": "TRAINED_IN_RUN",
+                "checkpoint_origin_run_hash": None,
+                "reuse_source_manifest_hash": None,
+                "successful_full_evaluation": True,
+                "result": "PASS",
+            }
+        )
     value = {
         "acceptance_version": FIXED_TARGET_ACCEPTANCE_VERSION,
         "status": "FIXED_TARGET_ACCEPTED" if accepted else "TARGET_PROVISIONED",
@@ -194,7 +196,10 @@ def blocked_acceptance() -> dict:
         "attempts": [],
         "cross_attempt_comparison": {"status": "NOT_RUN", "mismatches": []},
         "accepted": False,
-        "blocker": {"code": "FIXED_RUNNER_NOT_PROVISIONED", "required_action": "Provision dedicated self-hosted Linux x86_64 runner."},
+        "blocker": {
+            "code": "FIXED_RUNNER_NOT_PROVISIONED",
+            "required_action": "Provision dedicated self-hosted Linux x86_64 runner.",
+        },
         "acceptance_identity": "",
     }
     value["acceptance_identity"] = acceptance_identity_sha256(value)
@@ -229,19 +234,28 @@ def test_valid_contract_runtime_observation_and_acceptance() -> None:
     validate_acceptance(blocked_acceptance())
 
 
-@pytest.mark.parametrize(("field", "value", "code"), [
-    ("cpu_model", "106", "FIXED_TARGET_CPU_MISMATCH:cpu_model"),
-    ("cpu_stepping", "8", "FIXED_TARGET_CPU_MISMATCH:cpu_stepping"),
-    ("actual_atten_cpu_capability", "DEFAULT", "FIXED_TARGET_DISPATCH_MISMATCH"),
-    ("torch_build_configuration_sha256", H3, "FIXED_TARGET_SOFTWARE_MISMATCH:torch_build_configuration_sha256"),
-    ("python_build", ["other", "Aug 2 2026"], "FIXED_TARGET_SOFTWARE_MISMATCH:python_build"),
-    ("MKL_CBWR", "AUTO", "FIXED_TARGET_OBSERVATION_SCHEMA_INVALID"),
-    ("OMP_NUM_THREADS", "2", "FIXED_TARGET_OBSERVATION_SCHEMA_INVALID"),
-    ("mkldnn_enabled", True, "FIXED_TARGET_OBSERVATION_SCHEMA_INVALID"),
-    ("optimizer_foreach", True, "FIXED_TARGET_OBSERVATION_SCHEMA_INVALID"),
-    ("optimizer_fused", True, "FIXED_TARGET_OBSERVATION_SCHEMA_INVALID"),
-])
-def test_fully_resealed_observation_mismatches_rejected(field: str, value: object, code: str) -> None:
+@pytest.mark.parametrize(
+    ("field", "value", "code"),
+    [
+        ("cpu_model", "106", "FIXED_TARGET_CPU_MISMATCH:cpu_model"),
+        ("cpu_stepping", "8", "FIXED_TARGET_CPU_MISMATCH:cpu_stepping"),
+        ("actual_atten_cpu_capability", "DEFAULT", "FIXED_TARGET_DISPATCH_MISMATCH"),
+        (
+            "torch_build_configuration_sha256",
+            H3,
+            "FIXED_TARGET_SOFTWARE_MISMATCH:torch_build_configuration_sha256",
+        ),
+        ("python_build", ["other", "Aug 2 2026"], "FIXED_TARGET_SOFTWARE_MISMATCH:python_build"),
+        ("MKL_CBWR", "AUTO", "FIXED_TARGET_OBSERVATION_SCHEMA_INVALID"),
+        ("OMP_NUM_THREADS", "2", "FIXED_TARGET_OBSERVATION_SCHEMA_INVALID"),
+        ("mkldnn_enabled", True, "FIXED_TARGET_OBSERVATION_SCHEMA_INVALID"),
+        ("optimizer_foreach", True, "FIXED_TARGET_OBSERVATION_SCHEMA_INVALID"),
+        ("optimizer_fused", True, "FIXED_TARGET_OBSERVATION_SCHEMA_INVALID"),
+    ],
+)
+def test_fully_resealed_observation_mismatches_rejected(
+    field: str, value: object, code: str
+) -> None:
     contract = valid_contract()
     observation = valid_observation(contract)
     observation[field] = value
@@ -254,13 +268,18 @@ def test_required_cpu_flag_missing_rejected_after_reseal() -> None:
     observation = valid_observation(contract)
     observation["cpu_flags"].remove("avx2")
     reseal_observation(observation)
-    assert_rejected(lambda: validate_observation_against_contract(contract, observation), "FIXED_TARGET_CPU_MISMATCH:required_cpu_flags")
+    assert_rejected(
+        lambda: validate_observation_against_contract(contract, observation),
+        "FIXED_TARGET_CPU_MISMATCH:required_cpu_flags",
+    )
 
 
 def test_mutated_observation_with_stale_hash_rejected() -> None:
     observation = valid_observation()
     observation["cpu_model"] = "106"
-    assert_rejected(lambda: validate_target_observation(observation), "FIXED_TARGET_OBSERVATION_HASH_MISMATCH")
+    assert_rejected(
+        lambda: validate_target_observation(observation), "FIXED_TARGET_OBSERVATION_HASH_MISMATCH"
+    )
 
 
 def test_fully_resealed_contradictory_observation_rejected() -> None:
@@ -268,40 +287,66 @@ def test_fully_resealed_contradictory_observation_rejected() -> None:
     observation = valid_observation(contract)
     observation["cpu_model"] = "106"
     reseal_observation(observation)
-    assert_rejected(lambda: validate_observation_against_contract(contract, observation), "FIXED_TARGET_CPU_MISMATCH:cpu_model")
+    assert_rejected(
+        lambda: validate_observation_against_contract(contract, observation),
+        "FIXED_TARGET_CPU_MISMATCH:cpu_model",
+    )
 
 
 def test_extra_contract_field_rejected() -> None:
-    contract = valid_contract(); contract["hostname"] = "must-not-be-semantic"
-    assert_rejected(lambda: validate_target_contract(contract), "FIXED_TARGET_CONTRACT_SCHEMA_INVALID")
+    contract = valid_contract()
+    contract["hostname"] = "must-not-be-semantic"
+    assert_rejected(
+        lambda: validate_target_contract(contract), "FIXED_TARGET_CONTRACT_SCHEMA_INVALID"
+    )
 
 
 def test_missing_contract_field_rejected() -> None:
-    contract = valid_contract(); contract.pop("cpu_model")
-    assert_rejected(lambda: validate_target_contract(contract), "FIXED_TARGET_CONTRACT_SCHEMA_INVALID")
+    contract = valid_contract()
+    contract.pop("cpu_model")
+    assert_rejected(
+        lambda: validate_target_contract(contract), "FIXED_TARGET_CONTRACT_SCHEMA_INVALID"
+    )
 
 
 def test_wrong_runtime_version_rejected() -> None:
-    runtime = build_runtime_contract(valid_contract()); runtime["runtime_version"] = "toy-quality-canonical-cpu-runtime/1.0"
-    assert_rejected(lambda: validate_runtime_contract(runtime), "FIXED_TARGET_RUNTIME_SCHEMA_INVALID")
+    runtime = build_runtime_contract(valid_contract())
+    runtime["runtime_version"] = "toy-quality-canonical-cpu-runtime/1.0"
+    assert_rejected(
+        lambda: validate_runtime_contract(runtime), "FIXED_TARGET_RUNTIME_SCHEMA_INVALID"
+    )
 
 
 def test_runtime_1_0_cannot_masquerade_as_runtime_1_1() -> None:
-    contract = valid_contract(); runtime = build_runtime_contract(contract); runtime["runtime_version"] = "toy-quality-canonical-cpu-runtime/1.0"
+    contract = valid_contract()
+    runtime = build_runtime_contract(contract)
+    runtime["runtime_version"] = "toy-quality-canonical-cpu-runtime/1.0"
     assert runtime["fixed_target_contract_sha256"] == target_contract_sha256(contract)
-    assert_rejected(lambda: validate_runtime_contract(runtime, contract), "FIXED_TARGET_RUNTIME_SCHEMA_INVALID")
+    assert_rejected(
+        lambda: validate_runtime_contract(runtime, contract), "FIXED_TARGET_RUNTIME_SCHEMA_INVALID"
+    )
 
 
 def test_runtime_binds_exact_target_hash() -> None:
-    contract = valid_contract(); runtime = build_runtime_contract(contract); runtime["fixed_target_contract_sha256"] = H3
-    assert_rejected(lambda: validate_runtime_contract(runtime, contract), "FIXED_TARGET_RUNTIME_MISMATCH")
+    contract = valid_contract()
+    runtime = build_runtime_contract(contract)
+    runtime["fixed_target_contract_sha256"] = H3
+    assert_rejected(
+        lambda: validate_runtime_contract(runtime, contract), "FIXED_TARGET_RUNTIME_MISMATCH"
+    )
 
 
 def test_contract_optimizer_path_is_explicit_false_false() -> None:
-    contract = valid_contract(); contract["optimizer_foreach"] = True
-    assert_rejected(lambda: validate_target_contract(contract), "FIXED_TARGET_CONTRACT_SCHEMA_INVALID")
-    contract = valid_contract(); contract["optimizer_fused"] = True
-    assert_rejected(lambda: validate_target_contract(contract), "FIXED_TARGET_CONTRACT_SCHEMA_INVALID")
+    contract = valid_contract()
+    contract["optimizer_foreach"] = True
+    assert_rejected(
+        lambda: validate_target_contract(contract), "FIXED_TARGET_CONTRACT_SCHEMA_INVALID"
+    )
+    contract = valid_contract()
+    contract["optimizer_fused"] = True
+    assert_rejected(
+        lambda: validate_target_contract(contract), "FIXED_TARGET_CONTRACT_SCHEMA_INVALID"
+    )
 
 
 def test_acceptance_with_only_two_attempts_cannot_be_accepted() -> None:
@@ -310,77 +355,124 @@ def test_acceptance_with_only_two_attempts_cannot_be_accepted() -> None:
 
 
 def test_three_attempts_different_implementation_sha_rejected_after_reseal() -> None:
-    value = valid_acceptance(); value["attempts"][1]["implementation_commit"] = "b" * 40; reseal_acceptance(value)
-    assert_rejected(lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_IMPLEMENTATION_MISMATCH")
+    value = valid_acceptance()
+    value["attempts"][1]["implementation_commit"] = "b" * 40
+    reseal_acceptance(value)
+    assert_rejected(
+        lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_IMPLEMENTATION_MISMATCH"
+    )
 
 
 def test_different_target_contract_rejected_after_reseal() -> None:
-    value = valid_acceptance(); value["attempts"][1]["target_contract_sha256"] = H3; reseal_acceptance(value)
+    value = valid_acceptance()
+    value["attempts"][1]["target_contract_sha256"] = H3
+    reseal_acceptance(value)
     assert_rejected(lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_TARGET_MISMATCH")
 
 
-@pytest.mark.parametrize("claim_field", ["checkpoint_identities_sha256", "optimizer_state_identities_sha256", "replay_hash", "canonical_semantic_payload_sha256"])
+@pytest.mark.parametrize(
+    "claim_field",
+    [
+        "checkpoint_identities_sha256",
+        "optimizer_state_identities_sha256",
+        "replay_hash",
+        "canonical_semantic_payload_sha256",
+    ],
+)
 def test_claim_bearing_difference_rejected_after_full_reseal(claim_field: str) -> None:
-    value = valid_acceptance(); value["attempts"][1]["claim_identities"][claim_field] = H3; reseal_attempt_result(value, 2)
-    assert_rejected(lambda: validate_acceptance(value), "FIXED_TARGET_CROSS_ATTEMPT_COMPARISON_MISMATCH")
+    value = valid_acceptance()
+    value["attempts"][1]["claim_identities"][claim_field] = H3
+    reseal_attempt_result(value, 2)
+    assert_rejected(
+        lambda: validate_acceptance(value), "FIXED_TARGET_CROSS_ATTEMPT_COMPARISON_MISMATCH"
+    )
 
 
 def test_accepted_true_on_failed_attempt_rejected() -> None:
-    value = valid_acceptance(); value["attempts"][1]["result"] = "FAIL"; value["attempts"][1]["successful_full_evaluation"] = False; reseal_acceptance(value)
+    value = valid_acceptance()
+    value["attempts"][1]["result"] = "FAIL"
+    value["attempts"][1]["successful_full_evaluation"] = False
+    reseal_acceptance(value)
     assert_rejected(lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_FAILED_ATTEMPT")
 
 
 def test_reordered_attempts_rejected() -> None:
-    value = valid_acceptance(); value["attempts"][0], value["attempts"][1] = value["attempts"][1], value["attempts"][0]; reseal_acceptance(value)
-    assert_rejected(lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_ATTEMPT_ORDER_MISMATCH")
+    value = valid_acceptance()
+    value["attempts"][0], value["attempts"][1] = value["attempts"][1], value["attempts"][0]
+    reseal_acceptance(value)
+    assert_rejected(
+        lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_ATTEMPT_ORDER_MISMATCH"
+    )
 
 
 def test_duplicate_workflow_run_id_rejected() -> None:
-    value = valid_acceptance(); value["attempts"][1]["workflow_run_id"] = value["attempts"][0]["workflow_run_id"]; reseal_acceptance(value)
-    assert_rejected(lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_DUPLICATE_WORKFLOW_RUN")
+    value = valid_acceptance()
+    value["attempts"][1]["workflow_run_id"] = value["attempts"][0]["workflow_run_id"]
+    reseal_acceptance(value)
+    assert_rejected(
+        lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_DUPLICATE_WORKFLOW_RUN"
+    )
 
 
 def test_duplicate_job_id_rejected() -> None:
-    value = valid_acceptance(); value["attempts"][1]["job_id"] = value["attempts"][0]["job_id"]; reseal_acceptance(value)
+    value = valid_acceptance()
+    value["attempts"][1]["job_id"] = value["attempts"][0]["job_id"]
+    reseal_acceptance(value)
     assert_rejected(lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_DUPLICATE_JOB")
 
 
 def test_reused_checkpoint_lineage_rejected_semantically() -> None:
-    value = valid_acceptance(); value["attempts"][1]["training_execution_mode"] = "REUSED"; value["attempts"][1]["checkpoint_origin_run_hash"] = H3; reseal_acceptance(value)
+    value = valid_acceptance()
+    value["attempts"][1]["training_execution_mode"] = "REUSED"
+    value["attempts"][1]["checkpoint_origin_run_hash"] = H3
+    reseal_acceptance(value)
     assert_rejected(lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_REUSED_LINEAGE")
 
 
 def test_probe_identity_difference_rejected() -> None:
-    value = valid_acceptance(); value["attempts"][1]["probe_identity"] = H3; reseal_acceptance(value)
-    assert_rejected(lambda: validate_acceptance(value), "FIXED_TARGET_CROSS_ATTEMPT_COMPARISON_MISMATCH")
+    value = valid_acceptance()
+    value["attempts"][1]["probe_identity"] = H3
+    reseal_acceptance(value)
+    assert_rejected(
+        lambda: validate_acceptance(value), "FIXED_TARGET_CROSS_ATTEMPT_COMPARISON_MISMATCH"
+    )
 
 
 def test_acceptance_outer_stale_hash_rejected() -> None:
-    value = valid_acceptance(); value["attempts"][1]["workflow_run_id"] = 9999
+    value = valid_acceptance()
+    value["attempts"][1]["workflow_run_id"] = 9999
     assert_rejected(lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_IDENTITY_MISMATCH")
 
 
 def test_blocked_state_cannot_contain_fake_attempts() -> None:
-    value = blocked_acceptance(); value["attempts"] = valid_acceptance()["attempts"][:1]; reseal_acceptance(value)
+    value = blocked_acceptance()
+    value["attempts"] = valid_acceptance()["attempts"][:1]
+    reseal_acceptance(value)
     assert_rejected(lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_SCHEMA_INVALID")
 
 
 def test_target_provisioned_cannot_claim_accepted() -> None:
-    value = valid_acceptance(accepted=False); value["accepted"] = True; reseal_acceptance(value)
+    value = valid_acceptance(accepted=False)
+    value["accepted"] = True
+    reseal_acceptance(value)
     assert_rejected(lambda: validate_acceptance(value), "FIXED_TARGET_ACCEPTANCE_SCHEMA_INVALID")
 
 
 def test_contract_disallows_ephemeral_identity_fields() -> None:
     for field in ("hostname", "pid", "job_id", "runner_ephemeral_id", "timestamp"):
-        contract = valid_contract(); contract[field] = "x"
-        assert_rejected(lambda contract=contract: validate_target_contract(contract), "FIXED_TARGET_CONTRACT_SCHEMA_INVALID")
+        contract = valid_contract()
+        contract[field] = "x"
+        assert_rejected(
+            lambda contract=contract: validate_target_contract(contract),
+            "FIXED_TARGET_CONTRACT_SCHEMA_INVALID",
+        )
 
 
 def test_frozen_v0_1_artifact_blob_guards_when_running_in_repo() -> None:
     root = Path(__file__).resolve().parents[2]
     guards = {
-        "docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md": "e2344c07a76fcf7de140f894317fb509f6bc04fb",
-        "docs/evaluations/data/a2_a3_a4_heldout_summary.json": "408742e15a3cddacdefcb0f0b814a6d68a5ca62d",
+        "docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md": "e2344c07a76fcf7de140f894317fb509f6bc04fb",  # noqa: E501
+        "docs/evaluations/data/a2_a3_a4_heldout_summary.json": "408742e15a3cddacdefcb0f0b814a6d68a5ca62d",  # noqa: E501
         "docs/evaluations/A2_A3_A4_V0_1_DECISION_RU.md": "909bf35b65b1e7b1e00f2366519b776333b473b2",
         ".github/workflows/ci.yml": "36463b4c005e9deb71adbd9ba9faea6603ebdaf2",
         "planner_toy/canonical_runtime.py": "057cfbf29ed486659a6ba7b036cdd740d1bb9b44",
@@ -389,6 +481,9 @@ def test_frozen_v0_1_artifact_blob_guards_when_running_in_repo() -> None:
     if not (root / ".git").exists():
         pytest.skip("full git checkout required for frozen blob guard")
     import subprocess
+
     for relative, expected in guards.items():
-        completed = subprocess.run(["git", "hash-object", relative], cwd=root, text=True, capture_output=True, check=True)
+        completed = subprocess.run(
+            ["git", "hash-object", relative], cwd=root, text=True, capture_output=True, check=True
+        )
         assert completed.stdout.strip() == expected

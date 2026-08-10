@@ -1,4 +1,5 @@
 """Versioned fixed CPU target, runtime/1.1, observation, and acceptance contracts."""
+
 from __future__ import annotations
 
 import copy
@@ -267,27 +268,47 @@ def validate_observation_against_contract(
     if forbidden & observed_flags:
         raise ValueError("FIXED_TARGET_CPU_MISMATCH:forbidden_cpu_flags")
     logical_policy = contract["logical_cpu_count_policy"]
-    if logical_policy["mode"] == "exact" and observation["logical_cpu_count"] != logical_policy["value"]:
+    if (
+        logical_policy["mode"] == "exact"
+        and observation["logical_cpu_count"] != logical_policy["value"]
+    ):
         raise ValueError("FIXED_TARGET_CPU_MISMATCH:logical_cpu_count")
 
     runtime_pairs = (
-        "os", "os_version", "architecture", "runner_type", "runner_image",
-        "torch_num_threads", "torch_num_interop_threads", "mkldnn_enabled",
-        "deterministic_algorithms", "deterministic_warn_only",
-        "optimizer_foreach", "optimizer_fused",
+        "os",
+        "os_version",
+        "architecture",
+        "runner_type",
+        "runner_image",
+        "torch_num_threads",
+        "torch_num_interop_threads",
+        "mkldnn_enabled",
+        "deterministic_algorithms",
+        "deterministic_warn_only",
+        "optimizer_foreach",
+        "optimizer_fused",
     )
     for field in runtime_pairs:
         if observation[field] != contract[field]:
             raise ValueError(f"FIXED_TARGET_RUNTIME_MISMATCH:{field}")
     if observation["runner_labels"] != contract["runner_labels"]:
         raise ValueError("FIXED_TARGET_RUNTIME_MISMATCH:runner_labels")
-    if contract["kernel_policy"]["mode"] == "exact" and observation["kernel_version"] != contract["kernel_policy"]["value"]:
+    if (
+        contract["kernel_policy"]["mode"] == "exact"
+        and observation["kernel_version"] != contract["kernel_policy"]["value"]
+    ):
         raise ValueError("FIXED_TARGET_RUNTIME_MISMATCH:kernel_version")
 
     for field in (
-        "python_implementation", "python_version", "python_build", "python_compiler",
-        "torch_version", "torch_build_configuration_sha256", "mkl_available",
-        "openmp_available", "mkldnn_available",
+        "python_implementation",
+        "python_version",
+        "python_build",
+        "python_compiler",
+        "torch_version",
+        "torch_build_configuration_sha256",
+        "mkl_available",
+        "openmp_available",
+        "mkldnn_available",
     ):
         if observation[field] != contract[field]:
             raise ValueError(f"FIXED_TARGET_SOFTWARE_MISMATCH:{field}")
@@ -295,8 +316,12 @@ def validate_observation_against_contract(
     if observation["actual_atten_cpu_capability"] != contract["actual_atten_cpu_capability"]:
         raise ValueError("FIXED_TARGET_DISPATCH_MISMATCH")
     for field in (
-        "ATEN_CPU_CAPABILITY", "MKL_CBWR", "OMP_NUM_THREADS", "MKL_NUM_THREADS",
-        "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS",
+        "ATEN_CPU_CAPABILITY",
+        "MKL_CBWR",
+        "OMP_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
     ):
         if observation[field] != contract[field]:
             raise ValueError(f"FIXED_TARGET_ENV_MISMATCH:{field}")
@@ -307,8 +332,12 @@ def prepare_process_environment(contract: dict[str, Any]) -> None:
     if "torch" in sys.modules:
         raise RuntimeError("FIXED_TARGET_TORCH_IMPORTED_BEFORE_PREFLIGHT")
     for name in (
-        "ATEN_CPU_CAPABILITY", "MKL_CBWR", "OMP_NUM_THREADS", "MKL_NUM_THREADS",
-        "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS",
+        "ATEN_CPU_CAPABILITY",
+        "MKL_CBWR",
+        "OMP_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
     ):
         expected = str(contract[name])
         current = os.environ.get(name)
@@ -367,18 +396,26 @@ def collect_target_observation(contract: dict[str, Any]) -> dict[str, Any]:
         "observation_version": TARGET_OBSERVATION_VERSION,
         "target_contract_version": contract["target_contract_version"],
         "target_contract_sha256": target_contract_sha256(contract),
-        "os": platform.system(), "os_version": _read_os_pretty_name(),
-        "kernel_version": platform.release(), "architecture": platform.machine(),
-        "cpu_vendor": cpu.get("vendor_id", ""), "cpu_family": cpu.get("cpu family", ""),
-        "cpu_model": cpu.get("model", ""), "cpu_stepping": cpu.get("stepping", ""),
-        "cpu_model_name": cpu.get("model name", ""), "microcode": cpu.get("microcode", ""),
+        "os": platform.system(),
+        "os_version": _read_os_pretty_name(),
+        "kernel_version": platform.release(),
+        "architecture": platform.machine(),
+        "cpu_vendor": cpu.get("vendor_id", ""),
+        "cpu_family": cpu.get("cpu family", ""),
+        "cpu_model": cpu.get("model", ""),
+        "cpu_stepping": cpu.get("stepping", ""),
+        "cpu_model_name": cpu.get("model name", ""),
+        "microcode": cpu.get("microcode", ""),
         "cpu_flags": sorted(set(cpu.get("flags", "").split())),
         "logical_cpu_count": os.cpu_count(),
-        "runner_type": "self-hosted-dedicated", "runner_labels": labels,
+        "runner_type": "self-hosted-dedicated",
+        "runner_labels": labels,
         "runner_image": os.environ.get("FIXED_TARGET_RUNNER_IMAGE", ""),
         "python_implementation": platform.python_implementation(),
-        "python_version": platform.python_version(), "python_build": [build_number, build_date],
-        "python_compiler": platform.python_compiler(), "torch_version": torch.__version__,
+        "python_version": platform.python_version(),
+        "python_build": [build_number, build_date],
+        "python_compiler": platform.python_compiler(),
+        "torch_version": torch.__version__,
         "torch_build_configuration_sha256": sha256_bytes(torch.__config__.show().encode("utf-8")),
         "mkl_available": torch.backends.mkl.is_available(),
         "openmp_available": torch.backends.openmp.is_available(),
@@ -395,7 +432,8 @@ def collect_target_observation(contract: dict[str, Any]) -> dict[str, Any]:
         "mkldnn_enabled": torch.backends.mkldnn.enabled,
         "deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
         "deterministic_warn_only": torch.is_deterministic_algorithms_warn_only_enabled(),
-        "optimizer_foreach": False, "optimizer_fused": False,
+        "optimizer_foreach": False,
+        "optimizer_fused": False,
         "observation_sha256": "",
     }
     observation["observation_sha256"] = observation_sha256(observation)
@@ -435,11 +473,20 @@ def validate_acceptance(acceptance: dict[str, Any]) -> None:
     if status == "BLOCKED_ON_FIXED_RUNNER_PROVISIONING":
         if accepted or attempts:
             raise ValueError("FIXED_TARGET_BLOCKED_STATE_INVALID")
-        if acceptance["target_contract"] is not None or acceptance["target_contract_sha256"] is not None:
+        if (
+            acceptance["target_contract"] is not None
+            or acceptance["target_contract_sha256"] is not None
+        ):
             raise ValueError("FIXED_TARGET_BLOCKED_STATE_INVALID")
-        if acceptance["runtime_contract"] is not None or acceptance["runtime_contract_sha256"] is not None:
+        if (
+            acceptance["runtime_contract"] is not None
+            or acceptance["runtime_contract_sha256"] is not None
+        ):
             raise ValueError("FIXED_TARGET_BLOCKED_STATE_INVALID")
-        if acceptance["blocker"] is None or acceptance["cross_attempt_comparison"]["status"] != "NOT_RUN":
+        if (
+            acceptance["blocker"] is None
+            or acceptance["cross_attempt_comparison"]["status"] != "NOT_RUN"
+        ):
             raise ValueError("FIXED_TARGET_BLOCKED_STATE_INVALID")
         return
 
@@ -485,7 +532,10 @@ def validate_acceptance(acceptance: dict[str, Any]) -> None:
             raise ValueError("FIXED_TARGET_OBSERVATION_HASH_MISMATCH")
         if attempt["training_execution_mode"] != "TRAINED_IN_RUN":
             raise ValueError("FIXED_TARGET_ACCEPTANCE_REUSED_LINEAGE")
-        if attempt["checkpoint_origin_run_hash"] is not None or attempt["reuse_source_manifest_hash"] is not None:
+        if (
+            attempt["checkpoint_origin_run_hash"] is not None
+            or attempt["reuse_source_manifest_hash"] is not None
+        ):
             raise ValueError("FIXED_TARGET_ACCEPTANCE_REUSED_LINEAGE")
         claims = attempt["claim_identities"]
         computed = canonical_result_identity(claims)
@@ -512,7 +562,10 @@ def validate_acceptance(acceptance: dict[str, Any]) -> None:
             raise ValueError("FIXED_TARGET_ACCEPTED_STATUS_MISMATCH")
         if len(attempts) != 3:
             raise ValueError("FIXED_TARGET_ACCEPTANCE_ATTEMPT_COUNT_MISMATCH")
-        if any(attempt["result"] != "PASS" or not attempt["successful_full_evaluation"] for attempt in attempts):
+        if any(
+            attempt["result"] != "PASS" or not attempt["successful_full_evaluation"]
+            for attempt in attempts
+        ):
             raise ValueError("FIXED_TARGET_ACCEPTANCE_FAILED_ATTEMPT")
         if comparison["status"] != "PASS" or not exact_equal:
             raise ValueError("FIXED_TARGET_CROSS_ATTEMPT_COMPARISON_MISMATCH")
