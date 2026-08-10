@@ -289,7 +289,7 @@ def test_consistent_fake_claim_hashes_rejected_by_bundle_validator(
 ) -> None:
     acceptance = valid_acceptance()
     _write_bundle_shell(tmp_path, acceptance)
-    monkeypatch.setattr(ft, "require_existing_commit", lambda commit: commit)
+    monkeypatch.setattr(ft, "require_trusted_implementation_commit", lambda commit: commit)
     monkeypatch.setattr(ft, "_validate_attempt_shape", lambda path: None)
     monkeypatch.setattr(ft, "validate_attempt_manifest", lambda root, manifest, index: None)
     monkeypatch.setattr(ft, "_validate_preflight", lambda *args, **kwargs: None)
