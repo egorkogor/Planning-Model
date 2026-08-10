@@ -10,6 +10,9 @@
     "historical_evaluator_source_sha256",
     "dataset_seed",
     "dataset_hash",
+    "ordered_train_task_ids",
+    "ordered_eval_task_ids",
+    "frozen_scientific_parent",
     "variants",
     "seeds",
     "epochs",
@@ -27,8 +30,7 @@
       "const": "toy-quality-fixed-target-scientific-policy/1.0"
     },
     "historical_quality_implementation_commit": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{40}$"
+      "const": "779172c3bbca3d03552deaed6421e82fcf19a932"
     },
     "historical_evaluator_version": {
       "const": "development-quality-evaluation/0.1"
@@ -40,8 +42,59 @@
       "const": 17
     },
     "dataset_hash": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
+      "const": "sha256:60e4ce06d6cfc90dc467fb4e82b2eb71cf2d92d37471eee3aeda64f864c541df"
+    },
+    "ordered_train_task_ids": {
+      "const": [
+        "bw-00000001",
+        "bw-00000002",
+        "bw-00000003"
+      ]
+    },
+    "ordered_eval_task_ids": {
+      "const": [
+        "bw-00000004",
+        "bw-00000005"
+      ]
+    },
+    "frozen_scientific_parent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementation_commit",
+        "evaluator_version",
+        "evaluator_source_sha256",
+        "dataset_hash",
+        "ordered_train_task_ids",
+        "ordered_eval_task_ids"
+      ],
+      "properties": {
+        "implementation_commit": {
+          "const": "779172c3bbca3d03552deaed6421e82fcf19a932"
+        },
+        "evaluator_version": {
+          "const": "development-quality-evaluation/0.1"
+        },
+        "evaluator_source_sha256": {
+          "const": "sha256:9205ad312fc37fa9927505e9c44a599e29fc5e31180db9d2e49ebfcc247b4570"
+        },
+        "dataset_hash": {
+          "const": "sha256:60e4ce06d6cfc90dc467fb4e82b2eb71cf2d92d37471eee3aeda64f864c541df"
+        },
+        "ordered_train_task_ids": {
+          "const": [
+            "bw-00000001",
+            "bw-00000002",
+            "bw-00000003"
+          ]
+        },
+        "ordered_eval_task_ids": {
+          "const": [
+            "bw-00000004",
+            "bw-00000005"
+          ]
+        }
+      }
     },
     "variants": {
       "const": [
