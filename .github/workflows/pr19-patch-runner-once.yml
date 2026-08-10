@@ -1,0 +1,49 @@
+name: Run PR19 foundation patch once
+
+on:
+  push:
+    branches:
+      - agent/fixed-canonical-cpu-target
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fixed-canonical-cpu-target
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Extract and apply source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('.github/workflows/pr19-foundation-hardening-once.yml').read_text(encoding='utf-8').splitlines()
+          start = next(i for i, line in enumerate(source) if line.strip() == "python - <<'PY'") + 1
+          end = next(i for i in range(start, len(source)) if source[i].strip() == 'PY')
+          payload = []
+          for line in source[start:end]:
+              if line.startswith('          '):
+                  line = line[10:]
+              payload.append(line)
+          Path('/tmp/pr19_patch.py').write_text('\n'.join(payload) + '\n', encoding='utf-8')
+          PY
+          python /tmp/pr19_patch.py
+          python -m py_compile scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
+          python -m pip install ruff==0.9.10
+          ruff format scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
+          ruff check scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/evaluations/FIXED_CANONICAL_CPU_TARGET_RU.md planner_toy/schemas scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
+          git commit -m "Harden PR19 runtime 1.1 foundation boundary"
+          git push origin HEAD:agent/fixed-canonical-cpu-target
