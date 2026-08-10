@@ -377,6 +377,8 @@ def validate_execution_binding_contract(
         raise ValueError("FIXED_TARGET_EXECUTION_IMPLEMENTATION_MISMATCH")
     if preflight.get("implementation_commit") != implementation:
         raise ValueError("FIXED_TARGET_EXECUTION_IMPLEMENTATION_MISMATCH")
+    if evaluation_config.get("implementation_commit") != implementation:
+        raise ValueError("FIXED_TARGET_EXECUTION_IMPLEMENTATION_MISMATCH")
     if evidence["target_contract_sha256"] != acceptance["target_contract_sha256"]:
         raise ValueError("FIXED_TARGET_EXECUTION_TARGET_MISMATCH")
     if evidence["target_contract_sha256"] != attempt["target_contract_sha256"]:

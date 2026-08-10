@@ -694,6 +694,23 @@ def test_execution_implementation_mismatch_rejected(monkeypatch: pytest.MonkeyPa
         )
 
 
+def test_evaluation_execution_implementation_mismatch_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    acceptance, evidence, preflight, config, training = _binding_inputs(monkeypatch)
+    config["implementation_commit"] = "b" * 40
+    with pytest.raises(ValueError, match="FIXED_TARGET_EXECUTION_IMPLEMENTATION_MISMATCH"):
+        validate_execution_binding_contract(
+            evidence,
+            acceptance=acceptance,
+            attempt=acceptance["attempts"][0],
+            preflight=preflight,
+            evaluation_config=config,
+            target_observation=acceptance["attempts"][0]["target_observation"],
+            training_configs=training,
+        )
+
+
 def test_execution_runtime_contract_mismatch_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     acceptance, evidence, preflight, config, training = _binding_inputs(monkeypatch)
     evidence["runtime_contract_sha256"] = H3
