@@ -855,7 +855,10 @@ def test_real_frozen_ordered_split_accepted(monkeypatch: pytest.MonkeyPatch) -> 
 @pytest.mark.parametrize(
     ("train_ids", "code"),
     [
-        (["bw-00000002", "bw-00000001", "bw-00000003"], "FIXED_TARGET_EXECUTION_TRAIN_SPLIT_MISMATCH"),
+        (
+            ["bw-00000002", "bw-00000001", "bw-00000003"],
+            "FIXED_TARGET_EXECUTION_TRAIN_SPLIT_MISMATCH",
+        ),
         (["bw-00000001", "bw-00000002"], "FIXED_TARGET_EXECUTION_TRAIN_SPLIT_MISMATCH"),
     ],
 )
@@ -930,7 +933,9 @@ def test_historical_quality_lock_evaluator_version_mutation_rejected(
     _mutated_quality_lock(
         tmp_path,
         monkeypatch,
-        lambda locked: locked.__setitem__("evaluator_version", "development-quality-evaluation/0.2"),
+        lambda locked: locked.__setitem__(
+            "evaluator_version", "development-quality-evaluation/0.2"
+        ),
     )
     with pytest.raises(ValueError, match="QUALITY_SOURCE_LOCK_EVALUATOR_VERSION_MISMATCH"):
         build_scientific_policy()
