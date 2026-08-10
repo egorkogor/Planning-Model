@@ -19,7 +19,8 @@ from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = ROOT / "planner_toy" / "schemas"
-QUALITY_LOCK_PATH = ROOT / "docs/evaluations/data/a2_a3_a4_heldout_summary.json"
+QUALITY_LOCK_RELATIVE_PATH = "docs/evaluations/data/a2_a3_a4_heldout_summary.json"
+QUALITY_LOCK_PATH = ROOT / QUALITY_LOCK_RELATIVE_PATH
 
 TARGET_CONTRACT_VERSION = "toy-quality-fixed-cpu-target/1.0"
 TARGET_OBSERVATION_VERSION = "toy-quality-fixed-cpu-target-observation/1.0"
@@ -30,6 +31,19 @@ ATTEMPT_MANIFEST_VERSION = "toy-quality-fixed-target-attempt-manifest/1.0"
 EXECUTION_EVIDENCE_VERSION = "toy-quality-fixed-target-execution-evidence/1.0"
 SCIENTIFIC_POLICY_VERSION = "toy-quality-fixed-target-scientific-policy/1.0"
 HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT = "779172c3bbca3d03552deaed6421e82fcf19a932"
+HISTORICAL_QUALITY_EVALUATOR_VERSION = "development-quality-evaluation/0.1"
+HISTORICAL_QUALITY_DATASET_HASH = (
+    "sha256:60e4ce06d6cfc90dc467fb4e82b2eb71cf2d92d37471eee3aeda64f864c541df"
+)
+HISTORICAL_ORDERED_TRAIN_TASK_IDS = (
+    "bw-00000001",
+    "bw-00000002",
+    "bw-00000003",
+)
+HISTORICAL_ORDERED_EVAL_TASK_IDS = (
+    "bw-00000004",
+    "bw-00000005",
+)
 RUNTIME_1_1_EXECUTION_GATE = "FIXED_TARGET_RUNTIME_1_1_EXECUTION_NOT_ENABLED"
 
 _HASH_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -57,6 +71,7 @@ CLAIM_IDENTITY_FIELDS = (
 
 _FIXED_TARGET_SOURCE_ADDITIONS = {
     ".github/workflows/fixed-target-acceptance.yml",
+    QUALITY_LOCK_RELATIVE_PATH,
     "planner_toy/__init__.py",
     "scripts/__init__.py",
     "planner_toy/schemas/fixed_target_cpu_target.schema.json",
@@ -194,21 +209,43 @@ def require_trusted_implementation_commit(
     return commit
 
 
-def _quality_source_paths() -> tuple[str, ...]:
-    locked = json.loads(QUALITY_LOCK_PATH.read_text(encoding="utf-8"))
+def validate_historical_quality_lock(
+    locked: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if locked is None:
+        try:
+            loaded = json.loads(QUALITY_LOCK_PATH.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError("FIXED_TARGET_QUALITY_SOURCE_LOCK_INVALID") from error
+        if not isinstance(loaded, dict):
+            raise ValueError("FIXED_TARGET_QUALITY_SOURCE_LOCK_INVALID")
+        locked = loaded
+    if not isinstance(locked, dict):
+        raise ValueError("FIXED_TARGET_QUALITY_SOURCE_LOCK_INVALID")
+    if locked.get("implementation_commit") != HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT:
+        raise ValueError("FIXED_TARGET_QUALITY_SOURCE_LOCK_IMPLEMENTATION_MISMATCH")
+    if locked.get("evaluator_version") != HISTORICAL_QUALITY_EVALUATOR_VERSION:
+        raise ValueError("FIXED_TARGET_QUALITY_SOURCE_LOCK_EVALUATOR_VERSION_MISMATCH")
+    if locked.get("evaluator_source_sha256") != _QUALITY_SOURCE_LOCK_SHA256:
+        raise ValueError("FIXED_TARGET_QUALITY_SOURCE_LOCK_VERSION_MISMATCH")
+    if locked.get("dataset_hash") != HISTORICAL_QUALITY_DATASET_HASH:
+        raise ValueError("FIXED_TARGET_QUALITY_SOURCE_LOCK_DATASET_MISMATCH")
     entries = locked.get("evaluator_source_files")
     if not isinstance(entries, list) or not entries:
         raise ValueError("FIXED_TARGET_QUALITY_SOURCE_LOCK_INVALID")
-    if locked.get("evaluator_source_sha256") != _QUALITY_SOURCE_LOCK_SHA256:
-        raise ValueError("FIXED_TARGET_QUALITY_SOURCE_LOCK_VERSION_MISMATCH")
     if sha256_value(entries) != _QUALITY_SOURCE_LOCK_SHA256:
         raise ValueError("FIXED_TARGET_QUALITY_SOURCE_LOCK_HASH_MISMATCH")
-    paths = tuple(entry.get("path") for entry in entries)
-    if any(not isinstance(path, str) or not path for path in paths):
+    paths = tuple(entry.get("path") for entry in entries if isinstance(entry, dict))
+    if len(paths) != len(entries) or any(not isinstance(path, str) or not path for path in paths):
         raise ValueError("FIXED_TARGET_QUALITY_SOURCE_LOCK_INVALID")
     if len(paths) != len(set(paths)):
         raise ValueError("FIXED_TARGET_QUALITY_SOURCE_LOCK_DUPLICATE")
-    return paths
+    return locked
+
+
+def _quality_source_paths() -> tuple[str, ...]:
+    locked = validate_historical_quality_lock()
+    return tuple(entry["path"] for entry in locked["evaluator_source_files"])
 
 
 def fixed_target_source_paths() -> tuple[str, ...]:
@@ -264,7 +301,17 @@ def scientific_policy_sha256(policy: dict[str, Any]) -> str:
 
 
 def build_scientific_policy() -> dict[str, Any]:
-    locked = json.loads(QUALITY_LOCK_PATH.read_text(encoding="utf-8"))
+    locked = validate_historical_quality_lock()
+    ordered_train_task_ids = list(HISTORICAL_ORDERED_TRAIN_TASK_IDS)
+    ordered_eval_task_ids = list(HISTORICAL_ORDERED_EVAL_TASK_IDS)
+    frozen_parent = {
+        "implementation_commit": locked["implementation_commit"],
+        "evaluator_version": locked["evaluator_version"],
+        "evaluator_source_sha256": locked["evaluator_source_sha256"],
+        "dataset_hash": locked["dataset_hash"],
+        "ordered_train_task_ids": ordered_train_task_ids,
+        "ordered_eval_task_ids": ordered_eval_task_ids,
+    }
     value: dict[str, Any] = {
         "scientific_policy_version": SCIENTIFIC_POLICY_VERSION,
         "historical_quality_implementation_commit": locked["implementation_commit"],
@@ -272,6 +319,9 @@ def build_scientific_policy() -> dict[str, Any]:
         "historical_evaluator_source_sha256": locked["evaluator_source_sha256"],
         "dataset_seed": 17,
         "dataset_hash": locked["dataset_hash"],
+        "ordered_train_task_ids": ordered_train_task_ids,
+        "ordered_eval_task_ids": ordered_eval_task_ids,
+        "frozen_scientific_parent": frozen_parent,
         "variants": ["A2", "A3", "A4"],
         "seeds": [17, 29, 43],
         "epochs": 3,
@@ -418,6 +468,10 @@ def validate_execution_binding_contract(
     dataset = evidence["dataset_identity"]
     if dataset["dataset_hash"] != policy["dataset_hash"]:
         raise ValueError("FIXED_TARGET_EXECUTION_DATASET_MISMATCH")
+    if dataset["ordered_train_task_ids"] != policy["ordered_train_task_ids"]:
+        raise ValueError("FIXED_TARGET_EXECUTION_TRAIN_SPLIT_MISMATCH")
+    if dataset["ordered_eval_task_ids"] != policy["ordered_eval_task_ids"]:
+        raise ValueError("FIXED_TARGET_EXECUTION_EVAL_SPLIT_MISMATCH")
     if dataset["dataset_hash"] != evaluation_config.get("dataset_manifest_hash"):
         raise ValueError("FIXED_TARGET_EXECUTION_DATASET_MISMATCH")
     if dataset["ordered_train_task_ids"] != evaluation_config.get("train_task_ids"):
