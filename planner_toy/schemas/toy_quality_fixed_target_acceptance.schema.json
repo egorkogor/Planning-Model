@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://planning-model.local/schemas/toy_quality_fixed_target_acceptance.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -95,6 +96,9 @@
           "runtime_contract_sha256",
           "target_observation",
           "target_observation_sha256",
+          "source_inventory_sha256",
+          "observed_optimizer_foreach",
+          "observed_optimizer_fused",
           "probe_identity",
           "canonical_result_identity",
           "claim_identities",
@@ -136,6 +140,16 @@
           "target_observation_sha256": {
             "type": "string",
             "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "source_inventory_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "observed_optimizer_foreach": {
+            "type": "boolean"
+          },
+          "observed_optimizer_fused": {
+            "type": "boolean"
           },
           "probe_identity": {
             "type": "string",
@@ -299,8 +313,6 @@
       "pattern": "^sha256:[0-9a-f]{64}$"
     }
   },
-  "$defs": {},
-  "$id": "https://planning-model.local/schemas/toy_quality_fixed_target_acceptance.schema.json",
   "allOf": [
     {
       "if": {

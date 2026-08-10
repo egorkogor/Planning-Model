@@ -1,78 +1,85 @@
-# Fixed canonical CPU target — provisioning и acceptance contract
+# Fixed canonical CPU target — acceptance foundation
 
 ## Статус
 
 ```text
-TARGET CONTRACT DEFINED
+TARGET CONTRACT FRAMEWORK DEFINED
 TARGET NOT PROVISIONED
 ACCEPTANCE 0/3
 RUNTIME/1.1 NOT ACCEPTED
 
 BLOCKED ON FIXED RUNNER PROVISIONING
-ACCEPTED RUNS: 0/3
 ```
 
-Terminal state этого раунда: `FIXED TARGET NOT PROVISIONED / NOT ACCEPTED`.
+```text
+PR19 = acceptance foundation
+future phase = concrete target + 3/3 acceptance
+```
 
-PR не утверждает, что GitHub-hosted `ubuntu-24.04` является fixed target. Обычные hosted runners остаются только regression/observation environment.
+This PR does not perform fixed-target acceptance.
+It installs the trusted acceptance foundation on the default branch.
 
-## Почему provisioning заблокирован
+PR №19 не provision runner, не создаёт concrete hardware identity и не принимает
+`toy-quality-canonical-cpu-runtime/1.1`. GitHub-hosted runners остаются только
+regression/observation environment и не являются fixed-target evidence.
 
-Доступный GitHub integration получает `403 Resource not accessible by integration` при чтении repository self-hosted runner inventory. В доступной среде нет отдельного AWS/Azure/GCP/VM provisioner или credentials, которыми можно создать и зарегистрировать dedicated runner. Поэтому hardware identity не наблюдалась и не подменяется фиктивными значениями.
+## Lifecycle
 
-## Что определено
+`workflow_dispatch` исполняет workflow с default branch, поэтому acceptance не
+является pre-merge gate этого PR. Нормативный lifecycle:
 
-Versioned semantic contract:
+```text
+PR19
+  define contracts
+  define schemas
+  define fail-closed preflight
+  define acceptance evidence format
+  define trusted dispatcher
+  status BLOCKED / 0/3
+→ external review
+→ merge to main
+
+THEN
+
+runner provisioning
+
+THEN separate acceptance phase:
+  concrete target contract
+  runtime/1.1 full execution
+  three attempts
+  final acceptance artifact
+```
+
+Следующий PR или acceptance phase в этом раунде не создаются.
+
+## Contracts
+
+Foundation определяет:
 
 ```text
 toy-quality-fixed-cpu-target/1.0
-```
-
-Отдельная observation:
-
-```text
 toy-quality-fixed-cpu-target-observation/1.0
-```
-
-Candidate runtime:
-
-```text
 toy-quality-canonical-cpu-runtime/1.1
-```
-
-Acceptance artifact:
-
-```text
 toy-quality-fixed-target-acceptance/1.0
+toy-quality-fixed-target-source-inventory/1.0
+toy-quality-fixed-target-attempt-manifest/1.0
 ```
 
-Runtime/1.1 не имеет самостоятельного accepted status: его acceptance устанавливается только итоговым acceptance artifact после 3/3 exact independent runs. Пока concrete target отсутствует, target/runtime contract hashes намеренно отсутствуют.
+Target contract фиксирует CPU/software/runtime policy и
+`required_runner_labels`. Scheduler labels являются scheduling requirement, а
+не самостоятельно измеренной hardware observation.
 
-## FixedTargetContract и FixedTargetObservation
+Preflight observation измеряет CPU, kernel, immutable runner image identity,
+CPython build/compiler, exact `pip` version, PyTorch version/build,
+ATen dispatch, MKL/OpenMP/MKLDNN и thread/deterministic controls. Она не
+утверждает фактический optimizer path: AdamW на preflight не создаётся.
 
-Contract фиксирует обязательные OS/kernel, architecture, CPU vendor/family/model/stepping/model name, microcode policy, required/forbidden flags policy, logical CPU policy, dedicated self-hosted runner labels/image, CPython build/compiler, PyTorch version/build hash, MKL/OpenMP/MKLDNN availability, ATen dispatch, MKL_CBWR, thread controls, deterministic controls и explicit AdamW execution path `foreach=false`, `fused=false`.
-
-Observation собирается заново перед конкретным run, имеет собственный `observation_sha256` и не содержит hostname, PID, timestamps, workflow/job ID или temp paths. Operational provenance хранится отдельно в acceptance attempt.
-
-Semantic validator сначала проверяет schemas/hashes, затем exact contract↔observation binding. CPU model/stepping, required flags, dispatch, Python/PyTorch build, MKL_CBWR, thread counts, MKLDNN и optimizer execution mode fail-closed. Fully resealed contradictory observation всё равно отклоняется.
-
-## Runtime/1.1
-
-`toy-quality-canonical-cpu-runtime/1.0` остаётся историческим frozen runtime contract и не переопределяется.
-
-Runtime/1.1 candidate содержит обязательную dependency на exact:
+Runtime/1.1 требует:
 
 ```text
-fixed_target_contract_version
-fixed_target_contract_sha256
-```
-
-и закрепляет execution controls, включая:
-
-```text
-AdamW
-foreach = false
-fused = false
+optimizer_class = AdamW
+optimizer_foreach = false
+optimizer_fused = false
 MKL_CBWR = COMPATIBLE
 threads = 1
 mkldnn_enabled = false
@@ -80,83 +87,166 @@ deterministic_algorithms = true
 deterministic_warn_only = false
 ```
 
-Это execution migration, а не изменение model/training policy: optimizer class, lr, betas, eps, weight decay, parameter groups, gradient clipping, epochs, updates, dataset/splits/seeds и A2/A3/A4 semantics не должны меняться.
+Фактические `observed_optimizer_foreach` и `observed_optimizer_fused`
+появляются только в full attempt evidence и извлекаются из persisted real
+optimizer state. `None/None` не эквивалентно `false/false`.
 
-Historical quality-v0.1 evaluator schema жёстко маркирует свой output как runtime/1.0. Поэтому этот PR не запускает historical evaluator и не переименовывает его output в runtime/1.1. Полная runtime/1.1 evaluation будет включена только после provisioning concrete target и должна иметь отдельный versioned lineage/migration record.
+## Record vs bundle validation
 
-## Acceptance semantics
+`validate_acceptance_record(...)` проверяет schema, exact fields, hashes,
+attempt order, duplicate run/job IDs, status transitions и internal binding.
+Он намеренно отклоняет `accepted=true` с
+`FIXED_TARGET_ACCEPTED_REQUIRES_BUNDLE`.
 
-`accepted=true` возможно только при ровно трёх attempts. Все три обязаны иметь один implementation SHA, один target contract/hash, один runtime contract/hash, valid fresh target observation, `TRAINED_IN_RUN`, отсутствие reuse lineage и успешную full evaluation.
-
-Между attempts exact equality требуется минимум для:
-
-- initialization identities;
-- training config;
-- ordered tasks;
-- checkpoint identities;
-- optimizer-state identities;
-- canonical state-dict identities;
-- evaluation task results;
-- replay hash;
-- probe identity;
-- canonical semantic payload;
-- derived summaries.
-
-Tolerance не используется. Duplicate workflow/job IDs, reordered attempts и reused checkpoint lineage отклоняются.
-
-## Workflow trust boundary
-
-`.github/workflows/fixed-target-acceptance.yml` имеет только controlled `workflow_dispatch` и labels:
+Final acceptance может подтвердить только:
 
 ```text
-self-hosted
-linux
-x64
-planning-model-canonical-cpu-v1
+validate_acceptance_bundle(root)
 ```
 
-Он принимает exact 40-char implementation SHA, делает clean checkout, не сохраняет checkout credentials, требует committed concrete contract и pinned runner image identity `/etc/planning-model-runner-image-id`, создаёт clean venv и выполняет pre-training target validation.
+Bundle должен содержать:
 
-В blocked state workflow намеренно останавливается после preflight с `FIXED_TARGET_ACCEPTANCE_EXECUTION_NOT_ENABLED`; preflight нельзя засчитать как attempt. Это исключает случайное выполнение historical runtime/1.0 как runtime/1.1 и исключает фиктивное acceptance до provisioning.
+```text
+acceptance.json
+attempt-1/
+attempt-2/
+attempt-3/
+```
 
-Permanent canonical runner не должен выполнять fork PR code. Workflow не использует `pull_request`/`pull_request_target`, secrets ему не требуются. После каждого invocation workspace очищается.
+Каждый attempt содержит versioned `attempt_manifest.json`, `preflight.json`,
+полный `evaluation/` bundle и `probe.json`. Attempt manifest рекурсивно
+покрывает фактические файлы и их hashes; symlinks запрещены.
 
-## Точная внешняя provisioning спецификация
+Bundle validator читает реальные artifacts и independently derives:
 
-Нужно provision одно dedicated execution target:
+- initialization identities;
+- training config identity;
+- ordered task identity;
+- trained checkpoint identities;
+- optimizer-state identities;
+- canonical state-dict identities;
+- evaluation task-result identity;
+- replay hash;
+- probe identity;
+- canonical semantic payload identity;
+- derived summaries identity.
 
-1. Linux x86_64 bare-metal либо VM, закреплённая за конкретным host/CPU identity без плавающего hosted hardware; live migration на другой CPU identity запрещена.
-2. Зарегистрировать GitHub Actions self-hosted runner в `egorkogor/Planning-Model` с labels `self-hosted`, `linux`, `x64`, `planning-model-canonical-cpu-v1`.
-3. Создать immutable/versioned VM image identity и записать её в `/etc/planning-model-runner-image-id`.
-4. После provisioning снять exact CPU vendor/family/model/stepping/model name; выбрать и зафиксировать microcode policy (`exact` предпочтительно; иной mode требует отдельного обоснования).
-5. Зафиксировать exact kernel, logical CPU count policy и required CPU flags; unexpected forbidden flags должны fail-closed.
-6. Зафиксировать CPython 3.11 build/compiler и pinned `torch==2.12.0+cpu` build configuration SHA-256.
-7. Разрешить repository Actions читать/dispatch этот runner; текущему integration сейчас этого права не хватает.
-8. На самом target создать и commit `configs/fixed-cpu-target-1.0.json`, полученный из реальной observation, а не из предполагаемых значений.
-9. После external review concrete contract заморозить один final implementation SHA и только затем включить full runtime/1.1 acceptance execution.
-10. Выполнить три независимых `workflow_dispatch` full runs, без rerun-as-new-attempt и без reuse checkpoints; собрать 3/3 machine-readable evidence и exact cross-attempt comparison.
+Значения из `acceptance.json` не являются authority: они сравниваются с
+derived values. Checkpoint/optimizer files дополнительно cross-bind к
+checkpoint manifests. Missing/extra training-run claim files, stale attempt
+manifest, reused lineage и altered evidence fail closed.
 
-До выполнения этих действий concrete target contract/hash, hardware/software identity и runtime/1.1 hash считаются `unavailable`, а не неизвестными значениями, которые можно заполнить предположениями.
+## Source closure
 
-## Historical runtime/1.0 и migration
+Fixed-target source inventory строится не из нового вручную урезанного списка.
+База — version-locked `evaluator_source_files` frozen quality-v0.1 artifact с
+проверкой его `evaluator_source_sha256`. К ней добавляются fixed-target
+workflow/scripts/schemas, `requirements.lock`, `pyproject.toml`, package
+initializers и transitive probe validators.
 
-Поддерживаемый вывод PR №18 не меняется:
+Для каждого final attempt:
+
+1. implementation SHA должен существовать как Git commit;
+2. `source_inventory_at_commit(implementation_commit)` регенерируется через
+   `git show <commit>:<path>`;
+3. inventory и `source_inventory_sha256` должны совпасть exactly с preflight
+   evidence;
+4. missing source или nonexistent 40-hex SHA отклоняется.
+
+## Trusted dispatcher
+
+Acceptance workflow предназначен для работы после merge foundation в default
+branch. Он не исполняет arbitrary same-repository SHA.
+
+Policy:
+
+```text
+implementation SHA must be reachable from protected main
+```
+
+До checkout requested implementation workflow делает:
+
+```text
+git fetch --no-tags origin main
+git cat-file -e "${IMPLEMENTATION_SHA}^{commit}"
+git merge-base --is-ancestor "$IMPLEMENTATION_SHA" origin/main
+```
+
+Только после этого выполняется detached checkout exact SHA.
+
+Dispatch доступен через repository `workflow_dispatch`; выполняться может
+только commit из protected-main history. Fork PR code и unmerged branch code
+на permanent canonical runner не исполняются. Workflow не использует
+`pull_request`/`pull_request_target`, не требует secrets, checkout credentials
+не сохраняются, workspace очищается после invocation.
+
+## Reproducible runner image
+
+Canonical acceptance не выполняет mutable package installation. Workflow не
+делает `pip install`, не обновляет pip и не запускает dependency resolver.
+
+Будущий immutable/versioned runner image должен уже содержать exact CPython,
+pip, PyTorch wheel и native runtime libraries. Workflow только наблюдает и
+проверяет их identities против concrete target contract. Image identity
+читается из:
+
+```text
+/etc/planning-model-runner-image-id
+```
+
+## Blocked artifact
+
+`docs/evaluations/data/fixed-target-acceptance.json` остаётся честным blocked
+record:
+
+```text
+status = BLOCKED_ON_FIXED_RUNNER_PROVISIONING
+accepted = false
+attempts = []
+target_contract = null
+runtime_contract = null
+cross_attempt_comparison = NOT_RUN
+```
+
+Fictitious hardware values не добавляются.
+
+## Full execution disabled
+
+До отдельной post-merge acceptance phase workflow заканчивается fail-closed:
+
+```text
+FIXED_TARGET_ACCEPTANCE_EXECUTION_NOT_ENABLED
+```
+
+Успешный preflight не является acceptance attempt.
+
+## Historical lineage
+
+Historical runtime остаётся:
+
+```text
+runtime/1.0 = historical lineage
+runtime/1.1 = future fixed-target execution lineage
+```
+
+Поддерживаемый вывод investigation PR №18 не меняется:
 
 ```text
 First observed cross-host divergence occurs during AdamW parameter update.
 The underlying instruction-level cause remains unidentified.
 ```
 
-Будущий runtime/1.1 может дать numerically другой lineage относительно frozen v0.1. Это допустимый migration outcome. В таком случае сохраняется разделение:
+Frozen v0.1 artifacts не переписываются.
 
-```text
-runtime/1.0 = historical lineage
-runtime/1.1 = new fixed-target execution lineage
-migration required
-```
+## Provisioning handoff
 
-Frozen v0.1 файлы не переписываются и их hashes не заменяются.
+После merge PR №19 отдельная фаза должна provision dedicated Linux x86_64
+target без плавающей CPU identity/live migration, назначить scheduler labels,
+зафиксировать immutable image identity, CPU vendor/family/model/stepping,
+microcode policy, kernel, flags, logical CPU policy, CPython/pip/PyTorch/native
+runtime identities и создать concrete `configs/fixed-cpu-target-1.0.json` из
+реальной observation.
 
-## Ограничения
-
-Fixed runner не provisioned; accepted attempts `0/3`; cross-attempt comparison `NOT_RUN`; runtime/1.1 candidate не принят. Следующая стадия начинается только после реального provisioning и наблюдения hardware/software target identity.
+Только затем отдельная acceptance phase включает full runtime/1.1 execution и
+создаёт три independent attempts с `TRAINED_IN_RUN`, без checkpoint reuse и
+без rerun-as-new-attempt. До этого accepted attempts остаются `0/3`.

@@ -1,4 +1,5 @@
-"""CLI for fixed-target preflight, blocked evidence, and acceptance validation."""
+"""CLI for fixed-target foundation preflight and evidence validation."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,10 +10,12 @@ from scripts.fixed_target_contract import (
     blocked_acceptance_record,
     build_runtime_contract,
     collect_target_observation,
+    require_trusted_implementation_commit,
     runtime_contract_sha256,
     source_inventory_at_commit,
     target_contract_sha256,
-    validate_acceptance,
+    validate_acceptance_bundle,
+    validate_acceptance_record,
     validate_runtime_contract,
     validate_target_contract,
 )
@@ -38,7 +41,20 @@ def command_blocked(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_trusted_commit(args: argparse.Namespace) -> int:
+    commit = require_trusted_implementation_commit(
+        args.implementation_commit,
+        protected_ref=args.protected_ref,
+    )
+    print(json.dumps({"trusted": True, "implementation_commit": commit}, sort_keys=True))
+    return 0
+
+
 def command_preflight(args: argparse.Namespace) -> int:
+    require_trusted_implementation_commit(
+        args.implementation_commit,
+        protected_ref=args.protected_ref,
+    )
     contract = _read(args.target_contract)
     validate_target_contract(contract)
     runtime = build_runtime_contract(contract)
@@ -57,15 +73,21 @@ def command_preflight(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_validate(args: argparse.Namespace) -> int:
+def command_validate_record(args: argparse.Namespace) -> int:
     value = _read(args.acceptance)
-    validate_acceptance(value)
+    validate_acceptance_record(value)
     print(
         json.dumps(
             {"valid": True, "accepted": value["accepted"], "status": value["status"]},
             sort_keys=True,
         )
     )
+    return 0
+
+
+def command_validate_bundle(args: argparse.Namespace) -> int:
+    result = validate_acceptance_bundle(args.bundle_root)
+    print(json.dumps(result, sort_keys=True))
     return 0
 
 
@@ -78,15 +100,25 @@ def parser() -> argparse.ArgumentParser:
     blocked.add_argument("--output", type=Path, required=True)
     blocked.set_defaults(func=command_blocked)
 
+    trusted = sub.add_parser("validate-trusted-commit")
+    trusted.add_argument("--implementation-commit", required=True)
+    trusted.add_argument("--protected-ref", default="origin/main")
+    trusted.set_defaults(func=command_trusted_commit)
+
     preflight = sub.add_parser("preflight")
     preflight.add_argument("--target-contract", type=Path, required=True)
     preflight.add_argument("--implementation-commit", required=True)
+    preflight.add_argument("--protected-ref", default="origin/main")
     preflight.add_argument("--output", type=Path, required=True)
     preflight.set_defaults(func=command_preflight)
 
-    validate = sub.add_parser("validate-acceptance")
-    validate.add_argument("--acceptance", type=Path, required=True)
-    validate.set_defaults(func=command_validate)
+    validate_record = sub.add_parser("validate-record")
+    validate_record.add_argument("--acceptance", type=Path, required=True)
+    validate_record.set_defaults(func=command_validate_record)
+
+    validate_bundle = sub.add_parser("validate-bundle")
+    validate_bundle.add_argument("--bundle-root", type=Path, required=True)
+    validate_bundle.set_defaults(func=command_validate_bundle)
     return result
 
 
