@@ -82,6 +82,7 @@ jobs:
           python -m py_compile scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
           python -m pip install ruff==0.9.10
           ruff format scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
+          ruff check --fix scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
           ruff check scripts/fixed_target_contract.py scripts/run_fixed_target_acceptance.py tests/toy/test_fixed_cpu_target.py tests/toy/test_fixed_target_blocked_evidence.py
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
