@@ -501,8 +501,8 @@ def test_untrusted_implementation_not_reachable_from_protected_main_rejected(
 def test_frozen_v0_1_artifact_blob_guards_when_running_in_repo() -> None:
     root = Path(__file__).resolve().parents[2]
     guards = {
-        "docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md": "e2344c07a76fcf7de140f894317fb509f6bc04fb",
-        "docs/evaluations/data/a2_a3_a4_heldout_summary.json": "408742e15a3cddacdefcb0f0b814a6d68a5ca62d",
+        "docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md": "e2344c07a76fcf7de140f894317fb509f6bc04fb",  # noqa: E501
+        "docs/evaluations/data/a2_a3_a4_heldout_summary.json": "408742e15a3cddacdefcb0f0b814a6d68a5ca62d",  # noqa: E501
         "docs/evaluations/A2_A3_A4_V0_1_DECISION_RU.md": "909bf35b65b1e7b1e00f2366519b776333b473b2",
         ".github/workflows/ci.yml": "36463b4c005e9deb71adbd9ba9faea6603ebdaf2",
         "planner_toy/canonical_runtime.py": "057cfbf29ed486659a6ba7b036cdd740d1bb9b44",
