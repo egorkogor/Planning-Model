@@ -1,0 +1,43 @@
+name: Fix PR19 test harness once
+
+on:
+  push:
+    branches:
+      - agent/fixed-canonical-cpu-target
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fixed-canonical-cpu-target
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install ruff==0.9.10
+      - name: Fix bundle test harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/toy/test_fixed_cpu_target.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'monkeypatch.setattr(ft, "require_existing_commit", lambda commit: commit)'
+          new = 'monkeypatch.setattr(ft, "require_trusted_implementation_commit", lambda commit: commit)'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one harness patch target, found {text.count(old)}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+          ruff format tests/toy/test_fixed_cpu_target.py
+          ruff check tests/toy/test_fixed_cpu_target.py
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tests/toy/test_fixed_cpu_target.py
+          git commit -m "Fix fixed target bundle test harness"
+          git push origin HEAD:agent/fixed-canonical-cpu-target
