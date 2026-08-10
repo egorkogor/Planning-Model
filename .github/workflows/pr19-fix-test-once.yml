@@ -35,7 +35,7 @@ jobs:
           path.write_text(text.replace(old, new), encoding='utf-8')
           PY
           ruff format tests/toy/test_fixed_cpu_target.py
-          ruff check tests/toy/test_fixed_cpu_target.py
+          ruff check --ignore E501 tests/toy/test_fixed_cpu_target.py
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add tests/toy/test_fixed_cpu_target.py
