@@ -24,6 +24,20 @@ jobs:
         run: |
           ruff format scripts/fixed_target_contract.py tests/toy/test_fixed_cpu_target.py
           ruff check --fix scripts/fixed_target_contract.py tests/toy/test_fixed_cpu_target.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/toy/test_fixed_cpu_target.py')
+          text = path.read_text()
+          text = text.replace(
+              '"docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md": "e2344c07a76fcf7de140f894317fb509f6bc04fb",',
+              '"docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md": "e2344c07a76fcf7de140f894317fb509f6bc04fb",  # noqa: E501',
+          )
+          text = text.replace(
+              '"docs/evaluations/data/a2_a3_a4_heldout_summary.json": "408742e15a3cddacdefcb0f0b814a6d68a5ca62d",',
+              '"docs/evaluations/data/a2_a3_a4_heldout_summary.json": "408742e15a3cddacdefcb0f0b814a6d68a5ca62d",  # noqa: E501',
+          )
+          path.write_text(text)
+          PY
           ruff check scripts/fixed_target_contract.py tests/toy/test_fixed_cpu_target.py
       - name: Commit formatting
         run: |
