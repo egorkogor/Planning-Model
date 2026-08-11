@@ -27,6 +27,10 @@ def main() -> int:
     unit.add_argument("--seed", type=int, required=True)
     finish = sub.add_parser("assemble")
     finish.add_argument("--attempt-root", type=Path, required=True)
+    package = sub.add_parser("package-foundation-attempt")
+    package.add_argument("--attempt-root", type=Path, required=True)
+    package.add_argument("--destination", type=Path, required=True)
+    package.add_argument("--attempt-index", type=int, required=True)
     args = parser.parse_args()
     contract_path = (
         args.target_contract
@@ -51,6 +55,7 @@ def main() -> int:
         assemble,
         collect_runtime11_observation,
         initialize_attempt,
+        package_foundation_attempt,
         run_unit,
     )
 
@@ -73,8 +78,10 @@ def main() -> int:
         )
     elif args.command == "run-unit":
         result = run_unit(args.attempt_root, args.variant, args.seed, observation)
-    else:
+    elif args.command == "assemble":
         result = assemble(args.attempt_root)
+    else:
+        result = package_foundation_attempt(args.attempt_root, args.destination, args.attempt_index)
     print(json.dumps(result, sort_keys=True))
     return 0
 

@@ -619,6 +619,77 @@ def _binding_inputs(monkeypatch: pytest.MonkeyPatch) -> tuple[dict, dict, dict, 
     return acceptance, evidence, preflight, evaluation_config, training_configs
 
 
+def test_sharded_runtime11_execution_binding_is_explicit_and_closed(monkeypatch) -> None:
+    acceptance, evidence, preflight, config, training = _binding_inputs(monkeypatch)
+    attempt = acceptance["attempts"][0]
+    evidence.update(
+        {
+            "execution_topology": "SHARDED_VARIANT_SEED_SUBPROCESSES",
+            "evaluator_source_sha256": evidence["source_inventory_sha256"],
+            "scientific_parent_implementation_commit": (HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT),
+            "evaluator_version": ("development-quality-evaluation/0.1-runtime1.1-sharded/1.0"),
+        }
+    )
+    evidence["execution_evidence_sha256"] = execution_evidence_sha256(evidence)
+    config.update(
+        {
+            "evaluator_version": evidence["evaluator_version"],
+            "evaluator_source_sha256": evidence["evaluator_source_sha256"],
+            "training_execution_mode": "TRAINED_IN_ATTEMPT_SHARDED",
+            "execution_topology": "SHARDED_VARIANT_SEED_SUBPROCESSES",
+            "scientific_parent_implementation_commit": (HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT),
+            "target_contract_sha256": evidence["target_contract_sha256"],
+            "runtime_contract_sha256": evidence["runtime_contract_sha256"],
+            "target_observation_sha256": evidence["target_observation_sha256"],
+            "source_inventory_sha256": evidence["source_inventory_sha256"],
+            "scientific_policy_sha256": evidence["scientific_policy_sha256"],
+        }
+    )
+    attempt["training_execution_mode"] = "TRAINED_IN_ATTEMPT_SHARDED"
+    validate_execution_binding_contract(
+        evidence,
+        acceptance=acceptance,
+        attempt=attempt,
+        preflight=preflight,
+        evaluation_config=config,
+        target_observation=attempt["target_observation"],
+        training_configs=training,
+    )
+    for field, value in (
+        ("execution_topology", "MONOLITHIC"),
+        ("evaluator_version", "development-quality-evaluation/0.1"),
+    ):
+        broken = copy.deepcopy(evidence)
+        broken[field] = value
+        broken["execution_evidence_sha256"] = execution_evidence_sha256(broken)
+        with pytest.raises(ValueError):
+            validate_execution_binding_contract(
+                broken,
+                acceptance=acceptance,
+                attempt=attempt,
+                preflight=preflight,
+                evaluation_config=config,
+                target_observation=attempt["target_observation"],
+                training_configs=training,
+            )
+
+
+def test_pr19_source_inventory_profile_remains_constructible() -> None:
+    inventory = ft.source_inventory_at_commit("1833c2ae21618a559a34f84aae1dba292030edd5")
+    assert inventory["source_inventory_version"] == ft.SOURCE_INVENTORY_VERSION
+    assert not any(
+        entry["path"] == "scripts/fixed_target_quality_sharded.py" for entry in inventory["files"]
+    )
+
+
+def test_provisional_acceptance_admits_truthful_sharded_training_mode() -> None:
+    acceptance = valid_acceptance(accepted=False)
+    for attempt in acceptance["attempts"]:
+        attempt["training_execution_mode"] = "TRAINED_IN_ATTEMPT_SHARDED"
+    reseal(acceptance)
+    validate_acceptance_record(acceptance)
+
+
 def test_fixed_target_schemas_do_not_enter_historical_quality_source_files() -> None:
     from planner_toy import quality
 
@@ -958,9 +1029,7 @@ def test_historical_quality_lock_resealed_source_list_rejected(
 ) -> None:
     def mutate(locked: dict) -> None:
         locked["evaluator_source_files"][0]["path"] = "mutated/source.py"
-        locked["evaluator_source_sha256"] = ft.sha256_value(
-            locked["evaluator_source_files"]
-        )
+        locked["evaluator_source_sha256"] = ft.sha256_value(locked["evaluator_source_files"])
 
     _mutated_quality_lock(tmp_path, monkeypatch, mutate)
     with pytest.raises(ValueError, match="QUALITY_SOURCE_LOCK_VERSION_MISMATCH"):

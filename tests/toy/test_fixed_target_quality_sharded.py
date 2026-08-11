@@ -305,7 +305,66 @@ def test_fully_resealed_contradictory_unit_rejected(sealed_unit, tmp_path) -> No
         validate_unit_artifacts(path, unit_manifest)
 
 
-@pytest.mark.parametrize("field", ["os_version", "runner_image"])
+def test_fully_resealed_initialization_lineage_rejected(sealed_unit, tmp_path) -> None:
+    import torch
+
+    from planner_toy.numeric_identity import canonical_state_dict_sha256
+    from planner_toy.training import state_dict_sha256
+
+    root = tmp_path / "copy"
+    shutil.copytree(sealed_unit, root)
+    path, unit_manifest = _unit(root)
+    initialization_path = path / "training/initialization.pt"
+    initialization = torch.load(initialization_path, map_location="cpu", weights_only=True)
+    first = next(iter(initialization))
+    initialization[first] = initialization[first].clone()
+    initialization[first].view(-1)[0] += 1.0
+    torch.save(initialization, initialization_path)
+    checkpoint_path = path / "training/checkpoint-manifest.json"
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint["initialization_file_sha256"] = sha256_bytes(initialization_path.read_bytes())
+    checkpoint["initialization_state_dict_sha256"] = state_dict_sha256(initialization)
+    checkpoint["canonical_initialization_state_dict_sha256"] = canonical_state_dict_sha256(
+        initialization
+    )
+    checkpoint_path.write_text(json.dumps(checkpoint))
+    unit_manifest["checkpoint_manifest_sha256"] = sha256_bytes(checkpoint_path.read_bytes())
+    _reseal_unit(path, unit_manifest)
+    with pytest.raises(ValueError, match="REPLAY_MISMATCH"):
+        validate_unit_artifacts(path, unit_manifest)
+
+
+def test_resealed_checkpoint_extra_claim_rejected(sealed_unit, tmp_path) -> None:
+    root = tmp_path / "copy"
+    shutil.copytree(sealed_unit, root)
+    path, unit_manifest = _unit(root)
+    checkpoint_path = path / "training/checkpoint-manifest.json"
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint["unreviewed_claim"] = "forged"
+    checkpoint_path.write_text(json.dumps(checkpoint))
+    unit_manifest["checkpoint_manifest_sha256"] = sha256_bytes(checkpoint_path.read_bytes())
+    _reseal_unit(path, unit_manifest)
+    with pytest.raises(ValidationError):
+        validate_unit_artifacts(path, unit_manifest)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "os_version",
+        "runner_image",
+        "cpu_model",
+        "microcode",
+        "kernel_version",
+        "python_version",
+        "torch_version",
+        "torch_build_configuration_sha256",
+        "actual_atten_cpu_capability",
+        "torch_num_threads",
+        "deterministic_algorithms",
+        "mkldnn_enabled",
+    ],
+)
 def test_resealed_forged_observation_rejected(sealed_unit, tmp_path, field) -> None:
     root = tmp_path / "copy"
     shutil.copytree(sealed_unit, root)
@@ -322,7 +381,7 @@ def test_resealed_forged_observation_rejected(sealed_unit, tmp_path, field) -> N
     attempt["target_observation_sha256"] = observation["observation_sha256"]
     attempt["attempt_identity_sha256"] = attempt_identity(attempt)
     attempt_path.write_text(json.dumps(attempt))
-    with pytest.raises(ValueError, match="OBSERVATION_FORGED"):
+    with pytest.raises(ValueError, match="NOT_LIVE|OBSERVATION_FORGED"):
         validate_attempt(root)
 
 

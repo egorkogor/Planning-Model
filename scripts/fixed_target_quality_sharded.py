@@ -17,15 +17,17 @@ from jsonschema import Draft202012Validator
 
 from planner_toy import quality as q
 from scripts.fixed_target_contract import (
-    HISTORICAL_QUALITY_DATASET_HASH,
+    ATTEMPT_MANIFEST_VERSION,
     HISTORICAL_QUALITY_EVALUATOR_VERSION,
     HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT,
+    attempt_manifest_sha256,
     build_runtime_contract,
     build_scientific_policy,
     canonical_bytes,
-    collect_target_observation,
+    execution_evidence_sha256,
     observation_sha256,
     require_trusted_implementation_commit,
+    requirements_lock_sha256_at_commit,
     runtime_contract_sha256,
     sha256_bytes,
     sha256_value,
@@ -34,12 +36,12 @@ from scripts.fixed_target_contract import (
     validate_observation_against_contract,
     validate_runtime_contract,
     validate_scientific_policy,
-    validate_source_inventory,
     validate_target_contract,
 )
 
 ATTEMPT_VERSION = "toy-quality-fixed-target-sharded-attempt/1.0"
 UNIT_VERSION = "toy-quality-fixed-target-sharded-unit/1.0"
+SHARDED_SOURCE_INVENTORY_VERSION = "toy-quality-fixed-target-sharded-source-inventory/1.0"
 EVALUATOR_VERSION = "development-quality-evaluation/0.1-runtime1.1-sharded/1.0"
 EXECUTION_MODE = "TRAINED_IN_ATTEMPT_SHARDED"
 VARIANTS = ("A2", "A3", "A4")
@@ -65,7 +67,28 @@ def checkout_commit() -> str:
 
 def execution_source_inventory(execution_commit: str) -> dict:
     """PR19 inventory extended with every claim-bearing runtime/1.1 source."""
-    return source_inventory_at_commit(execution_commit)
+    base = source_inventory_at_commit(execution_commit)
+    entries = {entry["path"]: entry for entry in base["files"]}
+    for path in (
+        "scripts/fixed_target_quality_sharded.py",
+        "scripts/run_fixed_target_quality_evaluation.py",
+        "planner_toy/schemas/fixed_target_quality_unit.schema.json",
+        "planner_toy/schemas/fixed_target_quality_checkpoint_manifest.schema.json",
+    ):
+        result = subprocess.run(
+            ["git", "show", f"{execution_commit}:{path}"],
+            cwd=ROOT,
+            capture_output=True,
+            check=True,
+        )
+        entries[path] = {"path": path, "sha256": sha256_bytes(result.stdout)}
+    files = [entries[path] for path in sorted(entries)]
+    return {
+        "source_inventory_version": SHARDED_SOURCE_INVENTORY_VERSION,
+        "implementation_commit": execution_commit,
+        "files": files,
+        "source_inventory_sha256": sha256_value(files),
+    }
 
 
 def validate_checkout_source_inventory(inventory: dict) -> None:
@@ -97,11 +120,31 @@ def _runner_identity(execution_context: str) -> tuple[str, str]:
 
 def collect_runtime11_observation(contract: dict, execution_context: str) -> dict:
     """Collect after the historical module has configured torch once."""
-    cpu = {}
-    for line in Path("/proc/cpuinfo").read_text().split("\n\n", 1)[0].splitlines():
-        if ":" in line:
-            key, value = line.split(":", 1)
-            cpu[key.strip()] = value.strip()
+    processors = []
+    for block in Path("/proc/cpuinfo").read_text().strip().split("\n\n"):
+        cpu = {}
+        for line in block.splitlines():
+            if ":" in line:
+                key, value = line.split(":", 1)
+                cpu[key.strip()] = value.strip()
+        if cpu:
+            processors.append(cpu)
+    claim_fields = (
+        "vendor_id",
+        "cpu family",
+        "model",
+        "stepping",
+        "model name",
+        "microcode",
+        "flags",
+    )
+    if not processors or any(
+        tuple(processor.get(field) for field in claim_fields)
+        != tuple(processors[0].get(field) for field in claim_fields)
+        for processor in processors[1:]
+    ):
+        raise RuntimeError("FIXED_TARGET_HETEROGENEOUS_CPU_IDENTITY")
+    cpu = processors[0]
     build_number, build_date = platform.python_build()
     runner_type, runner_image = _runner_identity(execution_context)
     observation = {
@@ -203,7 +246,10 @@ def initialize_attempt(
         raise ValueError("SHARDED_EXECUTION_COMMIT_NOT_CHECKED_OUT")
     if execution_context == "formal-fixed-target":
         require_trusted_implementation_commit(execution_implementation_commit)
-    observation = observation or collect_runtime11_observation(target_contract, execution_context)
+    live_observation = collect_runtime11_observation(target_contract, execution_context)
+    if observation is not None and observation != live_observation:
+        raise ValueError("SHARDED_SUPPLIED_OBSERVATION_NOT_LIVE")
+    observation = live_observation
     policy = build_scientific_policy()
     inventory = execution_source_inventory(execution_implementation_commit)
     validate_checkout_source_inventory(inventory)
@@ -220,7 +266,7 @@ def initialize_attempt(
         "target_contract_sha256": target_contract_sha256(target_contract),
         "runtime_contract_sha256": runtime_contract_sha256(runtime),
         "target_observation_sha256": observation["observation_sha256"],
-        "source_inventory_sha256": sha256_value(inventory),
+        "source_inventory_sha256": inventory["source_inventory_sha256"],
         "variants": list(VARIANTS),
         "seeds": list(SEEDS),
         "ordered_train_task_ids": sorted(row["task_id"] for row in dataset["train"]),
@@ -252,6 +298,11 @@ def validate_attempt(root: Path) -> tuple[dict, dict]:
     validate_scientific_policy(policy)
     initial_observation = _read(root / "initial-observation.json")
     if attempt["execution_context"] == "formal-fixed-target":
+        require_trusted_implementation_commit(attempt["execution_implementation_commit"])
+    live_observation = collect_runtime11_observation(contract, attempt["execution_context"])
+    if initial_observation != live_observation:
+        raise ValueError("SHARDED_INITIAL_OBSERVATION_NOT_LIVE")
+    if attempt["execution_context"] == "formal-fixed-target":
         validate_observation_against_contract(contract, initial_observation)
     else:
         actual_runner_type, actual_runner_image = _runner_identity("qualification-only")
@@ -263,17 +314,13 @@ def validate_attempt(root: Path) -> tuple[dict, dict]:
         ):
             raise ValueError("SHARDED_QUALIFICATION_RUNNER_OBSERVATION_FORGED")
     persisted_inventory = _read(root / "source-inventory.json")
-    validate_source_inventory(
-        persisted_inventory,
-        implementation_commit=attempt["execution_implementation_commit"],
-    )
-    validate_checkout_source_inventory(persisted_inventory)
-    if attempt["execution_implementation_commit"] != checkout_commit():
-        raise ValueError("SHARDED_EXECUTION_COMMIT_NOT_CHECKED_OUT")
     if persisted_inventory != execution_source_inventory(
         attempt["execution_implementation_commit"]
     ):
         raise ValueError("SHARDED_EXECUTION_SOURCE_INVENTORY_DRIFT")
+    validate_checkout_source_inventory(persisted_inventory)
+    if attempt["execution_implementation_commit"] != checkout_commit():
+        raise ValueError("SHARDED_EXECUTION_COMMIT_NOT_CHECKED_OUT")
     expected = {
         "scientific_parent_implementation_commit": HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT,
         "execution_implementation_commit": attempt["execution_implementation_commit"],
@@ -284,7 +331,7 @@ def validate_attempt(root: Path) -> tuple[dict, dict]:
         "runtime_contract_sha256": runtime_contract_sha256(runtime),
         "scientific_policy_sha256": policy["scientific_policy_sha256"],
         "target_observation_sha256": initial_observation["observation_sha256"],
-        "source_inventory_sha256": sha256_value(persisted_inventory),
+        "source_inventory_sha256": persisted_inventory["source_inventory_sha256"],
         "variants": list(VARIANTS),
         "seeds": list(SEEDS),
         "ordered_train_task_ids": ["bw-00000001", "bw-00000002", "bw-00000003"],
@@ -480,7 +527,10 @@ def run_unit(root: Path, variant: str, seed: int, observation: dict | None = Non
     output = root / "units" / variant / f"seed-{seed}"
     if output.exists():
         raise ValueError("SHARDED_UNIT_ALREADY_EXISTS")
-    observation = observation or collect_target_observation(contract)
+    live_observation = collect_runtime11_observation(contract, attempt["execution_context"])
+    if observation is not None and observation != live_observation:
+        raise ValueError("SHARDED_SUPPLIED_OBSERVATION_NOT_LIVE")
+    observation = live_observation
     if observation["observation_sha256"] != attempt["target_observation_sha256"]:
         raise ValueError("SHARDED_UNIT_TARGET_OBSERVATION_DRIFT")
     dataset = q.generate(17)
@@ -624,6 +674,9 @@ def validate_unit_artifacts(unit: Path, manifest: dict) -> None:
         if {path.name for path in task_root.iterdir()} != required:
             raise ValueError("SHARDED_UNIT_EVIDENCE_FILE_COVERAGE_MISMATCH")
     checkpoint = _read(training / "checkpoint-manifest.json")
+    Draft202012Validator(
+        _read(ROOT / "planner_toy/schemas/fixed_target_quality_checkpoint_manifest.schema.json")
+    ).validate(checkpoint)
     if (
         checkpoint.get("training_execution_mode") != EXECUTION_MODE
         or checkpoint.get("checkpoint_origin_run_hash") is not None
@@ -646,6 +699,8 @@ def validate_unit_artifacts(unit: Path, manifest: dict) -> None:
         "optimizer_state_path": "optimizer-state.pt",
         "optimizer_evidence_path": "optimizer-evidence.json",
         "training_report_path": "training-report.json",
+        "torch_object_encoding_version": q.TORCH_OBJECT_ENCODING_VERSION,
+        "deterministic_training_replay_status": "CANONICAL_DETERMINISTIC",
     }
     for field, expected in expected_checkpoint_semantics.items():
         if checkpoint.get(field) != expected:
@@ -718,6 +773,31 @@ def validate_unit_artifacts(unit: Path, manifest: dict) -> None:
         "gradient_clip_norm": 1.0,
     }:
         raise ValueError("SHARDED_TRAINING_CONFIG_MISMATCH:optimizer")
+    expected_identity = {
+        "architecture_stage": q.MAPPING[manifest["variant"]][0],
+        "implementation_variant": manifest["variant"],
+        "experimental_arm": q.MAPPING[manifest["variant"]][1],
+        "target_type": q.MAPPING[manifest["variant"]][2],
+    }
+    if checkpoint["variant_identity"] != expected_identity:
+        raise ValueError("SHARDED_VARIANT_IDENTITY_MISMATCH")
+    expected_active, expected_dormant = q._optimizer_parameter_policy(model)
+    if (
+        checkpoint["active_parameter_names"] != expected_active
+        or checkpoint["dormant_parameter_names"] != expected_dormant
+    ):
+        raise ValueError("SHARDED_PARAMETER_POLICY_MISMATCH")
+    if any(not torch.equal(trained[name], initialization[name]) for name in expected_dormant):
+        raise ValueError("SHARDED_DORMANT_PARAMETER_CHANGED")
+    if training_config.get("inventory_hash") != q._file_hash(
+        q.ROOT / "docs/architecture/planner_module_inventory_v1.yaml"
+    ) or training_config.get("task_encoding_hash") != q._file_hash(
+        q.ROOT / "docs/architecture/task_encoding_v1.yaml"
+    ):
+        raise ValueError("SHARDED_CANONICAL_ARCHITECTURE_BINDING_MISMATCH")
+    canonical_dataset = q.generate(17)
+    if manifest["dataset_hash"] != canonical_dataset["dataset_hash"]:
+        raise ValueError("SHARDED_CANONICAL_DATASET_MISMATCH")
     if training_report != {
         "schema_version": "toy-quality-training-report/0.1",
         "updates": 9,
@@ -728,6 +808,11 @@ def validate_unit_artifacts(unit: Path, manifest: dict) -> None:
     model.eval()
     dataset_rows = {row["task_id"]: row for row in q.generate(17)["validation"]}
     for persisted in rows:
+        expected_evidence_root = (
+            f"evidence/{manifest['variant']}/seed-{manifest['seed']}/{persisted['task_id']}"
+        )
+        if persisted.get("evidence_root") != expected_evidence_root:
+            raise ValueError("SHARDED_EVIDENCE_ROOT_MISMATCH")
         Draft202012Validator(_read(schema_root / "toy_quality_task_result.schema.json")).validate(
             persisted
         )
@@ -751,6 +836,20 @@ def validate_unit_artifacts(unit: Path, manifest: dict) -> None:
             )
         reproduced["evidence_root"] = persisted["evidence_root"]
         q.validate_task_result_semantics(persisted, reproduced)
+    with tempfile.TemporaryDirectory() as replay_directory:
+        replay_model, replay_checkpoint = _train_runtime11(
+            sorted(canonical_dataset["train"], key=lambda row: row["task_id"]),
+            manifest["variant"],
+            manifest["seed"],
+            Path(replay_directory),
+            canonical_dataset["dataset_hash"],
+        )
+    if (
+        state_dict_sha256(initialization) != replay_checkpoint["initialization_state_dict_sha256"]
+        or state_dict_sha256(replay_model.state_dict()) != checkpoint["trained_state_dict_sha256"]
+        or replay_checkpoint["optimizer_state_sha256"] != checkpoint["optimizer_state_sha256"]
+    ):
+        raise ValueError("SHARDED_DETERMINISTIC_TRAINING_REPLAY_MISMATCH")
 
 
 def assemble(root: Path) -> dict:
@@ -819,6 +918,22 @@ def assemble(root: Path) -> dict:
         "training_execution_mode": EXECUTION_MODE,
         "dataset_manifest_hash": dataset["dataset_hash"],
         "attempt_identity_sha256": attempt["attempt_identity_sha256"],
+        "implementation_commit": attempt["execution_implementation_commit"],
+        "scientific_parent_implementation_commit": attempt[
+            "scientific_parent_implementation_commit"
+        ],
+        "evaluator_source_sha256": attempt["source_inventory_sha256"],
+        "requirements_lock_sha256": requirements_lock_sha256_at_commit(
+            attempt["execution_implementation_commit"]
+        ),
+        "target_contract_sha256": attempt["target_contract_sha256"],
+        "runtime_contract_sha256": attempt["runtime_contract_sha256"],
+        "target_observation_sha256": attempt["target_observation_sha256"],
+        "source_inventory_sha256": attempt["source_inventory_sha256"],
+        "scientific_policy_sha256": attempt["scientific_policy_sha256"],
+        "execution_topology": "SHARDED_VARIANT_SEED_SUBPROCESSES",
+        "checkpoint_origin_run_hash": None,
+        "reuse_source_manifest_hash": None,
     }
     _write(output / "evaluation-config.json", config)
     _write(
@@ -864,6 +979,12 @@ def assemble(root: Path) -> dict:
         "scientific_parent_evaluator": HISTORICAL_QUALITY_EVALUATOR_VERSION,
         "seeds": list(SEEDS),
         "variants": list(VARIANTS),
+        "variant_mapping": config["variant_mapping"],
+        "evaluator_source_sha256": config["evaluator_source_sha256"],
+        "implementation_commit": config["implementation_commit"],
+        "scientific_parent_implementation_commit": config[
+            "scientific_parent_implementation_commit"
+        ],
         "artifact_hashes": {n: q._file_hash(output / n) for n in names},
         "checkpoint_manifest_hashes": {
             str(p.relative_to(output)): q._file_hash(p)
@@ -876,22 +997,89 @@ def assemble(root: Path) -> dict:
         },
     }
     _write(output / "evaluation-manifest.json", manifest)
-    payload = {
-        "scientific_parent_evaluator": HISTORICAL_QUALITY_EVALUATOR_VERSION,
-        "dataset_hash": HISTORICAL_QUALITY_DATASET_HASH,
-        "training_execution_mode": EXECUTION_MODE,
-        "task_results": q.task_results_semantic_projection(rows),
-        "checkpoints": {
-            k: v
-            for k, v in manifest["checkpoint_manifest_hashes"].items()
-            if k.endswith("checkpoint-manifest.json")
-        },
-    }
+    payload = q.canonical_replay_payload(output, manifest, rows)
     _write(output / "canonical-semantic-payload.json", payload)
     manifest["artifact_hashes"]["canonical-semantic-payload.json"] = q._file_hash(
         output / "canonical-semantic-payload.json"
     )
     _write(output / "evaluation-manifest.json", manifest)
-    replay = sha256_value(payload)
+    replay = q.canonical_replay_hash(output, manifest, rows)
     (output / "replay-hash.txt").write_text(replay + "\n")
+    policy = _read(root / "scientific-policy.json")
+    evidence = {
+        "execution_evidence_version": "toy-quality-fixed-target-execution-evidence/1.0",
+        "implementation_commit": attempt["execution_implementation_commit"],
+        "scientific_parent_implementation_commit": attempt[
+            "scientific_parent_implementation_commit"
+        ],
+        "execution_topology": "SHARDED_VARIANT_SEED_SUBPROCESSES",
+        "target_contract_sha256": attempt["target_contract_sha256"],
+        "runtime_contract_sha256": attempt["runtime_contract_sha256"],
+        "target_observation_sha256": attempt["target_observation_sha256"],
+        "source_inventory_sha256": attempt["source_inventory_sha256"],
+        "scientific_policy": policy,
+        "scientific_policy_sha256": policy["scientific_policy_sha256"],
+        "evaluator_version": EVALUATOR_VERSION,
+        "evaluator_source_sha256": attempt["source_inventory_sha256"],
+        "requirements_lock_sha256": config["requirements_lock_sha256"],
+        "dataset_identity": {
+            "dataset_hash": dataset["dataset_hash"],
+            "ordered_train_task_ids": config["train_task_ids"],
+            "ordered_eval_task_ids": config["eval_task_ids"],
+        },
+        "variants": list(VARIANTS),
+        "seeds": list(SEEDS),
+        "epochs": 3,
+        "updates_per_run": 9,
+        "optimizer_class": "AdamW",
+        "optimizer_hyperparameters": {
+            "learning_rate": 3e-4,
+            "betas": [0.9, 0.95],
+            "eps": 1e-8,
+            "weight_decay": 0.01,
+        },
+        "gradient_clipping": {"algorithm": "clip_grad_norm_", "max_norm": 1.0},
+        "observed_optimizer_foreach": False,
+        "observed_optimizer_fused": False,
+        "evaluation_root_identity": replay,
+        "execution_evidence_sha256": "",
+    }
+    evidence["execution_evidence_sha256"] = execution_evidence_sha256(evidence)
+    _write(root / "execution-evidence.json", evidence)
     return {"replay_hash": replay, "units": 9}
+
+
+def package_foundation_attempt(root: Path, destination: Path, attempt_index: int) -> dict:
+    """Package a validated sharded attempt in the PR19 attempt directory shape."""
+    attempt, _ = validate_attempt(root)
+    if not (root / "evaluation/replay-hash.txt").is_file():
+        raise ValueError("SHARDED_EVALUATION_NOT_ASSEMBLED")
+    if destination.exists():
+        raise ValueError("SHARDED_FOUNDATION_DESTINATION_EXISTS")
+    destination.mkdir(parents=True)
+    shutil.copytree(root / "evaluation", destination / "evaluation")
+    shutil.copy2(root / "execution-evidence.json", destination / "execution-evidence.json")
+    preflight = {
+        "implementation_commit": attempt["execution_implementation_commit"],
+        "target_contract": _read(root / "target-contract.json"),
+        "target_contract_sha256": attempt["target_contract_sha256"],
+        "runtime_contract": _read(root / "runtime-contract.json"),
+        "runtime_contract_sha256": attempt["runtime_contract_sha256"],
+        "target_observation": _read(root / "initial-observation.json"),
+        "source_inventory": _read(root / "source-inventory.json"),
+    }
+    _write(destination / "preflight.json", preflight)
+    files = {}
+    for path in sorted(destination.rglob("*")):
+        if path.is_file():
+            relative = path.relative_to(destination).as_posix()
+            files[relative] = sha256_bytes(path.read_bytes())
+    manifest = {
+        "attempt_manifest_version": ATTEMPT_MANIFEST_VERSION,
+        "attempt_index": attempt_index,
+        "files": files,
+        "attempt_manifest_sha256": "",
+    }
+    manifest["attempt_manifest_sha256"] = attempt_manifest_sha256(manifest)
+    _write(destination / "attempt_manifest.json", manifest)
+    return manifest
