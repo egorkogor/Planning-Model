@@ -565,6 +565,7 @@ def validate_execution_binding_contract(
         )
         if (
             evidence.get("execution_topology") != "SHARDED_VARIANT_SEED_SUBPROCESSES"
+            or evidence.get("execution_context") != "formal-fixed-target"
             or evidence.get("scientific_parent_implementation_commit")
             != policy["historical_quality_implementation_commit"]
             or evaluation_config.get("execution_topology") != "SHARDED_VARIANT_SEED_SUBPROCESSES"
@@ -1225,9 +1226,11 @@ def _derive_optimizer_execution(evaluation_root: Path) -> tuple[bool, bool]:
 
 def _validate_evaluation_integrity(evaluation_root: Path) -> str:
     from planner_toy.quality import (  # noqa: PLC0415
+        _examples,
         aggregate_summaries,
         canonical_replay_hash,
         canonical_replay_payload,
+        generate,
         paired,
         summarize,
         task_results_semantic_projection,
@@ -1266,19 +1269,55 @@ def _validate_evaluation_integrity(evaluation_root: Path) -> str:
         evaluation_root / "evaluation-config.json",
         "FIXED_TARGET_EVALUATION_CONFIG_INVALID",
     )
+    canonical_dataset = generate(17)
+    expected_dataset_manifest = {
+        "dataset_hash": canonical_dataset["dataset_hash"],
+        "train_task_ids": [row["task_id"] for row in canonical_dataset["train"]],
+        "eval_task_ids": [row["task_id"] for row in canonical_dataset["validation"]],
+    }
+    dataset_manifest = _read_json(
+        evaluation_root / "dataset-manifest.json",
+        "FIXED_TARGET_DATASET_MANIFEST_INVALID",
+    )
+    if dataset_manifest != expected_dataset_manifest or any(
+        (
+            config.get("dataset_manifest_hash") != expected_dataset_manifest["dataset_hash"],
+            config.get("train_task_ids") != expected_dataset_manifest["train_task_ids"],
+            config.get("eval_task_ids") != expected_dataset_manifest["eval_task_ids"],
+        )
+    ):
+        raise ValueError("FIXED_TARGET_DATASET_MANIFEST_MISMATCH")
     if config.get("training_execution_mode") == "TRAINED_IN_ATTEMPT_SHARDED":
-        for field in (
-            "implementation_commit",
-            "scientific_parent_implementation_commit",
-            "evaluator_version",
-            "evaluator_source_sha256",
-        ):
-            if manifest.get(field) != config.get(field):
+        manifest_bindings = {
+            "implementation_commit": config.get("implementation_commit"),
+            "scientific_parent_implementation_commit": config.get(
+                "scientific_parent_implementation_commit"
+            ),
+            "scientific_parent_evaluator": config.get("scientific_parent_evaluator"),
+            "evaluator_version": config.get("evaluator_version"),
+            "evaluator_source_sha256": config.get("evaluator_source_sha256"),
+            "variants": config.get("variants"),
+            "seeds": config.get("seeds"),
+            "variant_mapping": config.get("variant_mapping"),
+        }
+        for field, expected in manifest_bindings.items():
+            if manifest.get(field) != expected:
                 raise ValueError(f"FIXED_TARGET_EVALUATION_MANIFEST_BINDING_MISMATCH:{field}")
+        if set(manifest) != set(manifest_bindings) | {
+            "artifact_hashes",
+            "checkpoint_manifest_hashes",
+            "evidence_artifact_hashes",
+        }:
+            raise ValueError("FIXED_TARGET_EVALUATION_MANIFEST_FIELDS_MISMATCH")
     allowed_mode = config.get("training_execution_mode") in {
         "TRAINED_IN_RUN",
         "TRAINED_IN_ATTEMPT_SHARDED",
     }
+    if config.get("training_execution_mode") == "TRAINED_IN_RUN" and (
+        config.get("evaluator_version") != HISTORICAL_QUALITY_EVALUATOR_VERSION
+        or config.get("implementation_commit") != HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT
+    ):
+        raise ValueError("FIXED_TARGET_LEGACY_EXECUTION_IDENTITY_MISMATCH")
     if config.get("training_execution_mode") == "TRAINED_IN_ATTEMPT_SHARDED" and (
         config.get("execution_topology") != "SHARDED_VARIANT_SEED_SUBPROCESSES"
         or config.get("evaluator_version")
@@ -1342,13 +1381,30 @@ def _validate_evaluation_integrity(evaluation_root: Path) -> str:
     ]
     if comparisons != expected_comparisons:
         raise ValueError("FIXED_TARGET_DERIVED_SUMMARY_MISMATCH")
+    expected_examples = _examples(
+        rows,
+        sorted(canonical_dataset["validation"], key=lambda row: row["task_id"]),
+        config["variants"],
+        config["seeds"],
+    )
+    if (evaluation_root / "human-readable-examples.md").read_text(
+        encoding="utf-8"
+    ) != expected_examples:
+        raise ValueError("FIXED_TARGET_HUMAN_EXAMPLES_MISMATCH")
 
     sharded = config.get("training_execution_mode") == "TRAINED_IN_ATTEMPT_SHARDED"
     if sharded:
         from scripts.fixed_target_quality_sharded import (  # noqa: PLC0415
             sharded_canonical_replay_hash,
             sharded_canonical_replay_payload,
+            validate_persisted_runtime11_run,
         )
+
+        for variant in config["variants"]:
+            for seed in config["seeds"]:
+                validate_persisted_runtime11_run(
+                    evaluation_root, config, variant, seed
+                )
 
         replay_payload = sharded_canonical_replay_payload
         replay_hash = sharded_canonical_replay_hash

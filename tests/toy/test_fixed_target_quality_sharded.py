@@ -23,6 +23,7 @@ from scripts.fixed_target_quality_sharded import (
     unit_identity,
     validate_attempt,
     validate_checkout_source_inventory,
+    validate_persisted_runtime11_run,
     validate_runtime11_optimizer,
     validate_unit_artifacts,
     validate_unit_manifest,
@@ -549,3 +550,43 @@ def test_verify_unit_rejects_post_replay_observation_drift(monkeypatch, tmp_path
     )
     with pytest.raises(ValueError, match="CHANGED_DURING_VERIFICATION"):
         verify_qualification_unit(tmp_path, "A2", 17)
+
+
+def test_formal_persisted_run_rejects_fully_resealed_checkpoint(
+    sealed_unit, tmp_path
+) -> None:
+    import torch
+
+    from planner_toy.numeric_identity import canonical_state_dict_sha256
+    from planner_toy.training import state_dict_sha256
+
+    source = sealed_unit / "units/A2/seed-17"
+    evaluation = tmp_path / "evaluation"
+    training = evaluation / "training-runs/A2/seed-17"
+    evidence = evaluation / "evidence/A2/seed-17"
+    shutil.copytree(source / "training", training)
+    shutil.copytree(source / "evidence", evidence)
+    shutil.copy2(source / "task-results.jsonl", evaluation / "task-results.jsonl")
+    config = {
+        "dataset_manifest_hash": json.loads(
+            (training / "checkpoint-manifest.json").read_text()
+        )["dataset_hash"],
+        "train_task_ids": ["bw-00000001", "bw-00000002", "bw-00000003"],
+        "eval_task_ids": ["bw-00000004", "bw-00000005"],
+        "epochs": 3,
+    }
+    trained_path = training / "trained.pt"
+    trained = torch.load(trained_path, map_location="cpu", weights_only=True)
+    first = next(iter(trained))
+    trained[first].view(-1)[0] += 1.0
+    torch.save(trained, trained_path)
+    checkpoint_path = training / "checkpoint-manifest.json"
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint["trained_file_sha256"] = sha256_bytes(trained_path.read_bytes())
+    checkpoint["trained_state_dict_sha256"] = state_dict_sha256(trained)
+    checkpoint["canonical_trained_state_dict_sha256"] = canonical_state_dict_sha256(trained)
+    checkpoint_path.write_text(json.dumps(checkpoint))
+    with pytest.raises(
+        ValueError, match="REPLAY_MISMATCH|TASK_RESULT_SEMANTICS|REQUEST_BINDING_MISMATCH"
+    ):
+        validate_persisted_runtime11_run(evaluation, config, "A2", 17)

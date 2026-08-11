@@ -611,7 +611,8 @@ def _valid_execution_evidence(acceptance: dict, attempt: dict) -> dict:
 
 
 @pytest.mark.parametrize(
-    "missing", ["scientific_parent_implementation_commit", "execution_topology"]
+    "missing",
+    ["scientific_parent_implementation_commit", "execution_topology", "execution_context"],
 )
 def test_sharded_execution_evidence_requires_sharded_provenance(missing: str) -> None:
     acceptance = valid_acceptance(accepted=False)
@@ -623,6 +624,7 @@ def test_sharded_execution_evidence_requires_sharded_provenance(missing: str) ->
                 HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT
             ),
             "execution_topology": "SHARDED_VARIANT_SEED_SUBPROCESSES",
+            "execution_context": "formal-fixed-target",
         }
     )
     evidence.pop(missing)
@@ -704,6 +706,7 @@ def test_sharded_runtime11_execution_binding_is_explicit_and_closed(monkeypatch)
     evidence.update(
         {
             "execution_topology": "SHARDED_VARIANT_SEED_SUBPROCESSES",
+            "execution_context": "formal-fixed-target",
             "evaluator_source_sha256": evidence["source_inventory_sha256"],
             "scientific_parent_implementation_commit": (HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT),
             "evaluator_version": ("development-quality-evaluation/0.1-runtime1.1-sharded/1.0"),

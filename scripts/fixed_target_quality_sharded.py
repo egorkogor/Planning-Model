@@ -949,6 +949,55 @@ def validate_unit_artifacts(unit: Path, manifest: dict) -> None:
         raise ValueError("SHARDED_DETERMINISTIC_TRAINING_REPLAY_MISMATCH")
 
 
+def validate_persisted_runtime11_run(
+    evaluation_root: Path,
+    evaluation_config: dict,
+    variant: str,
+    seed: int,
+) -> None:
+    """Independently replay one packaged sharded run from primary artifacts.
+
+    Packaging intentionally omits orchestration-only unit manifests.  This adapter
+    reconstructs only that envelope and delegates to the same recursive semantic
+    validator used by unit verification; no persisted verification receipt is trusted.
+    """
+    import tempfile
+
+    training = evaluation_root / "training-runs" / variant / f"seed-{seed}"
+    evidence = evaluation_root / "evidence" / variant / f"seed-{seed}"
+    all_rows = [
+        json.loads(line)
+        for line in (evaluation_root / "task-results.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    rows = [row for row in all_rows if row["variant"] == variant and row["seed"] == seed]
+    rows.sort(key=lambda row: row["task_id"])
+    with tempfile.TemporaryDirectory() as temporary:
+        unit = Path(temporary) / "unit"
+        unit.mkdir()
+        (unit / "training").symlink_to(training.resolve(), target_is_directory=True)
+        (unit / "evidence").symlink_to(evidence.resolve(), target_is_directory=True)
+        (unit / "task-results.jsonl").write_bytes(
+            b"".join(canonical_bytes(row) + b"\n" for row in rows)
+        )
+        _write(unit / "unit-manifest.json", {})
+        manifest = {
+            "variant": variant,
+            "seed": seed,
+            "dataset_hash": evaluation_config["dataset_manifest_hash"],
+            "ordered_train_task_ids": evaluation_config["train_task_ids"],
+            "ordered_eval_task_ids": evaluation_config["eval_task_ids"],
+            "epochs": evaluation_config["epochs"],
+            "updates": 9,
+            "checkpoint_manifest_sha256": q._file_hash(
+                training / "checkpoint-manifest.json"
+            ),
+            "task_results_sha256": q._file_hash(unit / "task-results.jsonl"),
+        }
+        validate_unit_artifacts(unit, manifest)
+
+
 def _unit_tree_identity(unit: Path) -> str:
     return sha256_value(
         {
@@ -1100,6 +1149,7 @@ def assemble(root: Path, *, qualification_receipts: bool = False) -> dict:
         "source_inventory_sha256": attempt["source_inventory_sha256"],
         "scientific_policy_sha256": attempt["scientific_policy_sha256"],
         "execution_topology": "SHARDED_VARIANT_SEED_SUBPROCESSES",
+        "execution_context": attempt["execution_context"],
         "checkpoint_origin_run_hash": None,
         "reuse_source_manifest_hash": None,
     }
