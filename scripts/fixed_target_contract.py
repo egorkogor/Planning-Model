@@ -27,6 +27,7 @@ TARGET_OBSERVATION_VERSION = "toy-quality-fixed-cpu-target-observation/1.0"
 FIXED_RUNTIME_VERSION = "toy-quality-canonical-cpu-runtime/1.1"
 FIXED_TARGET_ACCEPTANCE_VERSION = "toy-quality-fixed-target-acceptance/1.0"
 SOURCE_INVENTORY_VERSION = "toy-quality-fixed-target-source-inventory/1.0"
+SHARDED_SOURCE_INVENTORY_VERSION = "toy-quality-fixed-target-sharded-source-inventory/1.0"
 ATTEMPT_MANIFEST_VERSION = "toy-quality-fixed-target-attempt-manifest/1.0"
 EXECUTION_EVIDENCE_VERSION = "toy-quality-fixed-target-execution-evidence/1.0"
 SCIENTIFIC_POLICY_VERSION = "toy-quality-fixed-target-scientific-policy/1.0"
@@ -84,6 +85,12 @@ _FIXED_TARGET_SOURCE_ADDITIONS = {
     "pyproject.toml",
     "scripts/fixed_target_contract.py",
     "scripts/run_fixed_target_acceptance.py",
+}
+_SHARDED_SOURCE_ADDITIONS = {
+    "scripts/fixed_target_quality_sharded.py",
+    "scripts/run_fixed_target_quality_evaluation.py",
+    "planner_toy/schemas/fixed_target_quality_unit.schema.json",
+    "planner_toy/schemas/fixed_target_quality_checkpoint_manifest.schema.json",
 }
 _QUALITY_SOURCE_LOCK_SHA256 = (
     "sha256:9205ad312fc37fa9927505e9c44a599e29fc5e31180db9d2e49ebfcc247b4570"
@@ -268,6 +275,32 @@ def source_inventory_at_commit(commit: str) -> dict[str, Any]:
     }
 
 
+def sharded_source_inventory_at_commit(commit: str) -> dict[str, Any]:
+    """Build the one closed, commit-bound inventory allowed for sharded execution."""
+    require_existing_commit(commit)
+    entries = []
+    for path in sorted(set(fixed_target_source_paths()) | _SHARDED_SOURCE_ADDITIONS):
+        process = _git_bytes("show", f"{commit}:{path}")
+        if process.returncode:
+            raise ValueError(f"FIXED_TARGET_SOURCE_MISSING:{path}")
+        entries.append({"path": path, "sha256": sha256_bytes(process.stdout)})
+    return {
+        "source_inventory_version": SHARDED_SOURCE_INVENTORY_VERSION,
+        "implementation_commit": commit,
+        "files": entries,
+        "source_inventory_sha256": sha256_value(entries),
+    }
+
+
+def validate_sharded_source_inventory(
+    inventory: object, *, implementation_commit: str
+) -> dict[str, Any]:
+    expected = sharded_source_inventory_at_commit(implementation_commit)
+    if inventory != expected:
+        raise ValueError("FIXED_TARGET_SHARDED_SOURCE_INVENTORY_MISMATCH")
+    return expected
+
+
 def validate_source_inventory(
     inventory: object,
     *,
@@ -286,6 +319,18 @@ def validate_source_inventory(
     if inventory != expected:
         raise ValueError("FIXED_TARGET_SOURCE_INVENTORY_MISMATCH")
     return inventory
+
+
+def validate_source_inventory_profile(
+    inventory: object, *, implementation_commit: str
+) -> dict[str, Any]:
+    if isinstance(inventory, dict) and inventory.get("source_inventory_version") == (
+        SHARDED_SOURCE_INVENTORY_VERSION
+    ):
+        return validate_sharded_source_inventory(
+            inventory, implementation_commit=implementation_commit
+        )
+    return validate_source_inventory(inventory, implementation_commit=implementation_commit)
 
 
 def requirements_lock_sha256_at_commit(commit: str) -> str:
@@ -460,6 +505,20 @@ def validate_execution_binding_contract(
         raise ValueError("FIXED_TARGET_EXECUTION_EVALUATOR_MISMATCH")
     if evidence["evaluator_source_sha256"] != evaluation_config.get("evaluator_source_sha256"):
         raise ValueError("FIXED_TARGET_EXECUTION_EVALUATOR_MISMATCH")
+    config_bindings = {
+        "scientific_parent_implementation_commit": policy[
+            "historical_quality_implementation_commit"
+        ],
+        "target_contract_sha256": evidence["target_contract_sha256"],
+        "runtime_contract_sha256": evidence["runtime_contract_sha256"],
+        "target_observation_sha256": evidence["target_observation_sha256"],
+        "source_inventory_sha256": evidence["source_inventory_sha256"],
+        "scientific_policy_sha256": evidence["scientific_policy_sha256"],
+    }
+    if evaluation_config.get("training_execution_mode") == "TRAINED_IN_ATTEMPT_SHARDED":
+        for field, expected in config_bindings.items():
+            if evaluation_config.get(field) != expected:
+                raise ValueError(f"FIXED_TARGET_EVALUATION_CONFIG_BINDING_MISMATCH:{field}")
     expected_requirements = requirements_lock_sha256_at_commit(implementation)
     if evidence["requirements_lock_sha256"] != expected_requirements:
         raise ValueError("FIXED_TARGET_EXECUTION_REQUIREMENTS_MISMATCH")
@@ -497,8 +556,41 @@ def validate_execution_binding_contract(
         raise ValueError("FIXED_TARGET_SCIENTIFIC_POLICY_MISMATCH")
     if evaluation_config.get("checkpoint_policy") != policy["checkpoint_policy"]:
         raise ValueError("FIXED_TARGET_SCIENTIFIC_POLICY_MISMATCH")
-    if evaluation_config.get("training_execution_mode") != policy["training_execution_mode"]:
-        raise ValueError("FIXED_TARGET_SCIENTIFIC_POLICY_MISMATCH")
+    training_mode = evaluation_config.get("training_execution_mode")
+    if attempt.get("training_execution_mode") != training_mode:
+        raise ValueError("FIXED_TARGET_TRAINING_EXECUTION_MODE_MISMATCH")
+    if training_mode == "TRAINED_IN_ATTEMPT_SHARDED":
+        validate_sharded_source_inventory(
+            inventory, implementation_commit=implementation
+        )
+        if (
+            evidence.get("execution_topology") != "SHARDED_VARIANT_SEED_SUBPROCESSES"
+            or evidence.get("execution_context") != "formal-fixed-target"
+            or evaluation_config.get("execution_context") != evidence.get("execution_context")
+            or evidence.get("scientific_parent_implementation_commit")
+            != policy["historical_quality_implementation_commit"]
+            or evaluation_config.get("execution_topology") != "SHARDED_VARIANT_SEED_SUBPROCESSES"
+            or evidence.get("evaluator_version")
+            != "development-quality-evaluation/0.1-runtime1.1-sharded/1.0"
+            or evidence["evaluator_source_sha256"] != evidence["source_inventory_sha256"]
+        ):
+            raise ValueError("FIXED_TARGET_SHARDED_EXECUTION_BINDING_MISMATCH")
+    else:
+        if any(
+            (
+                evidence.get("execution_topology")
+                == "SHARDED_VARIANT_SEED_SUBPROCESSES",
+                evaluation_config.get("execution_topology")
+                == "SHARDED_VARIANT_SEED_SUBPROCESSES",
+                evidence.get("evaluator_version")
+                == "development-quality-evaluation/0.1-runtime1.1-sharded/1.0",
+                evaluation_config.get("evaluator_version")
+                == "development-quality-evaluation/0.1-runtime1.1-sharded/1.0",
+            )
+        ):
+            raise ValueError("FIXED_TARGET_SHARDED_EXECUTION_MODE_DOWNGRADE")
+        if training_mode != policy["training_execution_mode"]:
+            raise ValueError("FIXED_TARGET_SCIENTIFIC_POLICY_MISMATCH")
     expected_runs = {(variant, seed) for variant in policy["variants"] for seed in policy["seeds"]}
     observed_runs: set[tuple[str, int]] = set()
     for config in training_configs:
@@ -525,6 +617,11 @@ def validate_execution_binding_contract(
     if (
         evidence["observed_optimizer_foreach"] is not False
         or evidence["observed_optimizer_fused"] is not False
+    ):
+        raise ValueError("FIXED_TARGET_OPTIMIZER_EXECUTION_MISMATCH")
+    if (
+        attempt.get("observed_optimizer_foreach") != evidence["observed_optimizer_foreach"]
+        or attempt.get("observed_optimizer_fused") != evidence["observed_optimizer_fused"]
     ):
         raise ValueError("FIXED_TARGET_OPTIMIZER_EXECUTION_MISMATCH")
 
@@ -908,6 +1005,7 @@ def _validate_acceptance_record_structure(
         raise ValueError("FIXED_TARGET_ACCEPTANCE_DUPLICATE_JOB")
 
     claim_blocks: list[dict[str, str]] = []
+    provenance_blocks: list[dict[str, Any]] = []
     for attempt in attempts:
         if attempt["implementation_commit"] != implementation:
             raise ValueError("FIXED_TARGET_ACCEPTANCE_IMPLEMENTATION_MISMATCH")
@@ -919,7 +1017,10 @@ def _validate_acceptance_record_structure(
         validate_observation_against_contract(target_contract, observation)
         if attempt["target_observation_sha256"] != observation["observation_sha256"]:
             raise ValueError("FIXED_TARGET_OBSERVATION_HASH_MISMATCH")
-        if attempt["training_execution_mode"] != "TRAINED_IN_RUN":
+        if attempt["training_execution_mode"] not in {
+            "TRAINED_IN_RUN",
+            "TRAINED_IN_ATTEMPT_SHARDED",
+        }:
             raise ValueError("FIXED_TARGET_ACCEPTANCE_REUSED_LINEAGE")
         if (
             attempt["checkpoint_origin_run_hash"] is not None
@@ -943,11 +1044,19 @@ def _validate_acceptance_record_structure(
         if attempt["result"] == "PASS" and not attempt["successful_full_evaluation"]:
             raise ValueError("FIXED_TARGET_ACCEPTANCE_FAILED_ATTEMPT")
         claim_blocks.append(claims)
+        provenance_blocks.append(
+            {
+                "training_execution_mode": attempt["training_execution_mode"],
+                "target_observation_sha256": attempt["target_observation_sha256"],
+                "source_inventory_sha256": attempt["source_inventory_sha256"],
+            }
+        )
 
     exact_equal = (
         len(attempts) == 3
         and bool(claim_blocks)
         and all(claim == claim_blocks[0] for claim in claim_blocks)
+        and all(block == provenance_blocks[0] for block in provenance_blocks)
     )
     comparison = acceptance["cross_attempt_comparison"]
     if comparison["status"] == "PASS" and (not exact_equal or comparison["mismatches"]):
@@ -1116,14 +1225,34 @@ def _derive_optimizer_execution(evaluation_root: Path) -> tuple[bool, bool]:
     return foreach, fused
 
 
+def _validate_training_execution_identity(config: dict[str, Any]) -> None:
+    mode = config.get("training_execution_mode")
+    sharded_evaluator = (
+        config.get("evaluator_version")
+        == "development-quality-evaluation/0.1-runtime1.1-sharded/1.0"
+    )
+    sharded_topology = (
+        config.get("execution_topology") == "SHARDED_VARIANT_SEED_SUBPROCESSES"
+    )
+    if mode == "TRAINED_IN_RUN" and (sharded_evaluator or sharded_topology):
+        raise ValueError("FIXED_TARGET_SHARDED_EXECUTION_MODE_DOWNGRADE")
+    if mode == "TRAINED_IN_ATTEMPT_SHARDED" and not (
+        sharded_evaluator and sharded_topology
+    ):
+        raise ValueError("FIXED_TARGET_SHARDED_EXECUTION_BINDING_MISMATCH")
+
+
 def _validate_evaluation_integrity(evaluation_root: Path) -> str:
     from planner_toy.quality import (  # noqa: PLC0415
+        _examples,
         aggregate_summaries,
         canonical_replay_hash,
         canonical_replay_payload,
+        generate,
         paired,
         summarize,
         task_results_semantic_projection,
+        validate_evaluation,
     )
 
     manifest = _read_json(
@@ -1159,8 +1288,59 @@ def _validate_evaluation_integrity(evaluation_root: Path) -> str:
         evaluation_root / "evaluation-config.json",
         "FIXED_TARGET_EVALUATION_CONFIG_INVALID",
     )
+    canonical_dataset = generate(17)
+    expected_dataset_manifest = {
+        "dataset_hash": canonical_dataset["dataset_hash"],
+        "train_task_ids": [row["task_id"] for row in canonical_dataset["train"]],
+        "eval_task_ids": [row["task_id"] for row in canonical_dataset["validation"]],
+    }
+    dataset_manifest = _read_json(
+        evaluation_root / "dataset-manifest.json",
+        "FIXED_TARGET_DATASET_MANIFEST_INVALID",
+    )
+    if dataset_manifest != expected_dataset_manifest or any(
+        (
+            config.get("dataset_manifest_hash") != expected_dataset_manifest["dataset_hash"],
+            config.get("train_task_ids") != expected_dataset_manifest["train_task_ids"],
+            config.get("eval_task_ids") != expected_dataset_manifest["eval_task_ids"],
+        )
+    ):
+        raise ValueError("FIXED_TARGET_DATASET_MANIFEST_MISMATCH")
+    if config.get("training_execution_mode") == "TRAINED_IN_ATTEMPT_SHARDED":
+        manifest_bindings = {
+            "implementation_commit": config.get("implementation_commit"),
+            "scientific_parent_implementation_commit": config.get(
+                "scientific_parent_implementation_commit"
+            ),
+            "scientific_parent_evaluator": config.get("scientific_parent_evaluator"),
+            "evaluator_version": config.get("evaluator_version"),
+            "evaluator_source_sha256": config.get("evaluator_source_sha256"),
+            "variants": config.get("variants"),
+            "seeds": config.get("seeds"),
+            "variant_mapping": config.get("variant_mapping"),
+        }
+        for field, expected in manifest_bindings.items():
+            if manifest.get(field) != expected:
+                raise ValueError(f"FIXED_TARGET_EVALUATION_MANIFEST_BINDING_MISMATCH:{field}")
+        if set(manifest) != set(manifest_bindings) | {
+            "artifact_hashes",
+            "checkpoint_manifest_hashes",
+            "evidence_artifact_hashes",
+        }:
+            raise ValueError("FIXED_TARGET_EVALUATION_MANIFEST_FIELDS_MISMATCH")
+    allowed_mode = config.get("training_execution_mode") in {
+        "TRAINED_IN_RUN",
+        "TRAINED_IN_ATTEMPT_SHARDED",
+    }
+    _validate_training_execution_identity(config)
+    if config.get("training_execution_mode") == "TRAINED_IN_RUN":
+        # Preserve the complete PR19/historical contract and prevent a sharded
+        # artifact from escaping runtime/1.1 replay by coherently stripping its
+        # sharded labels.  This validator independently checks the closed legacy
+        # config/checkpoint/evidence semantics without pinning execution commit.
+        validate_evaluation(evaluation_root)
     if (
-        config.get("training_execution_mode") != "TRAINED_IN_RUN"
+        not allowed_mode
         or config.get("checkpoint_origin_run_hash") is not None
         or config.get("reuse_source_manifest_hash") is not None
     ):
@@ -1168,11 +1348,14 @@ def _validate_evaluation_integrity(evaluation_root: Path) -> str:
     for path in sorted(evaluation_root.glob("training-runs/*/seed-*/checkpoint-manifest.json")):
         checkpoint = _read_json(path, "FIXED_TARGET_CHECKPOINT_MANIFEST_INVALID")
         if (
-            checkpoint.get("training_execution_mode") != "TRAINED_IN_RUN"
+            checkpoint.get("training_execution_mode")
+            not in {"TRAINED_IN_RUN", "TRAINED_IN_ATTEMPT_SHARDED"}
             or checkpoint.get("checkpoint_origin_run_hash") is not None
             or checkpoint.get("reuse_source_manifest_hash") is not None
         ):
             raise ValueError("FIXED_TARGET_ACCEPTANCE_REUSED_LINEAGE")
+        if checkpoint.get("training_execution_mode") != config.get("training_execution_mode"):
+            raise ValueError("FIXED_TARGET_CHECKPOINT_EXECUTION_MODE_MISMATCH")
 
     rows = [
         json.loads(line)
@@ -1213,14 +1396,43 @@ def _validate_evaluation_integrity(evaluation_root: Path) -> str:
     ]
     if comparisons != expected_comparisons:
         raise ValueError("FIXED_TARGET_DERIVED_SUMMARY_MISMATCH")
+    expected_examples = _examples(
+        rows,
+        sorted(canonical_dataset["validation"], key=lambda row: row["task_id"]),
+        config["variants"],
+        config["seeds"],
+    )
+    if (evaluation_root / "human-readable-examples.md").read_text(
+        encoding="utf-8"
+    ) != expected_examples:
+        raise ValueError("FIXED_TARGET_HUMAN_EXAMPLES_MISMATCH")
 
-    expected_payload = canonical_replay_payload(evaluation_root, manifest, rows)
+    sharded = config.get("training_execution_mode") == "TRAINED_IN_ATTEMPT_SHARDED"
+    if sharded:
+        from scripts.fixed_target_quality_sharded import (  # noqa: PLC0415
+            sharded_canonical_replay_hash,
+            sharded_canonical_replay_payload,
+            validate_persisted_runtime11_run,
+        )
+
+        for variant in config["variants"]:
+            for seed in config["seeds"]:
+                validate_persisted_runtime11_run(
+                    evaluation_root, config, variant, seed
+                )
+
+        replay_payload = sharded_canonical_replay_payload
+        replay_hash = sharded_canonical_replay_hash
+    else:
+        replay_payload = canonical_replay_payload
+        replay_hash = canonical_replay_hash
+    expected_payload = replay_payload(evaluation_root, manifest, rows)
     persisted_payload = json.loads(
         (evaluation_root / "canonical-semantic-payload.json").read_text(encoding="utf-8")
     )
     if persisted_payload != expected_payload:
         raise ValueError("FIXED_TARGET_CANONICAL_SEMANTIC_PAYLOAD_MISMATCH")
-    replay = canonical_replay_hash(evaluation_root, manifest, rows)
+    replay = replay_hash(evaluation_root, manifest, rows)
     if (evaluation_root / "replay-hash.txt").read_text().strip() != replay:
         raise ValueError("FIXED_TARGET_REPLAY_HASH_MISMATCH")
     return replay
@@ -1370,9 +1582,13 @@ def _validate_preflight(
         raise ValueError("FIXED_TARGET_PREFLIGHT_RUNTIME_MISMATCH")
     if preflight["target_observation"] != attempt["target_observation"]:
         raise ValueError("FIXED_TARGET_PREFLIGHT_OBSERVATION_MISMATCH")
-    inventory = validate_source_inventory(
-        preflight["source_inventory"],
-        implementation_commit=acceptance["implementation_commit"],
+    inventory_validator = (
+        validate_sharded_source_inventory
+        if attempt["training_execution_mode"] == "TRAINED_IN_ATTEMPT_SHARDED"
+        else validate_source_inventory
+    )
+    inventory = inventory_validator(
+        preflight["source_inventory"], implementation_commit=acceptance["implementation_commit"]
     )
     if inventory["source_inventory_sha256"] != attempt["source_inventory_sha256"]:
         raise ValueError("FIXED_TARGET_SOURCE_INVENTORY_MISMATCH")
@@ -1397,6 +1613,7 @@ def validate_acceptance_bundle(root: Path) -> dict[str, Any]:
     if {path.name for path in root.iterdir()} != expected_root:
         raise ValueError("FIXED_TARGET_BUNDLE_ROOT_COVERAGE_MISMATCH")
 
+    execution_provenance = []
     for index, attempt in enumerate(acceptance["attempts"], start=1):
         attempt_root = root / f"attempt-{index}"
         _validate_attempt_shape(attempt_root)
@@ -1423,6 +1640,49 @@ def validate_acceptance_bundle(root: Path) -> dict[str, Any]:
             raise ValueError("FIXED_TARGET_EXECUTION_OBSERVATION_MISMATCH")
         if execution["source_inventory_sha256"] != attempt["source_inventory_sha256"]:
             raise ValueError("FIXED_TARGET_EXECUTION_SOURCE_INVENTORY_MISMATCH")
+        evaluation_root = attempt_root / "evaluation"
+        evaluation_config = _read_json(
+            evaluation_root / "evaluation-config.json",
+            "FIXED_TARGET_EVALUATION_CONFIG_INVALID",
+        )
+        training_configs = [
+            _read_json(path, "FIXED_TARGET_TRAINING_CONFIG_INVALID")
+            for path in sorted(evaluation_root.glob("training-runs/*/seed-*/training-config.json"))
+        ]
+        validate_execution_binding_contract(
+            execution,
+            acceptance=acceptance,
+            attempt=attempt,
+            preflight=preflight,
+            evaluation_config=evaluation_config,
+            target_observation=attempt["target_observation"],
+            training_configs=training_configs,
+        )
+        derived_claims = _derive_claim_identities(evaluation_root)
+        if derived_claims != attempt["claim_identities"]:
+            raise ValueError("FIXED_TARGET_CLAIM_IDENTITIES_MISMATCH")
+        observed_foreach, observed_fused = _derive_optimizer_execution(evaluation_root)
+        if (
+            observed_foreach != attempt["observed_optimizer_foreach"]
+            or observed_fused != attempt["observed_optimizer_fused"]
+        ):
+            raise ValueError("FIXED_TARGET_OPTIMIZER_EXECUTION_MISMATCH")
+        if execution["evaluation_root_identity"] != derived_claims["replay_hash"]:
+            raise ValueError("FIXED_TARGET_EVALUATION_ROOT_IDENTITY_MISMATCH")
+        execution_provenance.append(
+            {
+                "evaluator_version": execution["evaluator_version"],
+                "evaluator_source_sha256": execution["evaluator_source_sha256"],
+                "execution_topology": execution.get("execution_topology"),
+                "scientific_policy_sha256": execution["scientific_policy_sha256"],
+                "requirements_lock_sha256": execution["requirements_lock_sha256"],
+            }
+        )
+
+    if execution_provenance and any(
+        block != execution_provenance[0] for block in execution_provenance[1:]
+    ):
+        raise ValueError("FIXED_TARGET_CROSS_ATTEMPT_PROVENANCE_MISMATCH")
 
     return {
         "valid": True,

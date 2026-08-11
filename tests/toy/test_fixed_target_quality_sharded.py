@@ -1,0 +1,687 @@
+from __future__ import annotations
+
+import copy
+import json
+import os
+import shutil
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from jsonschema import Draft202012Validator, ValidationError
+
+from scripts.fixed_target_contract import (
+    build_scientific_policy,
+    sha256_bytes,
+    validate_execution_evidence_manifest,
+)
+from scripts.fixed_target_quality_sharded import (
+    EXECUTION_MODE,
+    QUALIFICATION_RUNTIME_FIELDS,
+    _train_runtime11,
+    assemble,
+    attempt_identity,
+    checkout_commit,
+    collect_runtime11_observation,
+    qualification_runtime_profile,
+    sharded_canonical_replay_hash,
+    unit_identity,
+    validate_attempt,
+    validate_checkout_source_inventory,
+    validate_persisted_runtime11_run,
+    validate_runtime11_optimizer,
+    validate_unit_artifacts,
+    validate_unit_manifest,
+    verify_qualification_unit,
+)
+from tests.toy.test_fixed_cpu_target import valid_contract
+
+SCHEMA = json.loads(
+    (
+        Path(__file__).parents[2] / "planner_toy/schemas/fixed_target_quality_unit.schema.json"
+    ).read_text()
+)
+H = "sha256:" + "1" * 64
+
+
+@pytest.fixture(scope="module", autouse=True)
+def runtime11_environment():
+    previous = {
+        name: os.environ.get(name)
+        for name in (
+            "ATEN_CPU_CAPABILITY",
+            "MKL_CBWR",
+            "OMP_NUM_THREADS",
+            "MKL_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "NUMEXPR_NUM_THREADS",
+        )
+    }
+    os.environ.update(
+        {
+            "ATEN_CPU_CAPABILITY": "default",
+            "MKL_CBWR": "COMPATIBLE",
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "NUMEXPR_NUM_THREADS": "1",
+        }
+    )
+    yield
+    for name, value in previous.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
+
+
+def manifest() -> dict:
+    return {
+        "unit_evidence_version": "toy-quality-fixed-target-sharded-unit/1.0",
+        "attempt_identity_sha256": H,
+        "scientific_parent_implementation_commit": ("779172c3bbca3d03552deaed6421e82fcf19a932"),
+        "execution_implementation_commit": "1" * 40,
+        "execution_context": "qualification-only",
+        "variant": "A2",
+        "seed": 17,
+        "dataset_hash": H,
+        "ordered_train_task_ids": ["bw-00000001", "bw-00000002", "bw-00000003"],
+        "ordered_eval_task_ids": ["bw-00000004", "bw-00000005"],
+        "epochs": 3,
+        "updates": 9,
+        "training_execution_mode": EXECUTION_MODE,
+        "optimizer": {
+            "class": "AdamW",
+            "learning_rate": 0.0003,
+            "betas": [0.9, 0.95],
+            "eps": 1e-8,
+            "weight_decay": 0.01,
+            "gradient_clip_norm": 1.0,
+            "observed_foreach": False,
+            "observed_fused": False,
+        },
+        "runtime_contract_sha256": H,
+        "target_observation_sha256": H,
+        "source_inventory_sha256": H,
+        "observation": {},
+        "checkpoint_manifest_sha256": H,
+        "task_results_sha256": H,
+        "unit_manifest_sha256": H,
+    }
+
+
+def assert_schema_rejects(field: str, value) -> None:
+    candidate = manifest()
+    if field.startswith("optimizer."):
+        candidate["optimizer"][field.split(".")[1]] = value
+    else:
+        candidate[field] = value
+    assert list(Draft202012Validator(SCHEMA).iter_errors(candidate))
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("variant", "A1"),
+        ("seed", 99),
+        ("ordered_train_task_ids", []),
+        ("ordered_eval_task_ids", []),
+        ("epochs", 2),
+        ("updates", 8),
+        ("optimizer.observed_foreach", None),
+        ("optimizer.observed_foreach", True),
+        ("optimizer.observed_fused", None),
+        ("optimizer.observed_fused", True),
+        ("training_execution_mode", "REUSED_FROM_PRIOR_ATTEMPT"),
+    ],
+)
+def test_unit_schema_rejects_contract_drift(field: str, value) -> None:
+    assert_schema_rejects(field, value)
+
+
+def test_unit_schema_is_closed() -> None:
+    candidate = manifest()
+    candidate["unexpected"] = True
+    assert list(Draft202012Validator(SCHEMA).iter_errors(candidate))
+
+
+def test_unit_manifest_reseal_changes_identity() -> None:
+    candidate = manifest()
+    first = unit_identity(candidate)
+    candidate["variant"] = "A3"
+    assert unit_identity(candidate) != first
+
+
+def test_attempt_nonce_binds_units_but_can_be_excluded_from_numerical_claims() -> None:
+    first = {"attempt_nonce": "Q1", "attempt_identity_sha256": ""}
+    second = copy.deepcopy(first)
+    second["attempt_nonce"] = "Q2"
+    assert attempt_identity(first) != attempt_identity(second)
+
+
+def _minimal_replay_root(root: Path, attempt_identity_sha256: str) -> tuple[dict, list[dict]]:
+    from planner_toy import quality as quality
+    from scripts.fixed_target_quality_sharded import (
+        SHARDED_OPERATIONAL_FIELDS,
+        SHARDED_STABLE_REPLAY_FIELDS,
+    )
+
+    config = {
+        field: f"value:{field}"
+        for field in SHARDED_STABLE_REPLAY_FIELDS | SHARDED_OPERATIONAL_FIELDS
+    }
+    config.update(
+        {
+            "attempt_identity_sha256": attempt_identity_sha256,
+            "variants": ["A2"],
+            "seeds": [17],
+            "variant_mapping": {},
+            "train_task_ids": ["train"],
+            "eval_task_ids": ["eval"],
+            "epochs": 3,
+            "optimizer": {"name": "AdamW"},
+            "checkpoint_origin_run_hash": None,
+            "reuse_source_manifest_hash": None,
+        }
+    )
+    (root / "training-runs/A2/seed-17").mkdir(parents=True)
+    (root / "training-runs/A2/seed-17/checkpoint-manifest.json").write_text(
+        json.dumps(
+            {
+                "canonical_initialization_state_dict_sha256": H,
+                "canonical_trained_state_dict_sha256": H,
+                "canonical_optimizer_state_sha256": H,
+            }
+        )
+    )
+    for name, value in {
+        "evaluation-config.json": config,
+        "dataset-manifest.json": {},
+        "per-seed-summary.json": {},
+        "aggregate-summary.json": {},
+        "paired-comparisons.json": [],
+    }.items():
+        (root / name).write_text(json.dumps(value))
+    manifest = {
+        "evaluator_version": "development-quality-evaluation/0.1-runtime1.1-sharded/1.0",
+        "evaluator_source_sha256": H,
+        "variants": ["A2"],
+        "seeds": [17],
+        "variant_mapping": {},
+    }
+    rows = []
+    assert quality.canonical_replay_hash(root, manifest, rows)
+    return manifest, rows
+
+
+def test_sharded_replay_excludes_attempt_identity_but_retains_provenance(tmp_path) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    manifest1, rows1 = _minimal_replay_root(first, "sha256:" + "1" * 64)
+    manifest2, rows2 = _minimal_replay_root(second, "sha256:" + "2" * 64)
+    assert sharded_canonical_replay_hash(first, manifest1, rows1) == (
+        sharded_canonical_replay_hash(second, manifest2, rows2)
+    )
+    config = json.loads((second / "evaluation-config.json").read_text())
+    config["source_inventory_sha256"] = "sha256:" + "3" * 64
+    (second / "evaluation-config.json").write_text(json.dumps(config))
+    assert sharded_canonical_replay_hash(first, manifest1, rows1) != (
+        sharded_canonical_replay_hash(second, manifest2, rows2)
+    )
+
+
+def test_sharded_replay_rejects_unknown_operational_field(tmp_path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    manifest, rows = _minimal_replay_root(root, H)
+    config_path = root / "evaluation-config.json"
+    config = json.loads(config_path.read_text())
+    config["unreviewed_workflow_field"] = "forged"
+    config_path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="REPLAY_CONFIG_FIELDS_MISMATCH"):
+        sharded_canonical_replay_hash(root, manifest, rows)
+
+
+def test_assemble_happy_path_emits_context_bound_replay_and_evidence(
+    sealed_unit, tmp_path, monkeypatch
+) -> None:
+    root = tmp_path / "attempt"
+    source_rows = [
+        json.loads(line)
+        for line in (sealed_unit / "units/A2/seed-17/task-results.jsonl")
+        .read_text()
+        .splitlines()
+    ]
+    for variant in ("A2", "A3", "A4"):
+        for seed in (17, 29, 43):
+            unit = root / "units" / variant / f"seed-{seed}"
+            training = unit / "training"
+            evidence = unit / "evidence"
+            training.mkdir(parents=True)
+            evidence.mkdir()
+            (training / "checkpoint-manifest.json").write_text(
+                json.dumps(
+                    {
+                        "canonical_initialization_state_dict_sha256": H,
+                        "canonical_trained_state_dict_sha256": H,
+                        "canonical_optimizer_state_sha256": H,
+                    }
+                )
+            )
+            rows = []
+            for source in source_rows:
+                row = copy.deepcopy(source)
+                row["variant"] = variant
+                row["seed"] = seed
+                rows.append(row)
+            (unit / "task-results.jsonl").write_text(
+                "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows)
+            )
+            (unit / "unit-manifest.json").write_text(
+                json.dumps({"variant": variant, "seed": seed})
+            )
+    attempt = {
+        "attempt_identity_sha256": H,
+        "execution_implementation_commit": checkout_commit(),
+        "scientific_parent_implementation_commit": (
+            "779172c3bbca3d03552deaed6421e82fcf19a932"
+        ),
+        "source_inventory_sha256": H,
+        "target_contract_sha256": H,
+        "runtime_contract_sha256": H,
+        "target_observation_sha256": H,
+        "scientific_policy_sha256": build_scientific_policy()["scientific_policy_sha256"],
+        "execution_context": "qualification-only",
+    }
+    root.mkdir(exist_ok=True)
+    (root / "scientific-policy.json").write_text(json.dumps(build_scientific_policy()))
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.validate_attempt", lambda _: (attempt, {})
+    )
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.validate_unit_manifest", lambda *args: None
+    )
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.validate_unit_artifacts", lambda *args: None
+    )
+    result = assemble(root)
+    assert result["units"] == 9
+    config = json.loads((root / "evaluation/evaluation-config.json").read_text())
+    evidence = json.loads((root / "execution-evidence.json").read_text())
+    assert config["execution_context"] == "qualification-only"
+    assert evidence["execution_context"] == config["execution_context"]
+    validate_execution_evidence_manifest(evidence)
+    assert (root / "evaluation/replay-hash.txt").read_text().strip() == result["replay_hash"]
+
+
+def test_qualification_profile_rejects_numerical_runtime_drift() -> None:
+    contract = valid_contract()
+    observation = collect_runtime11_observation(contract, "qualification-only")
+    for field in QUALIFICATION_RUNTIME_FIELDS:
+        contract[field] = observation[field]
+    observation = collect_runtime11_observation(contract, "qualification-only")
+    assert qualification_runtime_profile(contract, observation)["compatible"] is True
+    contract["torch_num_threads"] = 2
+    with pytest.raises(ValueError, match="QUALIFICATION_RUNTIME_MISMATCH"):
+        qualification_runtime_profile(contract, observation)
+
+
+@pytest.mark.parametrize(
+    ("foreach", "fused"), [(None, False), (True, False), (False, None), (False, True)]
+)
+def test_runtime11_optimizer_rejects_non_false(foreach, fused) -> None:
+    with pytest.raises(ValueError, match="REQUIRED_FALSE"):
+        validate_runtime11_optimizer(SimpleNamespace(defaults={"foreach": foreach, "fused": fused}))
+
+
+def test_runtime11_optimizer_accepts_explicit_false() -> None:
+    validate_runtime11_optimizer(SimpleNamespace(defaults={"foreach": False, "fused": False}))
+
+
+def test_qualification_observation_is_actual_not_formal_target() -> None:
+    forged = valid_contract()
+    forged["os_version"] = "FORGED EXPECTED OS"
+    observed = collect_runtime11_observation(forged, "qualification-only")
+    assert observed["os_version"] != forged["os_version"]
+    assert observed["runner_type"] == "codex-managed-container-qualification-only"
+    assert observed["runner_image"] != valid_contract()["runner_image"]
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "scripts/fixed_target_contract.py",
+        "planner_toy/schemas/fixed_target_observation.schema.json",
+    ],
+)
+def test_checkout_inventory_detects_transitive_source_mutation(
+    tmp_path, monkeypatch, relative
+) -> None:
+    source = tmp_path / relative
+    source.parent.mkdir(parents=True)
+    source.write_text("original")
+    inventory = {"files": [{"path": relative, "sha256": sha256_bytes(b"original")}]}
+    monkeypatch.setattr("scripts.fixed_target_quality_sharded.ROOT", tmp_path)
+    validate_checkout_source_inventory(inventory)
+    source.write_text("mutated")
+    with pytest.raises(ValueError, match="SOURCE_TREE_DRIFT"):
+        validate_checkout_source_inventory(inventory)
+
+
+@pytest.fixture(scope="module")
+def sealed_unit(tmp_path_factory) -> Path:
+    from scripts.fixed_target_quality_sharded import initialize_attempt, run_unit
+
+    root = tmp_path_factory.mktemp("sharded-attempt")
+    contract = valid_contract()
+    observation = collect_runtime11_observation(contract, "qualification-only")
+    for field in QUALIFICATION_RUNTIME_FIELDS:
+        contract[field] = observation[field]
+    observation = collect_runtime11_observation(contract, "qualification-only")
+    initialize_attempt(
+        root,
+        contract,
+        checkout_commit(),
+        "qualification-only",
+        "mutation-fixture",
+        observation,
+    )
+    run_unit(root, "A2", 17, observation)
+    return root
+
+
+def _unit(root: Path) -> tuple[Path, dict]:
+    path = root / "units/A2/seed-17"
+    return path, json.loads((path / "unit-manifest.json").read_text())
+
+
+def _reseal_unit(path: Path, manifest: dict) -> None:
+    manifest["unit_manifest_sha256"] = unit_identity(manifest)
+    (path / "unit-manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n")
+
+
+@pytest.mark.parametrize(
+    "relative",
+    ["training/initialization.pt", "training/trained.pt", "training/optimizer-state.pt"],
+)
+def test_tensor_artifact_mutation_rejected(sealed_unit, tmp_path, relative) -> None:
+    root = tmp_path / "copy"
+    shutil.copytree(sealed_unit, root)
+    path, manifest = _unit(root)
+    artifact = path / relative
+    artifact.write_bytes(artifact.read_bytes() + b"tamper")
+    with pytest.raises((ValueError, RuntimeError)):
+        validate_unit_artifacts(path, manifest)
+
+
+@pytest.mark.parametrize(
+    ("relative", "checkpoint_hash_field"),
+    [
+        ("training/training-config.json", "config_hash"),
+        ("training/training-report.json", "training_report_file_sha256"),
+        ("training/optimizer-evidence.json", "optimizer_evidence_file_sha256"),
+    ],
+)
+def test_resealed_claim_artifact_mutation_rejected(
+    sealed_unit, tmp_path, relative, checkpoint_hash_field
+) -> None:
+    root = tmp_path / "copy"
+    shutil.copytree(sealed_unit, root)
+    path, manifest = _unit(root)
+    artifact = path / relative
+    value = json.loads(artifact.read_text())
+    value["unexpected_review_mutation"] = True
+    artifact.write_text(json.dumps(value))
+    checkpoint_path = path / "training/checkpoint-manifest.json"
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint[checkpoint_hash_field] = sha256_bytes(artifact.read_bytes())
+    checkpoint_path.write_text(json.dumps(checkpoint))
+    manifest["checkpoint_manifest_sha256"] = sha256_bytes(checkpoint_path.read_bytes())
+    _reseal_unit(path, manifest)
+    with pytest.raises((ValueError, ValidationError)):
+        validate_unit_artifacts(path, manifest)
+
+
+def test_resealed_task_result_mutation_rejected(sealed_unit, tmp_path) -> None:
+    root = tmp_path / "copy"
+    shutil.copytree(sealed_unit, root)
+    path, manifest = _unit(root)
+    results = path / "task-results.jsonl"
+    rows = [json.loads(line) for line in results.read_text().splitlines()]
+    rows[0]["goal_reached"] = not rows[0]["goal_reached"]
+    results.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows))
+    manifest["task_results_sha256"] = sha256_bytes(results.read_bytes())
+    _reseal_unit(path, manifest)
+    with pytest.raises((ValueError, ValidationError)):
+        validate_unit_artifacts(path, manifest)
+
+
+def test_evidence_mutation_rejected(sealed_unit, tmp_path) -> None:
+    root = tmp_path / "copy"
+    shutil.copytree(sealed_unit, root)
+    path, manifest = _unit(root)
+    evidence = next((path / "evidence").glob("*/episode-log.json"))
+    evidence.write_bytes(evidence.read_bytes() + b" ")
+    with pytest.raises((ValueError, ValidationError)):
+        validate_unit_artifacts(path, manifest)
+
+
+def test_missing_and_extra_artifacts_rejected(sealed_unit, tmp_path) -> None:
+    for mode in ("missing", "extra"):
+        root = tmp_path / mode
+        shutil.copytree(sealed_unit, root)
+        path, manifest = _unit(root)
+        if mode == "missing":
+            (path / "training/training-report.json").unlink()
+        else:
+            (path / "extra.bin").write_bytes(b"x")
+        with pytest.raises(ValueError, match="COVERAGE_MISMATCH"):
+            validate_unit_artifacts(path, manifest)
+
+
+def test_other_attempt_and_execution_commit_rejected(sealed_unit, tmp_path) -> None:
+    root = tmp_path / "copy"
+    shutil.copytree(sealed_unit, root)
+    attempt_path = root / "attempt-id.json"
+    attempt = json.loads(attempt_path.read_text())
+    attempt["execution_implementation_commit"] = "1" * 40
+    attempt["attempt_identity_sha256"] = attempt_identity(attempt)
+    attempt_path.write_text(json.dumps(attempt))
+    with pytest.raises(ValueError):
+        validate_attempt(root)
+
+
+def test_stale_checkout_rejected(sealed_unit, monkeypatch) -> None:
+    monkeypatch.setattr("scripts.fixed_target_quality_sharded.checkout_commit", lambda: "2" * 40)
+    with pytest.raises(ValueError, match="NOT_CHECKED_OUT"):
+        validate_attempt(sealed_unit)
+
+
+def test_unit_from_another_attempt_rejected(sealed_unit) -> None:
+    path, unit_manifest = _unit(sealed_unit)
+    attempt = json.loads((sealed_unit / "attempt-id.json").read_text())
+    contract = json.loads((sealed_unit / "target-contract.json").read_text())
+    unit_manifest["attempt_identity_sha256"] = "sha256:" + "9" * 64
+    unit_manifest["unit_manifest_sha256"] = unit_identity(unit_manifest)
+    with pytest.raises(ValueError, match="BINDING_MISMATCH"):
+        validate_unit_manifest(unit_manifest, attempt, contract)
+
+
+def test_fully_resealed_contradictory_unit_rejected(sealed_unit, tmp_path) -> None:
+    root = tmp_path / "copy"
+    shutil.copytree(sealed_unit, root)
+    path, unit_manifest = _unit(root)
+    unit_manifest["seed"] = 29
+    _reseal_unit(path, unit_manifest)
+    with pytest.raises(ValueError):
+        validate_unit_artifacts(path, unit_manifest)
+
+
+def test_fully_resealed_initialization_lineage_rejected(sealed_unit, tmp_path) -> None:
+    import torch
+
+    from planner_toy.numeric_identity import canonical_state_dict_sha256
+    from planner_toy.training import state_dict_sha256
+
+    root = tmp_path / "copy"
+    shutil.copytree(sealed_unit, root)
+    path, unit_manifest = _unit(root)
+    initialization_path = path / "training/initialization.pt"
+    initialization = torch.load(initialization_path, map_location="cpu", weights_only=True)
+    first = next(iter(initialization))
+    initialization[first] = initialization[first].clone()
+    initialization[first].view(-1)[0] += 1.0
+    torch.save(initialization, initialization_path)
+    checkpoint_path = path / "training/checkpoint-manifest.json"
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint["initialization_file_sha256"] = sha256_bytes(initialization_path.read_bytes())
+    checkpoint["initialization_state_dict_sha256"] = state_dict_sha256(initialization)
+    checkpoint["canonical_initialization_state_dict_sha256"] = canonical_state_dict_sha256(
+        initialization
+    )
+    checkpoint_path.write_text(json.dumps(checkpoint))
+    unit_manifest["checkpoint_manifest_sha256"] = sha256_bytes(checkpoint_path.read_bytes())
+    _reseal_unit(path, unit_manifest)
+    with pytest.raises(ValueError, match="REPLAY_MISMATCH"):
+        validate_unit_artifacts(path, unit_manifest)
+
+
+def test_resealed_checkpoint_extra_claim_rejected(sealed_unit, tmp_path) -> None:
+    root = tmp_path / "copy"
+    shutil.copytree(sealed_unit, root)
+    path, unit_manifest = _unit(root)
+    checkpoint_path = path / "training/checkpoint-manifest.json"
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint["unreviewed_claim"] = "forged"
+    checkpoint_path.write_text(json.dumps(checkpoint))
+    unit_manifest["checkpoint_manifest_sha256"] = sha256_bytes(checkpoint_path.read_bytes())
+    _reseal_unit(path, unit_manifest)
+    with pytest.raises(ValidationError):
+        validate_unit_artifacts(path, unit_manifest)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "os_version",
+        "runner_image",
+        "cpu_model",
+        "microcode",
+        "kernel_version",
+        "python_version",
+        "torch_version",
+        "torch_build_configuration_sha256",
+        "actual_atten_cpu_capability",
+        "torch_num_threads",
+        "deterministic_algorithms",
+        "mkldnn_enabled",
+    ],
+)
+def test_resealed_forged_observation_rejected(sealed_unit, tmp_path, field) -> None:
+    root = tmp_path / "copy"
+    shutil.copytree(sealed_unit, root)
+    observation_path = root / "initial-observation.json"
+    observation = json.loads(observation_path.read_text())
+    observation[field] = "forged"
+    observation["observation_sha256"] = ""
+    from scripts.fixed_target_contract import observation_sha256
+
+    observation["observation_sha256"] = observation_sha256(observation)
+    observation_path.write_text(json.dumps(observation))
+    attempt_path = root / "attempt-id.json"
+    attempt = json.loads(attempt_path.read_text())
+    attempt["target_observation_sha256"] = observation["observation_sha256"]
+    attempt["attempt_identity_sha256"] = attempt_identity(attempt)
+    attempt_path.write_text(json.dumps(attempt))
+    with pytest.raises(ValueError, match="NOT_LIVE|OBSERVATION_FORGED"):
+        validate_attempt(root)
+
+
+def test_runtime11_training_resets_rng_before_model(monkeypatch, tmp_path) -> None:
+    calls = []
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.q.configure_canonical_cpu_runtime",
+        lambda seed: calls.append(seed),
+    )
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.q.LockedPlanner",
+        lambda *_: (_ for _ in ()).throw(RuntimeError("stop-after-reset")),
+    )
+    with pytest.raises(RuntimeError, match="stop-after-reset"):
+        _train_runtime11([], "A2", 29, tmp_path, "sha256:" + "0" * 64)
+    assert calls == [29]
+
+
+def test_verify_unit_rejects_post_replay_observation_drift(monkeypatch, tmp_path) -> None:
+    attempt = {
+        "execution_context": "qualification-only",
+        "attempt_identity_sha256": H,
+        "target_observation_sha256": H,
+    }
+    unit = tmp_path / "units/A2/seed-17"
+    unit.mkdir(parents=True)
+    unit_manifest = {
+        "variant": "A2",
+        "seed": 17,
+        "attempt_identity_sha256": H,
+        "unit_manifest_sha256": H,
+        "target_observation_sha256": H,
+    }
+    (unit / "unit-manifest.json").write_text(json.dumps(unit_manifest))
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.validate_attempt", lambda root: (attempt, {})
+    )
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.validate_unit_manifest", lambda *args: None
+    )
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.validate_unit_artifacts", lambda *args: None
+    )
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.collect_runtime11_observation",
+        lambda *args: {"observation_sha256": "sha256:" + "2" * 64},
+    )
+    with pytest.raises(ValueError, match="CHANGED_DURING_VERIFICATION"):
+        verify_qualification_unit(tmp_path, "A2", 17)
+
+
+def test_formal_persisted_run_rejects_fully_resealed_checkpoint(
+    sealed_unit, tmp_path
+) -> None:
+    import torch
+
+    from planner_toy.numeric_identity import canonical_state_dict_sha256
+    from planner_toy.training import state_dict_sha256
+
+    source = sealed_unit / "units/A2/seed-17"
+    evaluation = tmp_path / "evaluation"
+    training = evaluation / "training-runs/A2/seed-17"
+    evidence = evaluation / "evidence/A2/seed-17"
+    shutil.copytree(source / "training", training)
+    shutil.copytree(source / "evidence", evidence)
+    shutil.copy2(source / "task-results.jsonl", evaluation / "task-results.jsonl")
+    config = {
+        "dataset_manifest_hash": json.loads(
+            (training / "checkpoint-manifest.json").read_text()
+        )["dataset_hash"],
+        "train_task_ids": ["bw-00000001", "bw-00000002", "bw-00000003"],
+        "eval_task_ids": ["bw-00000004", "bw-00000005"],
+        "epochs": 3,
+    }
+    trained_path = training / "trained.pt"
+    trained = torch.load(trained_path, map_location="cpu", weights_only=True)
+    first = next(iter(trained))
+    trained[first].view(-1)[0] += 1.0
+    torch.save(trained, trained_path)
+    checkpoint_path = training / "checkpoint-manifest.json"
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint["trained_file_sha256"] = sha256_bytes(trained_path.read_bytes())
+    checkpoint["trained_state_dict_sha256"] = state_dict_sha256(trained)
+    checkpoint["canonical_trained_state_dict_sha256"] = canonical_state_dict_sha256(trained)
+    checkpoint_path.write_text(json.dumps(checkpoint))
+    with pytest.raises(
+        ValueError, match="REPLAY_MISMATCH|TASK_RESULT_SEMANTICS|REQUEST_BINDING_MISMATCH"
+    ):
+        validate_persisted_runtime11_run(evaluation, config, "A2", 17)

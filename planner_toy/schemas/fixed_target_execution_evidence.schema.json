@@ -36,6 +36,16 @@
       "type": "string",
       "pattern": "^[0-9a-f]{40}$"
     },
+    "scientific_parent_implementation_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "execution_topology": {
+      "enum": ["SHARDED_VARIANT_SEED_SUBPROCESSES"]
+    },
+    "execution_context": {
+      "enum": ["formal-fixed-target", "qualification-only"]
+    },
     "target_contract_sha256": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
@@ -184,5 +194,24 @@
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "evaluator_version": {
+            "const": "development-quality-evaluation/0.1-runtime1.1-sharded/1.0"
+          }
+        },
+        "required": ["evaluator_version"]
+      },
+      "then": {
+        "required": [
+          "scientific_parent_implementation_commit",
+          "execution_topology",
+          "execution_context"
+        ]
+      }
+    }
+  ]
 }

@@ -216,6 +216,7 @@
           "training_execution_mode": {
             "enum": [
               "TRAINED_IN_RUN",
+              "TRAINED_IN_ATTEMPT_SHARDED",
               "REUSED"
             ]
           },
