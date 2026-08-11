@@ -84,6 +84,9 @@ _FIXED_TARGET_SOURCE_ADDITIONS = {
     "pyproject.toml",
     "scripts/fixed_target_contract.py",
     "scripts/run_fixed_target_acceptance.py",
+    "scripts/fixed_target_quality_sharded.py",
+    "scripts/run_fixed_target_quality_evaluation.py",
+    "planner_toy/schemas/fixed_target_quality_unit.schema.json",
 }
 _QUALITY_SOURCE_LOCK_SHA256 = (
     "sha256:9205ad312fc37fa9927505e9c44a599e29fc5e31180db9d2e49ebfcc247b4570"

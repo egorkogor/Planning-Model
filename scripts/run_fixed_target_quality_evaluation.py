@@ -15,6 +15,12 @@ def main() -> int:
     init.add_argument("--attempt-root", type=Path, required=True)
     init.add_argument("--target-contract", type=Path, required=True)
     init.add_argument("--nonce")
+    init.add_argument("--execution-implementation-commit", required=True)
+    init.add_argument(
+        "--execution-context",
+        choices=("formal-fixed-target", "qualification-only"),
+        required=True,
+    )
     unit = sub.add_parser("run-unit")
     unit.add_argument("--attempt-root", type=Path, required=True)
     unit.add_argument("--variant", required=True)
@@ -37,7 +43,6 @@ def main() -> int:
         "NUMEXPR_NUM_THREADS",
     ):
         os.environ[name] = str(contract[name])
-    os.environ["FIXED_TARGET_RUNNER_IMAGE"] = contract["runner_image"]
     from scripts.fixed_target_contract import prepare_process_environment  # noqa: PLC0415
 
     prepare_process_environment(contract)
@@ -49,10 +54,23 @@ def main() -> int:
         run_unit,
     )
 
-    observation = collect_runtime11_observation(contract)
+    if args.command == "init-attempt":
+        execution_context = args.execution_context
+    else:
+        execution_context = json.loads((args.attempt_root / "attempt-id.json").read_text())[
+            "execution_context"
+        ]
+    observation = collect_runtime11_observation(contract, execution_context)
 
     if args.command == "init-attempt":
-        result = initialize_attempt(args.attempt_root, contract, args.nonce, observation)
+        result = initialize_attempt(
+            args.attempt_root,
+            contract,
+            args.execution_implementation_commit,
+            execution_context,
+            args.nonce,
+            observation,
+        )
     elif args.command == "run-unit":
         result = run_unit(args.attempt_root, args.variant, args.seed, observation)
     else:
