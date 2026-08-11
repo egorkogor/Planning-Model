@@ -25,8 +25,13 @@ def main() -> int:
     unit.add_argument("--attempt-root", type=Path, required=True)
     unit.add_argument("--variant", required=True)
     unit.add_argument("--seed", type=int, required=True)
+    verify = sub.add_parser("verify-unit")
+    verify.add_argument("--attempt-root", type=Path, required=True)
+    verify.add_argument("--variant", required=True)
+    verify.add_argument("--seed", type=int, required=True)
     finish = sub.add_parser("assemble")
     finish.add_argument("--attempt-root", type=Path, required=True)
+    finish.add_argument("--qualification-receipts", action="store_true")
     package = sub.add_parser("package-foundation-attempt")
     package.add_argument("--attempt-root", type=Path, required=True)
     package.add_argument("--destination", type=Path, required=True)
@@ -57,6 +62,7 @@ def main() -> int:
         initialize_attempt,
         package_foundation_attempt,
         run_unit,
+        verify_qualification_unit,
     )
 
     if args.command == "init-attempt":
@@ -78,8 +84,12 @@ def main() -> int:
         )
     elif args.command == "run-unit":
         result = run_unit(args.attempt_root, args.variant, args.seed, observation)
+    elif args.command == "verify-unit":
+        result = verify_qualification_unit(args.attempt_root, args.variant, args.seed)
     elif args.command == "assemble":
-        result = assemble(args.attempt_root)
+        result = assemble(
+            args.attempt_root, qualification_receipts=args.qualification_receipts
+        )
     else:
         result = package_foundation_attempt(args.attempt_root, args.destination, args.attempt_index)
     print(json.dumps(result, sort_keys=True))

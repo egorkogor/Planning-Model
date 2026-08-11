@@ -31,7 +31,7 @@ from scripts.fixed_target_contract import (
     runtime_contract_sha256,
     sha256_bytes,
     sha256_value,
-    source_inventory_at_commit,
+    sharded_source_inventory_at_commit,
     target_contract_sha256,
     validate_observation_against_contract,
     validate_runtime_contract,
@@ -56,6 +56,99 @@ TRAINING_RUN_FILES = {
     "training-config.json",
     "training-report.json",
 }
+SHARDED_REPLAY_VERSION = "toy-quality-sharded-canonical-replay/1.0"
+SHARDED_CONFIG_FIELDS = {
+    "schema_version",
+    "evaluator_version",
+    "scientific_parent_evaluator",
+    "variants",
+    "seeds",
+    "variant_mapping",
+    "train_task_ids",
+    "eval_task_ids",
+    "epochs",
+    "optimizer",
+    "checkpoint_policy",
+    "training_execution_mode",
+    "dataset_manifest_hash",
+    "implementation_commit",
+    "scientific_parent_implementation_commit",
+    "evaluator_source_sha256",
+    "requirements_lock_sha256",
+    "target_contract_sha256",
+    "runtime_contract_sha256",
+    "target_observation_sha256",
+    "source_inventory_sha256",
+    "scientific_policy_sha256",
+    "execution_topology",
+    "checkpoint_origin_run_hash",
+    "reuse_source_manifest_hash",
+}
+QUALIFICATION_RUNTIME_FIELDS = (
+    "python_implementation",
+    "python_version",
+    "python_build",
+    "python_compiler",
+    "torch_version",
+    "torch_build_configuration_sha256",
+    "ATEN_CPU_CAPABILITY",
+    "actual_atten_cpu_capability",
+    "MKL_CBWR",
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "torch_num_threads",
+    "torch_num_interop_threads",
+    "mkldnn_enabled",
+    "deterministic_algorithms",
+    "deterministic_warn_only",
+)
+
+
+def qualification_runtime_profile(contract: dict, observation: dict) -> dict:
+    """Bind qualification to numerical runtime controls, not physical target identity."""
+    expected = {field: contract[field] for field in QUALIFICATION_RUNTIME_FIELDS}
+    observed = {field: observation[field] for field in QUALIFICATION_RUNTIME_FIELDS}
+    mismatches = sorted(field for field in expected if expected[field] != observed[field])
+    profile = {
+        "qualification_runtime_profile_version": (
+            "toy-quality-runtime1.1-qualification-profile/1.0"
+        ),
+        "semantics": "NUMERICAL_RUNTIME_COMPATIBILITY_NOT_FORMAL_TARGET_IDENTITY",
+        "expected": expected,
+        "observed": observed,
+        "optimizer_foreach": False,
+        "optimizer_fused": False,
+        "compatible": not mismatches,
+        "mismatches": mismatches,
+    }
+    if mismatches:
+        raise ValueError(f"SHARDED_QUALIFICATION_RUNTIME_MISMATCH:{','.join(mismatches)}")
+    return profile
+
+
+def sharded_config_semantic_projection(config: dict) -> dict:
+    """Remove only the attempt-local binding from the closed sharded config."""
+    expected = SHARDED_CONFIG_FIELDS | {"attempt_identity_sha256"}
+    if set(config) != expected:
+        raise ValueError("SHARDED_REPLAY_CONFIG_FIELDS_MISMATCH")
+    return {field: config[field] for field in sorted(SHARDED_CONFIG_FIELDS)}
+
+
+def sharded_canonical_replay_payload(root: Path, manifest: dict, rows: list[dict]) -> dict:
+    """Versioned cross-attempt identity without nonce-derived orchestration data."""
+    payload = q.canonical_replay_payload(root, manifest, rows)
+    config = _read(root / "evaluation-config.json")
+    payload["schema_version"] = SHARDED_REPLAY_VERSION
+    payload["config_semantic_hash"] = sha256_value(
+        sharded_config_semantic_projection(config)
+    )
+    return payload
+
+
+def sharded_canonical_replay_hash(root: Path, manifest: dict, rows: list[dict]) -> str:
+    return sha256_value(sharded_canonical_replay_payload(root, manifest, rows))
 
 
 def checkout_commit() -> str:
@@ -67,28 +160,7 @@ def checkout_commit() -> str:
 
 def execution_source_inventory(execution_commit: str) -> dict:
     """PR19 inventory extended with every claim-bearing runtime/1.1 source."""
-    base = source_inventory_at_commit(execution_commit)
-    entries = {entry["path"]: entry for entry in base["files"]}
-    for path in (
-        "scripts/fixed_target_quality_sharded.py",
-        "scripts/run_fixed_target_quality_evaluation.py",
-        "planner_toy/schemas/fixed_target_quality_unit.schema.json",
-        "planner_toy/schemas/fixed_target_quality_checkpoint_manifest.schema.json",
-    ):
-        result = subprocess.run(
-            ["git", "show", f"{execution_commit}:{path}"],
-            cwd=ROOT,
-            capture_output=True,
-            check=True,
-        )
-        entries[path] = {"path": path, "sha256": sha256_bytes(result.stdout)}
-    files = [entries[path] for path in sorted(entries)]
-    return {
-        "source_inventory_version": SHARDED_SOURCE_INVENTORY_VERSION,
-        "implementation_commit": execution_commit,
-        "files": files,
-        "source_inventory_sha256": sha256_value(files),
-    }
+    return sharded_source_inventory_at_commit(execution_commit)
 
 
 def validate_checkout_source_inventory(inventory: dict) -> None:
@@ -250,6 +322,17 @@ def initialize_attempt(
     if observation is not None and observation != live_observation:
         raise ValueError("SHARDED_SUPPLIED_OBSERVATION_NOT_LIVE")
     observation = live_observation
+    qualification_profile = (
+        qualification_runtime_profile(target_contract, observation)
+        if execution_context == "qualification-only"
+        else {
+            "qualification_runtime_profile_version": (
+                "toy-quality-runtime1.1-qualification-profile/1.0"
+            ),
+            "semantics": "NOT_APPLICABLE_FORMAL_FIXED_TARGET",
+            "compatible": None,
+        }
+    )
     policy = build_scientific_policy()
     inventory = execution_source_inventory(execution_implementation_commit)
     validate_checkout_source_inventory(inventory)
@@ -267,6 +350,7 @@ def initialize_attempt(
         "runtime_contract_sha256": runtime_contract_sha256(runtime),
         "target_observation_sha256": observation["observation_sha256"],
         "source_inventory_sha256": inventory["source_inventory_sha256"],
+        "qualification_runtime_profile_sha256": sha256_value(qualification_profile),
         "variants": list(VARIANTS),
         "seeds": list(SEEDS),
         "ordered_train_task_ids": sorted(row["task_id"] for row in dataset["train"]),
@@ -281,6 +365,7 @@ def initialize_attempt(
     _write(root / "scientific-policy.json", policy)
     _write(root / "source-inventory.json", inventory)
     _write(root / "initial-observation.json", observation)
+    _write(root / "qualification-runtime-profile.json", qualification_profile)
     return descriptor
 
 
@@ -297,6 +382,7 @@ def validate_attempt(root: Path) -> tuple[dict, dict]:
     policy = _read(root / "scientific-policy.json")
     validate_scientific_policy(policy)
     initial_observation = _read(root / "initial-observation.json")
+    qualification_profile = _read(root / "qualification-runtime-profile.json")
     if attempt["execution_context"] == "formal-fixed-target":
         require_trusted_implementation_commit(attempt["execution_implementation_commit"])
     live_observation = collect_runtime11_observation(contract, attempt["execution_context"])
@@ -304,6 +390,14 @@ def validate_attempt(root: Path) -> tuple[dict, dict]:
         raise ValueError("SHARDED_INITIAL_OBSERVATION_NOT_LIVE")
     if attempt["execution_context"] == "formal-fixed-target":
         validate_observation_against_contract(contract, initial_observation)
+        if qualification_profile != {
+            "qualification_runtime_profile_version": (
+                "toy-quality-runtime1.1-qualification-profile/1.0"
+            ),
+            "semantics": "NOT_APPLICABLE_FORMAL_FIXED_TARGET",
+            "compatible": None,
+        }:
+            raise ValueError("SHARDED_FORMAL_QUALIFICATION_PROFILE_INVALID")
     else:
         actual_runner_type, actual_runner_image = _runner_identity("qualification-only")
         if initial_observation.get("os_version") != _read_os_pretty_name():
@@ -313,6 +407,8 @@ def validate_attempt(root: Path) -> tuple[dict, dict]:
             or initial_observation.get("runner_image") != actual_runner_image
         ):
             raise ValueError("SHARDED_QUALIFICATION_RUNNER_OBSERVATION_FORGED")
+        if qualification_profile != qualification_runtime_profile(contract, initial_observation):
+            raise ValueError("SHARDED_QUALIFICATION_RUNTIME_PROFILE_MISMATCH")
     persisted_inventory = _read(root / "source-inventory.json")
     if persisted_inventory != execution_source_inventory(
         attempt["execution_implementation_commit"]
@@ -332,6 +428,7 @@ def validate_attempt(root: Path) -> tuple[dict, dict]:
         "scientific_policy_sha256": policy["scientific_policy_sha256"],
         "target_observation_sha256": initial_observation["observation_sha256"],
         "source_inventory_sha256": persisted_inventory["source_inventory_sha256"],
+        "qualification_runtime_profile_sha256": sha256_value(qualification_profile),
         "variants": list(VARIANTS),
         "seeds": list(SEEDS),
         "ordered_train_task_ids": ["bw-00000001", "bw-00000002", "bw-00000003"],
@@ -852,8 +949,76 @@ def validate_unit_artifacts(unit: Path, manifest: dict) -> None:
         raise ValueError("SHARDED_DETERMINISTIC_TRAINING_REPLAY_MISMATCH")
 
 
-def assemble(root: Path) -> dict:
+def _unit_tree_identity(unit: Path) -> str:
+    return sha256_value(
+        {
+            path.relative_to(unit).as_posix(): sha256_bytes(path.read_bytes())
+            for path in sorted(unit.rglob("*"))
+            if path.is_file()
+        }
+    )
+
+
+def verify_qualification_unit(root: Path, variant: str, seed: int) -> dict:
+    """Independently replay one unit in a short qualification-only process."""
     attempt, contract = validate_attempt(root)
+    if attempt["execution_context"] != "qualification-only":
+        raise ValueError("SHARDED_QUALIFICATION_VERIFICATION_CONTEXT_REQUIRED")
+    unit = root / "units" / variant / f"seed-{seed}"
+    manifest = _read(unit / "unit-manifest.json")
+    validate_unit_manifest(manifest, attempt, contract)
+    validate_unit_artifacts(unit, manifest)
+    post_observation = collect_runtime11_observation(contract, "qualification-only")
+    if post_observation["observation_sha256"] != attempt["target_observation_sha256"]:
+        raise ValueError("SHARDED_TARGET_CHANGED_DURING_VERIFICATION")
+    receipt = {
+        "verification_version": "toy-quality-sharded-unit-verification/1.0",
+        "semantics": "QUALIFICATION_ONLY_NOT_FORMAL_ACCEPTANCE",
+        "attempt_identity_sha256": attempt["attempt_identity_sha256"],
+        "variant": variant,
+        "seed": seed,
+        "unit_manifest_sha256": manifest["unit_manifest_sha256"],
+        "unit_tree_sha256": _unit_tree_identity(unit),
+        "target_observation_sha256": attempt["target_observation_sha256"],
+        "verification_observation_sha256": post_observation["observation_sha256"],
+        "verification_sha256": "",
+    }
+    receipt["verification_sha256"] = sha256_value(
+        _without(receipt, "verification_sha256")
+    )
+    _write(root / "qualification-verifications" / variant / f"seed-{seed}.json", receipt)
+    return receipt
+
+
+def _validate_qualification_receipt(root: Path, unit: Path, manifest: dict) -> None:
+    receipt = _read(
+        root
+        / "qualification-verifications"
+        / manifest["variant"]
+        / f"seed-{manifest['seed']}.json"
+    )
+    expected = {
+        "verification_version": "toy-quality-sharded-unit-verification/1.0",
+        "semantics": "QUALIFICATION_ONLY_NOT_FORMAL_ACCEPTANCE",
+        "attempt_identity_sha256": manifest["attempt_identity_sha256"],
+        "variant": manifest["variant"],
+        "seed": manifest["seed"],
+        "unit_manifest_sha256": manifest["unit_manifest_sha256"],
+        "unit_tree_sha256": _unit_tree_identity(unit),
+        "target_observation_sha256": manifest["target_observation_sha256"],
+        "verification_observation_sha256": manifest["target_observation_sha256"],
+        "verification_sha256": receipt.get("verification_sha256"),
+    }
+    if receipt != expected or receipt["verification_sha256"] != sha256_value(
+        _without(receipt, "verification_sha256")
+    ):
+        raise ValueError("SHARDED_QUALIFICATION_VERIFICATION_INVALID")
+
+
+def assemble(root: Path, *, qualification_receipts: bool = False) -> dict:
+    attempt, contract = validate_attempt(root)
+    if qualification_receipts and attempt["execution_context"] != "qualification-only":
+        raise ValueError("SHARDED_QUALIFICATION_ASSEMBLY_CONTEXT_REQUIRED")
     expected = {(v, s) for v in VARIANTS for s in SEEDS}
     unit_root = root / "units"
     expected_variant_directories = set(VARIANTS)
@@ -867,7 +1032,10 @@ def assemble(root: Path) -> dict:
     for path in sorted((root / "units").glob("*/seed-*/unit-manifest.json")):
         manifest = _read(path)
         validate_unit_manifest(manifest, attempt, contract)
-        validate_unit_artifacts(path.parent, manifest)
+        if qualification_receipts:
+            _validate_qualification_receipt(root, path.parent, manifest)
+        else:
+            validate_unit_artifacts(path.parent, manifest)
         key = (manifest["variant"], manifest["seed"])
         if key in found:
             raise ValueError("SHARDED_DUPLICATE_UNIT")
@@ -997,13 +1165,13 @@ def assemble(root: Path) -> dict:
         },
     }
     _write(output / "evaluation-manifest.json", manifest)
-    payload = q.canonical_replay_payload(output, manifest, rows)
+    payload = sharded_canonical_replay_payload(output, manifest, rows)
     _write(output / "canonical-semantic-payload.json", payload)
     manifest["artifact_hashes"]["canonical-semantic-payload.json"] = q._file_hash(
         output / "canonical-semantic-payload.json"
     )
     _write(output / "evaluation-manifest.json", manifest)
-    replay = q.canonical_replay_hash(output, manifest, rows)
+    replay = sharded_canonical_replay_hash(output, manifest, rows)
     (output / "replay-hash.txt").write_text(replay + "\n")
     policy = _read(root / "scientific-policy.json")
     evidence = {

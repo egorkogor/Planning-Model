@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,16 +13,20 @@ from jsonschema import Draft202012Validator, ValidationError
 from scripts.fixed_target_contract import sha256_bytes
 from scripts.fixed_target_quality_sharded import (
     EXECUTION_MODE,
+    QUALIFICATION_RUNTIME_FIELDS,
     _train_runtime11,
     attempt_identity,
     checkout_commit,
     collect_runtime11_observation,
+    qualification_runtime_profile,
+    sharded_canonical_replay_hash,
     unit_identity,
     validate_attempt,
     validate_checkout_source_inventory,
     validate_runtime11_optimizer,
     validate_unit_artifacts,
     validate_unit_manifest,
+    verify_qualification_unit,
 )
 from tests.toy.test_fixed_cpu_target import valid_contract
 
@@ -31,6 +36,37 @@ SCHEMA = json.loads(
     ).read_text()
 )
 H = "sha256:" + "1" * 64
+
+
+@pytest.fixture(scope="module", autouse=True)
+def runtime11_environment():
+    previous = {
+        name: os.environ.get(name)
+        for name in (
+            "ATEN_CPU_CAPABILITY",
+            "MKL_CBWR",
+            "OMP_NUM_THREADS",
+            "MKL_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "NUMEXPR_NUM_THREADS",
+        )
+    }
+    os.environ.update(
+        {
+            "ATEN_CPU_CAPABILITY": "default",
+            "MKL_CBWR": "COMPATIBLE",
+            "OMP_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "NUMEXPR_NUM_THREADS": "1",
+        }
+    )
+    yield
+    for name, value in previous.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
 
 
 def manifest() -> dict:
@@ -117,6 +153,85 @@ def test_attempt_nonce_binds_units_but_can_be_excluded_from_numerical_claims() -
     assert attempt_identity(first) != attempt_identity(second)
 
 
+def _minimal_replay_root(root: Path, attempt_identity_sha256: str) -> tuple[dict, list[dict]]:
+    from planner_toy import quality as quality
+    from scripts.fixed_target_quality_sharded import SHARDED_CONFIG_FIELDS
+
+    config = {field: f"value:{field}" for field in SHARDED_CONFIG_FIELDS}
+    config.update(
+        {
+            "attempt_identity_sha256": attempt_identity_sha256,
+            "variants": ["A2"],
+            "seeds": [17],
+            "variant_mapping": {},
+            "train_task_ids": ["train"],
+            "eval_task_ids": ["eval"],
+            "epochs": 3,
+            "optimizer": {"name": "AdamW"},
+            "checkpoint_origin_run_hash": None,
+            "reuse_source_manifest_hash": None,
+        }
+    )
+    (root / "training-runs/A2/seed-17").mkdir(parents=True)
+    (root / "training-runs/A2/seed-17/checkpoint-manifest.json").write_text(
+        json.dumps(
+            {
+                "canonical_initialization_state_dict_sha256": H,
+                "canonical_trained_state_dict_sha256": H,
+                "canonical_optimizer_state_sha256": H,
+            }
+        )
+    )
+    for name, value in {
+        "evaluation-config.json": config,
+        "dataset-manifest.json": {},
+        "per-seed-summary.json": {},
+        "aggregate-summary.json": {},
+        "paired-comparisons.json": [],
+    }.items():
+        (root / name).write_text(json.dumps(value))
+    manifest = {
+        "evaluator_version": "development-quality-evaluation/0.1-runtime1.1-sharded/1.0",
+        "evaluator_source_sha256": H,
+        "variants": ["A2"],
+        "seeds": [17],
+        "variant_mapping": {},
+    }
+    rows = []
+    assert quality.canonical_replay_hash(root, manifest, rows)
+    return manifest, rows
+
+
+def test_sharded_replay_excludes_attempt_identity_but_retains_provenance(tmp_path) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    manifest1, rows1 = _minimal_replay_root(first, "sha256:" + "1" * 64)
+    manifest2, rows2 = _minimal_replay_root(second, "sha256:" + "2" * 64)
+    assert sharded_canonical_replay_hash(first, manifest1, rows1) == (
+        sharded_canonical_replay_hash(second, manifest2, rows2)
+    )
+    config = json.loads((second / "evaluation-config.json").read_text())
+    config["source_inventory_sha256"] = "sha256:" + "3" * 64
+    (second / "evaluation-config.json").write_text(json.dumps(config))
+    assert sharded_canonical_replay_hash(first, manifest1, rows1) != (
+        sharded_canonical_replay_hash(second, manifest2, rows2)
+    )
+
+
+def test_qualification_profile_rejects_numerical_runtime_drift() -> None:
+    contract = valid_contract()
+    observation = collect_runtime11_observation(contract, "qualification-only")
+    for field in QUALIFICATION_RUNTIME_FIELDS:
+        contract[field] = observation[field]
+    observation = collect_runtime11_observation(contract, "qualification-only")
+    assert qualification_runtime_profile(contract, observation)["compatible"] is True
+    contract["torch_num_threads"] = 2
+    with pytest.raises(ValueError, match="QUALIFICATION_RUNTIME_MISMATCH"):
+        qualification_runtime_profile(contract, observation)
+
+
 @pytest.mark.parametrize(
     ("foreach", "fused"), [(None, False), (True, False), (False, None), (False, True)]
 )
@@ -165,6 +280,9 @@ def sealed_unit(tmp_path_factory) -> Path:
 
     root = tmp_path_factory.mktemp("sharded-attempt")
     contract = valid_contract()
+    observation = collect_runtime11_observation(contract, "qualification-only")
+    for field in QUALIFICATION_RUNTIME_FIELDS:
+        contract[field] = observation[field]
     observation = collect_runtime11_observation(contract, "qualification-only")
     initialize_attempt(
         root,
@@ -398,3 +516,36 @@ def test_runtime11_training_resets_rng_before_model(monkeypatch, tmp_path) -> No
     with pytest.raises(RuntimeError, match="stop-after-reset"):
         _train_runtime11([], "A2", 29, tmp_path, "sha256:" + "0" * 64)
     assert calls == [29]
+
+
+def test_verify_unit_rejects_post_replay_observation_drift(monkeypatch, tmp_path) -> None:
+    attempt = {
+        "execution_context": "qualification-only",
+        "attempt_identity_sha256": H,
+        "target_observation_sha256": H,
+    }
+    unit = tmp_path / "units/A2/seed-17"
+    unit.mkdir(parents=True)
+    unit_manifest = {
+        "variant": "A2",
+        "seed": 17,
+        "attempt_identity_sha256": H,
+        "unit_manifest_sha256": H,
+        "target_observation_sha256": H,
+    }
+    (unit / "unit-manifest.json").write_text(json.dumps(unit_manifest))
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.validate_attempt", lambda root: (attempt, {})
+    )
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.validate_unit_manifest", lambda *args: None
+    )
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.validate_unit_artifacts", lambda *args: None
+    )
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.collect_runtime11_observation",
+        lambda *args: {"observation_sha256": "sha256:" + "2" * 64},
+    )
+    with pytest.raises(ValueError, match="CHANGED_DURING_VERIFICATION"):
+        verify_qualification_unit(tmp_path, "A2", 17)

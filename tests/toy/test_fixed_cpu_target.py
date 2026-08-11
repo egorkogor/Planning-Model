@@ -27,6 +27,7 @@ from scripts.fixed_target_contract import (
     require_semantic_validation_checkout,
     require_trusted_implementation_commit,
     runtime_contract_sha256,
+    sharded_source_inventory_at_commit,
     source_inventory_at_commit,
     target_contract_sha256,
     validate_acceptance_bundle,
@@ -37,6 +38,7 @@ from scripts.fixed_target_contract import (
     validate_observation_against_contract,
     validate_runtime_contract,
     validate_scientific_policy,
+    validate_sharded_source_inventory,
     validate_target_contract,
     validate_target_observation,
 )
@@ -269,6 +271,30 @@ def test_provisional_record_still_checks_duplicate_run_ids() -> None:
         validate_acceptance_record(value)
 
 
+@pytest.mark.parametrize("field", ["training_execution_mode", "source_inventory_sha256"])
+def test_three_of_three_rejects_cross_attempt_provenance_drift(field: str) -> None:
+    value = valid_acceptance()
+    value["attempts"][1][field] = (
+        "TRAINED_IN_ATTEMPT_SHARDED" if field == "training_execution_mode" else H3
+    )
+    reseal(value)
+    with pytest.raises(ValueError, match="CROSS_ATTEMPT_COMPARISON_MISMATCH"):
+        validate_acceptance_record(value)
+
+
+def test_three_of_three_rejects_cross_attempt_observation_drift() -> None:
+    value = valid_acceptance()
+    observation = copy.deepcopy(value["attempts"][1]["target_observation"])
+    observation["cpu_flags"].append("permitted-extra-flag")
+    observation["cpu_flags"].sort()
+    observation["observation_sha256"] = observation_sha256(observation)
+    value["attempts"][1]["target_observation"] = observation
+    value["attempts"][1]["target_observation_sha256"] = observation["observation_sha256"]
+    reseal(value)
+    with pytest.raises(ValueError, match="CROSS_ATTEMPT_COMPARISON_MISMATCH"):
+        validate_acceptance_record(value)
+
+
 def test_blocked_record_remains_valid() -> None:
     validate_acceptance_record(blocked_acceptance())
 
@@ -415,6 +441,26 @@ def test_source_inventory_mutation_rejected(
     assert old["source_inventory_sha256"] != new["source_inventory_sha256"]
     with pytest.raises(ValueError, match="FIXED_TARGET_SOURCE_INVENTORY_MISMATCH"):
         ft.validate_source_inventory(old, implementation_commit=second)
+
+
+def test_sharded_inventory_is_closed_sorted_and_rejects_legacy_downgrade() -> None:
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], text=True, capture_output=True, check=True
+    ).stdout.strip()
+    inventory = sharded_source_inventory_at_commit(commit)
+    paths = [entry["path"] for entry in inventory["files"]]
+    assert paths == sorted(paths)
+    assert len(paths) == len(set(paths))
+    validate_sharded_source_inventory(inventory, implementation_commit=commit)
+    with pytest.raises(ValueError, match="SHARDED_SOURCE_INVENTORY_MISMATCH"):
+        validate_sharded_source_inventory(
+            source_inventory_at_commit(commit), implementation_commit=commit
+        )
+    reordered = copy.deepcopy(inventory)
+    reordered["files"] = list(reversed(reordered["files"]))
+    reordered["source_inventory_sha256"] = ft.sha256_value(reordered["files"])
+    with pytest.raises(ValueError, match="SHARDED_SOURCE_INVENTORY_MISMATCH"):
+        validate_sharded_source_inventory(reordered, implementation_commit=commit)
 
 
 def test_pyproject_and_package_initializer_change_source_inventory(
@@ -564,6 +610,27 @@ def _valid_execution_evidence(acceptance: dict, attempt: dict) -> dict:
     return value
 
 
+@pytest.mark.parametrize(
+    "missing", ["scientific_parent_implementation_commit", "execution_topology"]
+)
+def test_sharded_execution_evidence_requires_sharded_provenance(missing: str) -> None:
+    acceptance = valid_acceptance(accepted=False)
+    evidence = _valid_execution_evidence(acceptance, acceptance["attempts"][0])
+    evidence.update(
+        {
+            "evaluator_version": "development-quality-evaluation/0.1-runtime1.1-sharded/1.0",
+            "scientific_parent_implementation_commit": (
+                HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT
+            ),
+            "execution_topology": "SHARDED_VARIANT_SEED_SUBPROCESSES",
+        }
+    )
+    evidence.pop(missing)
+    evidence["execution_evidence_sha256"] = execution_evidence_sha256(evidence)
+    with pytest.raises(ValueError, match="EXECUTION_EVIDENCE_SCHEMA_INVALID"):
+        validate_execution_evidence_manifest(evidence)
+
+
 def _binding_inputs(monkeypatch: pytest.MonkeyPatch) -> tuple[dict, dict, dict, dict, list[dict]]:
     acceptance = valid_acceptance(accepted=False)
     attempt = acceptance["attempts"][0]
@@ -622,6 +689,18 @@ def _binding_inputs(monkeypatch: pytest.MonkeyPatch) -> tuple[dict, dict, dict, 
 def test_sharded_runtime11_execution_binding_is_explicit_and_closed(monkeypatch) -> None:
     acceptance, evidence, preflight, config, training = _binding_inputs(monkeypatch)
     attempt = acceptance["attempts"][0]
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], text=True, capture_output=True, check=True
+    ).stdout.strip()
+    inventory = sharded_source_inventory_at_commit(commit)
+    acceptance["implementation_commit"] = commit
+    attempt["implementation_commit"] = commit
+    preflight["implementation_commit"] = commit
+    preflight["source_inventory"] = inventory
+    attempt["source_inventory_sha256"] = inventory["source_inventory_sha256"]
+    evidence["implementation_commit"] = commit
+    evidence["source_inventory_sha256"] = inventory["source_inventory_sha256"]
+    config["implementation_commit"] = commit
     evidence.update(
         {
             "execution_topology": "SHARDED_VARIANT_SEED_SUBPROCESSES",
@@ -672,6 +751,21 @@ def test_sharded_runtime11_execution_binding_is_explicit_and_closed(monkeypatch)
                 target_observation=attempt["target_observation"],
                 training_configs=training,
             )
+    downgraded_evidence = copy.deepcopy(evidence)
+    downgraded_config = copy.deepcopy(config)
+    downgraded_attempt = copy.deepcopy(attempt)
+    downgraded_config["training_execution_mode"] = "TRAINED_IN_RUN"
+    downgraded_attempt["training_execution_mode"] = "TRAINED_IN_RUN"
+    with pytest.raises(ValueError, match="SHARDED_EXECUTION_MODE_DOWNGRADE"):
+        validate_execution_binding_contract(
+            downgraded_evidence,
+            acceptance=acceptance,
+            attempt=downgraded_attempt,
+            preflight=preflight,
+            evaluation_config=downgraded_config,
+            target_observation=downgraded_attempt["target_observation"],
+            training_configs=training,
+        )
 
 
 def test_pr19_source_inventory_profile_remains_constructible() -> None:
