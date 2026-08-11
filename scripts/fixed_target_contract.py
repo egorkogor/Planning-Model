@@ -566,6 +566,7 @@ def validate_execution_binding_contract(
         if (
             evidence.get("execution_topology") != "SHARDED_VARIANT_SEED_SUBPROCESSES"
             or evidence.get("execution_context") != "formal-fixed-target"
+            or evaluation_config.get("execution_context") != evidence.get("execution_context")
             or evidence.get("scientific_parent_implementation_commit")
             != policy["historical_quality_implementation_commit"]
             or evaluation_config.get("execution_topology") != "SHARDED_VARIANT_SEED_SUBPROCESSES"
@@ -1224,6 +1225,23 @@ def _derive_optimizer_execution(evaluation_root: Path) -> tuple[bool, bool]:
     return foreach, fused
 
 
+def _validate_training_execution_identity(config: dict[str, Any]) -> None:
+    mode = config.get("training_execution_mode")
+    sharded_evaluator = (
+        config.get("evaluator_version")
+        == "development-quality-evaluation/0.1-runtime1.1-sharded/1.0"
+    )
+    sharded_topology = (
+        config.get("execution_topology") == "SHARDED_VARIANT_SEED_SUBPROCESSES"
+    )
+    if mode == "TRAINED_IN_RUN" and (sharded_evaluator or sharded_topology):
+        raise ValueError("FIXED_TARGET_SHARDED_EXECUTION_MODE_DOWNGRADE")
+    if mode == "TRAINED_IN_ATTEMPT_SHARDED" and not (
+        sharded_evaluator and sharded_topology
+    ):
+        raise ValueError("FIXED_TARGET_SHARDED_EXECUTION_BINDING_MISMATCH")
+
+
 def _validate_evaluation_integrity(evaluation_root: Path) -> str:
     from planner_toy.quality import (  # noqa: PLC0415
         _examples,
@@ -1234,6 +1252,7 @@ def _validate_evaluation_integrity(evaluation_root: Path) -> str:
         paired,
         summarize,
         task_results_semantic_projection,
+        validate_evaluation,
     )
 
     manifest = _read_json(
@@ -1313,17 +1332,13 @@ def _validate_evaluation_integrity(evaluation_root: Path) -> str:
         "TRAINED_IN_RUN",
         "TRAINED_IN_ATTEMPT_SHARDED",
     }
-    if config.get("training_execution_mode") == "TRAINED_IN_RUN" and (
-        config.get("evaluator_version") != HISTORICAL_QUALITY_EVALUATOR_VERSION
-        or config.get("implementation_commit") != HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT
-    ):
-        raise ValueError("FIXED_TARGET_LEGACY_EXECUTION_IDENTITY_MISMATCH")
-    if config.get("training_execution_mode") == "TRAINED_IN_ATTEMPT_SHARDED" and (
-        config.get("execution_topology") != "SHARDED_VARIANT_SEED_SUBPROCESSES"
-        or config.get("evaluator_version")
-        != "development-quality-evaluation/0.1-runtime1.1-sharded/1.0"
-    ):
-        raise ValueError("FIXED_TARGET_SHARDED_EXECUTION_BINDING_MISMATCH")
+    _validate_training_execution_identity(config)
+    if config.get("training_execution_mode") == "TRAINED_IN_RUN":
+        # Preserve the complete PR19/historical contract and prevent a sharded
+        # artifact from escaping runtime/1.1 replay by coherently stripping its
+        # sharded labels.  This validator independently checks the closed legacy
+        # config/checkpoint/evidence semantics without pinning execution commit.
+        validate_evaluation(evaluation_root)
     if (
         not allowed_mode
         or config.get("checkpoint_origin_run_hash") is not None

@@ -57,7 +57,7 @@ TRAINING_RUN_FILES = {
     "training-report.json",
 }
 SHARDED_REPLAY_VERSION = "toy-quality-sharded-canonical-replay/1.0"
-SHARDED_CONFIG_FIELDS = {
+SHARDED_STABLE_REPLAY_FIELDS = {
     "schema_version",
     "evaluator_version",
     "scientific_parent_evaluator",
@@ -84,6 +84,7 @@ SHARDED_CONFIG_FIELDS = {
     "checkpoint_origin_run_hash",
     "reuse_source_manifest_hash",
 }
+SHARDED_OPERATIONAL_FIELDS = {"attempt_identity_sha256", "execution_context"}
 QUALIFICATION_RUNTIME_FIELDS = (
     "python_implementation",
     "python_version",
@@ -130,10 +131,10 @@ def qualification_runtime_profile(contract: dict, observation: dict) -> dict:
 
 def sharded_config_semantic_projection(config: dict) -> dict:
     """Remove only the attempt-local binding from the closed sharded config."""
-    expected = SHARDED_CONFIG_FIELDS | {"attempt_identity_sha256"}
+    expected = SHARDED_STABLE_REPLAY_FIELDS | SHARDED_OPERATIONAL_FIELDS
     if set(config) != expected:
         raise ValueError("SHARDED_REPLAY_CONFIG_FIELDS_MISMATCH")
-    return {field: config[field] for field in sorted(SHARDED_CONFIG_FIELDS)}
+    return {field: config[field] for field in sorted(SHARDED_STABLE_REPLAY_FIELDS)}
 
 
 def sharded_canonical_replay_payload(root: Path, manifest: dict, rows: list[dict]) -> dict:
@@ -1231,6 +1232,7 @@ def assemble(root: Path, *, qualification_receipts: bool = False) -> dict:
             "scientific_parent_implementation_commit"
         ],
         "execution_topology": "SHARDED_VARIANT_SEED_SUBPROCESSES",
+        "execution_context": attempt["execution_context"],
         "target_contract_sha256": attempt["target_contract_sha256"],
         "runtime_contract_sha256": attempt["runtime_contract_sha256"],
         "target_observation_sha256": attempt["target_observation_sha256"],

@@ -719,6 +719,7 @@ def test_sharded_runtime11_execution_binding_is_explicit_and_closed(monkeypatch)
             "evaluator_source_sha256": evidence["evaluator_source_sha256"],
             "training_execution_mode": "TRAINED_IN_ATTEMPT_SHARDED",
             "execution_topology": "SHARDED_VARIANT_SEED_SUBPROCESSES",
+            "execution_context": "formal-fixed-target",
             "scientific_parent_implementation_commit": (HISTORICAL_QUALITY_IMPLEMENTATION_COMMIT),
             "target_contract_sha256": evidence["target_contract_sha256"],
             "runtime_contract_sha256": evidence["runtime_contract_sha256"],
@@ -737,6 +738,24 @@ def test_sharded_runtime11_execution_binding_is_explicit_and_closed(monkeypatch)
         target_observation=attempt["target_observation"],
         training_configs=training,
     )
+    qualification_evidence = copy.deepcopy(evidence)
+    qualification_config = copy.deepcopy(config)
+    qualification_evidence["execution_context"] = "qualification-only"
+    qualification_config["execution_context"] = "qualification-only"
+    qualification_evidence["execution_evidence_sha256"] = execution_evidence_sha256(
+        qualification_evidence
+    )
+    validate_execution_evidence_manifest(qualification_evidence)
+    with pytest.raises(ValueError, match="SHARDED_EXECUTION_BINDING_MISMATCH"):
+        validate_execution_binding_contract(
+            qualification_evidence,
+            acceptance=acceptance,
+            attempt=attempt,
+            preflight=preflight,
+            evaluation_config=qualification_config,
+            target_observation=attempt["target_observation"],
+            training_configs=training,
+        )
     for field, value in (
         ("execution_topology", "MONOLITHIC"),
         ("evaluator_version", "development-quality-evaluation/0.1"),
@@ -769,6 +788,38 @@ def test_sharded_runtime11_execution_binding_is_explicit_and_closed(monkeypatch)
             target_observation=downgraded_attempt["target_observation"],
             training_configs=training,
         )
+
+
+def test_legacy_execution_identity_allows_new_execution_commit() -> None:
+    ft._validate_training_execution_identity(
+        {
+            "training_execution_mode": "TRAINED_IN_RUN",
+            "evaluator_version": "development-quality-evaluation/0.1",
+            "implementation_commit": "f" * 40,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {
+            "evaluator_version": (
+                "development-quality-evaluation/0.1-runtime1.1-sharded/1.0"
+            )
+        },
+        {"execution_topology": "SHARDED_VARIANT_SEED_SUBPROCESSES"},
+    ],
+)
+def test_legacy_execution_identity_rejects_sharded_signals(mutation: dict) -> None:
+    config = {
+        "training_execution_mode": "TRAINED_IN_RUN",
+        "evaluator_version": "development-quality-evaluation/0.1",
+        "implementation_commit": "f" * 40,
+    }
+    config.update(mutation)
+    with pytest.raises(ValueError, match="SHARDED_EXECUTION_MODE_DOWNGRADE"):
+        ft._validate_training_execution_identity(config)
 
 
 def test_pr19_source_inventory_profile_remains_constructible() -> None:

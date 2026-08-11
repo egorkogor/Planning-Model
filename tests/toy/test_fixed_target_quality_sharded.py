@@ -10,11 +10,16 @@ from types import SimpleNamespace
 import pytest
 from jsonschema import Draft202012Validator, ValidationError
 
-from scripts.fixed_target_contract import sha256_bytes
+from scripts.fixed_target_contract import (
+    build_scientific_policy,
+    sha256_bytes,
+    validate_execution_evidence_manifest,
+)
 from scripts.fixed_target_quality_sharded import (
     EXECUTION_MODE,
     QUALIFICATION_RUNTIME_FIELDS,
     _train_runtime11,
+    assemble,
     attempt_identity,
     checkout_commit,
     collect_runtime11_observation,
@@ -156,9 +161,15 @@ def test_attempt_nonce_binds_units_but_can_be_excluded_from_numerical_claims() -
 
 def _minimal_replay_root(root: Path, attempt_identity_sha256: str) -> tuple[dict, list[dict]]:
     from planner_toy import quality as quality
-    from scripts.fixed_target_quality_sharded import SHARDED_CONFIG_FIELDS
+    from scripts.fixed_target_quality_sharded import (
+        SHARDED_OPERATIONAL_FIELDS,
+        SHARDED_STABLE_REPLAY_FIELDS,
+    )
 
-    config = {field: f"value:{field}" for field in SHARDED_CONFIG_FIELDS}
+    config = {
+        field: f"value:{field}"
+        for field in SHARDED_STABLE_REPLAY_FIELDS | SHARDED_OPERATIONAL_FIELDS
+    }
     config.update(
         {
             "attempt_identity_sha256": attempt_identity_sha256,
@@ -219,6 +230,90 @@ def test_sharded_replay_excludes_attempt_identity_but_retains_provenance(tmp_pat
     assert sharded_canonical_replay_hash(first, manifest1, rows1) != (
         sharded_canonical_replay_hash(second, manifest2, rows2)
     )
+
+
+def test_sharded_replay_rejects_unknown_operational_field(tmp_path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    manifest, rows = _minimal_replay_root(root, H)
+    config_path = root / "evaluation-config.json"
+    config = json.loads(config_path.read_text())
+    config["unreviewed_workflow_field"] = "forged"
+    config_path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="REPLAY_CONFIG_FIELDS_MISMATCH"):
+        sharded_canonical_replay_hash(root, manifest, rows)
+
+
+def test_assemble_happy_path_emits_context_bound_replay_and_evidence(
+    sealed_unit, tmp_path, monkeypatch
+) -> None:
+    root = tmp_path / "attempt"
+    source_rows = [
+        json.loads(line)
+        for line in (sealed_unit / "units/A2/seed-17/task-results.jsonl")
+        .read_text()
+        .splitlines()
+    ]
+    for variant in ("A2", "A3", "A4"):
+        for seed in (17, 29, 43):
+            unit = root / "units" / variant / f"seed-{seed}"
+            training = unit / "training"
+            evidence = unit / "evidence"
+            training.mkdir(parents=True)
+            evidence.mkdir()
+            (training / "checkpoint-manifest.json").write_text(
+                json.dumps(
+                    {
+                        "canonical_initialization_state_dict_sha256": H,
+                        "canonical_trained_state_dict_sha256": H,
+                        "canonical_optimizer_state_sha256": H,
+                    }
+                )
+            )
+            rows = []
+            for source in source_rows:
+                row = copy.deepcopy(source)
+                row["variant"] = variant
+                row["seed"] = seed
+                rows.append(row)
+            (unit / "task-results.jsonl").write_text(
+                "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows)
+            )
+            (unit / "unit-manifest.json").write_text(
+                json.dumps({"variant": variant, "seed": seed})
+            )
+    attempt = {
+        "attempt_identity_sha256": H,
+        "execution_implementation_commit": checkout_commit(),
+        "scientific_parent_implementation_commit": (
+            "779172c3bbca3d03552deaed6421e82fcf19a932"
+        ),
+        "source_inventory_sha256": H,
+        "target_contract_sha256": H,
+        "runtime_contract_sha256": H,
+        "target_observation_sha256": H,
+        "scientific_policy_sha256": build_scientific_policy()["scientific_policy_sha256"],
+        "execution_context": "qualification-only",
+    }
+    root.mkdir(exist_ok=True)
+    (root / "scientific-policy.json").write_text(json.dumps(build_scientific_policy()))
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.validate_attempt", lambda _: (attempt, {})
+    )
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.validate_unit_manifest", lambda *args: None
+    )
+    monkeypatch.setattr(
+        "scripts.fixed_target_quality_sharded.validate_unit_artifacts", lambda *args: None
+    )
+    result = assemble(root)
+    assert result["units"] == 9
+    config = json.loads((root / "evaluation/evaluation-config.json").read_text())
+    evidence = json.loads((root / "execution-evidence.json").read_text())
+    assert config["execution_context"] == "qualification-only"
+    assert evidence["execution_context"] == config["execution_context"]
+    validate_execution_evidence_manifest(evidence)
+    assert (root / "evaluation/replay-hash.txt").read_text().strip() == result["replay_hash"]
 
 
 def test_qualification_profile_rejects_numerical_runtime_drift() -> None:
