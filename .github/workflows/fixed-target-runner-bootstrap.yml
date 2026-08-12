@@ -1,4 +1,4 @@
-name: Fixed target contract live validation
+name: Fixed target host hardening and validation
 
 on:
   push:
@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    name: target-contract-live-validation
+  harden-and-validate:
+    name: fixed-target-host-harden-and-validate
     runs-on:
       - self-hosted
       - linux
@@ -19,6 +19,34 @@ jobs:
       - planning-model-canonical-cpu-v1
     timeout-minutes: 10
     steps:
+      - name: Freeze automatic package mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -n true
+
+          sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
+          sudo systemctl mask apt-daily.service apt-daily-upgrade.service
+
+          cat <<'EOF' | sudo tee /etc/apt/apt.conf.d/99planning-model-fixed-target >/dev/null
+          APT::Periodic::Enable "0";
+          APT::Periodic::Update-Package-Lists "0";
+          APT::Periodic::Unattended-Upgrade "0";
+          EOF
+          sudo chown root:root /etc/apt/apt.conf.d/99planning-model-fixed-target
+          sudo chmod 0444 /etc/apt/apt.conf.d/99planning-model-fixed-target
+
+          echo "apt_daily_timer_enabled=$(systemctl is-enabled apt-daily.timer || true)"
+          echo "apt_daily_upgrade_timer_enabled=$(systemctl is-enabled apt-daily-upgrade.timer || true)"
+          echo "apt_daily_timer_active=$(systemctl is-active apt-daily.timer || true)"
+          echo "apt_daily_upgrade_timer_active=$(systemctl is-active apt-daily-upgrade.timer || true)"
+          if [ -e /var/run/reboot-required ]; then
+            echo 'REBOOT_REQUIRED_PRESENT'
+            cat /var/run/reboot-required
+            exit 1
+          fi
+          echo 'AUTOMATIC_PACKAGE_MUTATION_FROZEN'
+
       - name: Checkout materialized target contract
         uses: actions/checkout@v4
         with:
@@ -27,11 +55,12 @@ jobs:
           clean: true
           persist-credentials: false
 
-      - name: Validate contract against the live runner
+      - name: Revalidate contract against hardened live runner
         shell: bash
         run: |
           set -euo pipefail
           test -s /etc/planning-model-runner-image-id
+          test "$(stat -c '%U:%G:%a' /etc/planning-model-runner-image-id)" = 'root:root:444'
           export FIXED_TARGET_RUNNER_IMAGE="$(cat /etc/planning-model-runner-image-id)"
           python - <<'PY'
           import json
@@ -48,6 +77,5 @@ jobs:
           print('target_contract_sha256=' + target_contract_sha256(contract))
           print('observation_sha256=' + observation['observation_sha256'])
           print('actual_atten_cpu_capability=' + observation['actual_atten_cpu_capability'])
-          print('runner_image=' + observation['runner_image'])
-          print('TARGET_CONTRACT_LIVE_VALIDATION_OK')
+          print('FIXED_TARGET_HOST_HARDENED_AND_VALIDATED')
           PY
