@@ -26,6 +26,7 @@ TARGET_CONTRACT_VERSION = "toy-quality-fixed-cpu-target/1.0"
 TARGET_OBSERVATION_VERSION = "toy-quality-fixed-cpu-target-observation/1.0"
 FIXED_RUNTIME_VERSION = "toy-quality-canonical-cpu-runtime/1.1"
 FIXED_TARGET_ACCEPTANCE_VERSION = "toy-quality-fixed-target-acceptance/1.0"
+FORMAL_FIXED_TARGET_ACCEPTANCE_VERSION = "toy-quality-fixed-target-acceptance/1.1"
 SOURCE_INVENTORY_VERSION = "toy-quality-fixed-target-source-inventory/1.0"
 SHARDED_SOURCE_INVENTORY_VERSION = "toy-quality-fixed-target-sharded-source-inventory/1.0"
 ATTEMPT_MANIFEST_VERSION = "toy-quality-fixed-target-attempt-manifest/1.0"
@@ -91,6 +92,9 @@ _SHARDED_SOURCE_ADDITIONS = {
     "scripts/run_fixed_target_quality_evaluation.py",
     "planner_toy/schemas/fixed_target_quality_unit.schema.json",
     "planner_toy/schemas/fixed_target_quality_checkpoint_manifest.schema.json",
+    "planner_toy/schemas/fixed_target_formal_provenance.schema.json",
+    "planner_toy/schemas/fixed_target_acceptance_v1_1.schema.json",
+    "scripts/fixed_target_acceptance_v1_1.py",
 }
 _QUALITY_SOURCE_LOCK_SHA256 = (
     "sha256:9205ad312fc37fa9927505e9c44a599e29fc5e31180db9d2e49ebfcc247b4570"
@@ -1595,9 +1599,19 @@ def _validate_preflight(
 
 
 def validate_acceptance_bundle(root: Path) -> dict[str, Any]:
-    """Validate foundation bundle structure; final runtime/1.1 semantics remain gated."""
+    """Authoritative version-dispatched fixed-target bundle validator."""
     root = Path(root)
     acceptance = _read_json(root / "acceptance.json", "FIXED_TARGET_ACCEPTANCE_FILE_INVALID")
+    if acceptance.get("acceptance_version") == FORMAL_FIXED_TARGET_ACCEPTANCE_VERSION:
+        from scripts.fixed_target_acceptance_v1_1 import (  # noqa: PLC0415
+            _validate_formal_acceptance_bundle_v1_1,
+        )
+
+        return _validate_formal_acceptance_bundle_v1_1(root, acceptance)
+    if acceptance.get("acceptance_version") != FIXED_TARGET_ACCEPTANCE_VERSION:
+        raise ValueError("FIXED_TARGET_ACCEPTANCE_VERSION_MISMATCH")
+
+    # Version 1.0 retains its original foundation-only semantics unchanged.
     _validate_acceptance_record_structure(acceptance, allow_final_accepted=False)
     if acceptance["accepted"]:
         raise ValueError(RUNTIME_1_1_EXECUTION_GATE)

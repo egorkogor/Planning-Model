@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://planning-model.local/schemas/fixed_target_acceptance_v1_1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "acceptance_version",
+    "status",
+    "workflow_run_id",
+    "job_id",
+    "workflow_sha",
+    "execution_implementation_commit",
+    "scientific_parent_implementation_commit",
+    "target_contract",
+    "target_contract_sha256",
+    "runtime_contract",
+    "runtime_contract_sha256",
+    "attempts",
+    "cross_attempt_comparison",
+    "accepted",
+    "acceptance_identity"
+  ],
+  "properties": {
+    "acceptance_version": {
+      "const": "toy-quality-fixed-target-acceptance/1.1"
+    },
+    "status": {
+      "const": "FIXED_TARGET_ACCEPTED"
+    },
+    "workflow_run_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "job_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "workflow_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "execution_implementation_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "scientific_parent_implementation_commit": {
+      "const": "779172c3bbca3d03552deaed6421e82fcf19a932"
+    },
+    "target_contract": {
+      "$ref": "fixed_target_cpu_target.schema.json"
+    },
+    "target_contract_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "runtime_contract": {
+      "$ref": "fixed_target_runtime.schema.json"
+    },
+    "runtime_contract_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "attempts": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "attempt_index",
+          "attempt_identity_sha256",
+          "attempt_manifest_sha256",
+          "execution_context",
+          "target_observation_sha256",
+          "source_inventory_sha256",
+          "execution_evidence_sha256",
+          "formal_provenance_sha256",
+          "observed_optimizer_foreach",
+          "observed_optimizer_fused",
+          "training_execution_mode",
+          "units",
+          "claim_identities",
+          "canonical_result_identity",
+          "successful_full_evaluation",
+          "result"
+        ],
+        "properties": {
+          "attempt_index": {
+            "enum": [
+              1,
+              2,
+              3
+            ]
+          },
+          "attempt_identity_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "attempt_manifest_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "execution_context": {
+            "const": "formal-fixed-target"
+          },
+          "target_observation_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "source_inventory_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "execution_evidence_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "formal_provenance_sha256": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "observed_optimizer_foreach": {
+            "const": false
+          },
+          "observed_optimizer_fused": {
+            "const": false
+          },
+          "training_execution_mode": {
+            "const": "TRAINED_IN_ATTEMPT_SHARDED"
+          },
+          "units": {
+            "type": "array",
+            "minItems": 9,
+            "maxItems": 9,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "attempt_identity_sha256",
+                "variant",
+                "seed",
+                "unit_manifest_sha256",
+                "checkpoint_manifest_sha256",
+                "checkpoint_lineage_sha256",
+                "task_results_sha256"
+              ],
+              "properties": {
+                "attempt_identity_sha256": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "variant": {
+                  "enum": [
+                    "A2",
+                    "A3",
+                    "A4"
+                  ]
+                },
+                "seed": {
+                  "enum": [
+                    17,
+                    29,
+                    43
+                  ]
+                },
+                "unit_manifest_sha256": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "checkpoint_manifest_sha256": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "task_results_sha256": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "checkpoint_lineage_sha256": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            }
+          },
+          "claim_identities": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "initialization_identities_sha256",
+              "training_config_sha256",
+              "ordered_tasks_sha256",
+              "checkpoint_identities_sha256",
+              "optimizer_state_identities_sha256",
+              "canonical_state_dict_identities_sha256",
+              "evaluation_task_results_sha256",
+              "replay_hash",
+              "canonical_semantic_payload_sha256",
+              "derived_summaries_sha256"
+            ],
+            "properties": {
+              "initialization_identities_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "training_config_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "ordered_tasks_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "checkpoint_identities_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "optimizer_state_identities_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "canonical_state_dict_identities_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "evaluation_task_results_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "replay_hash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "canonical_semantic_payload_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "derived_summaries_sha256": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          },
+          "canonical_result_identity": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "successful_full_evaluation": {
+            "const": true
+          },
+          "result": {
+            "const": "PASS"
+          }
+        }
+      }
+    },
+    "cross_attempt_comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "mismatches"
+      ],
+      "properties": {
+        "status": {
+          "const": "PASS"
+        },
+        "mismatches": {
+          "type": "array",
+          "maxItems": 0
+        }
+      }
+    },
+    "accepted": {
+      "const": true
+    },
+    "acceptance_identity": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}
