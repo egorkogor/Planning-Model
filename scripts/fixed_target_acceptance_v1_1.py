@@ -22,6 +22,12 @@ FORMAL_TRAINING_MODE = "TRAINED_IN_ATTEMPT_SHARDED"
 FORMAL_EVALUATOR_VERSION = "development-quality-evaluation/0.1-runtime1.1-sharded/1.0"
 EXPECTED_VARIANTS = ("A2", "A3", "A4")
 EXPECTED_SEEDS = (17, 29, 43)
+FORMAL_REQUIRED_RUNNER_LABELS = (
+    "linux",
+    "planning-model-canonical-cpu-v1",
+    "self-hosted",
+    "x64",
+)
 _RUNTIME_ENV_FIELDS = (
     "ATEN_CPU_CAPABILITY",
     "MKL_CBWR",
@@ -41,6 +47,8 @@ def _read(path: Path) -> dict[str, Any]:
 
 def _validate_formal_target_contract(contract: dict[str, Any]) -> None:
     ft.validate_target_contract(contract)
+    if contract["required_runner_labels"] != list(FORMAL_REQUIRED_RUNNER_LABELS):
+        raise ValueError("FIXED_TARGET_FORMAL_RUNNER_LABELS_MISMATCH")
     if contract["microcode_policy"]["mode"] == "minimum":
         raise ValueError("FIXED_TARGET_FORMAL_MICROCODE_POLICY_NOT_EXACT")
 
