@@ -1,0 +1,34 @@
+name: Fixed target runner bootstrap probe
+
+on:
+  push:
+    branches:
+      - ops/fixed-target-runner-bootstrap
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: runner-bootstrap-probe
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - planning-model-canonical-cpu-v1
+    timeout-minutes: 5
+    steps:
+      - name: Verify runner connectivity and operator access
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner_name=${RUNNER_NAME}"
+          echo "runner_os=${RUNNER_OS}"
+          echo "runner_arch=${RUNNER_ARCH}"
+          echo "hostname=$(hostname)"
+          echo "user=$(id -un)"
+          uname -a
+          python3 --version
+          sudo -n true
+          echo "RUNNER_BOOTSTRAP_PROBE_OK"
