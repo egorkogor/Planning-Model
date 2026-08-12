@@ -1,81 +1,64 @@
-name: Fixed target host hardening and validation
+name: Dispatch formal fixed-target acceptance
 
 on:
   push:
     branches:
       - ops/fixed-target-runner-bootstrap
-  workflow_dispatch:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
-  harden-and-validate:
-    name: fixed-target-host-harden-and-validate
-    runs-on:
-      - self-hosted
-      - linux
-      - x64
-      - planning-model-canonical-cpu-v1
-    timeout-minutes: 10
+  dispatch:
+    name: dispatch-formal-fixed-target-acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EXPECTED_MAIN_SHA: 0b9268b340e7672463c396112a757b3fc2ed7012
+      TARGET_CONTRACT_PATH: configs/fixed-cpu-target-1.0.json
     steps:
-      - name: Freeze automatic package mutation
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo -n true
-
-          sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
-          sudo systemctl mask apt-daily.service apt-daily-upgrade.service
-
-          cat <<'EOF' | sudo tee /etc/apt/apt.conf.d/99planning-model-fixed-target >/dev/null
-          APT::Periodic::Enable "0";
-          APT::Periodic::Update-Package-Lists "0";
-          APT::Periodic::Unattended-Upgrade "0";
-          EOF
-          sudo chown root:root /etc/apt/apt.conf.d/99planning-model-fixed-target
-          sudo chmod 0444 /etc/apt/apt.conf.d/99planning-model-fixed-target
-
-          echo "apt_daily_timer_enabled=$(systemctl is-enabled apt-daily.timer || true)"
-          echo "apt_daily_upgrade_timer_enabled=$(systemctl is-enabled apt-daily-upgrade.timer || true)"
-          echo "apt_daily_timer_active=$(systemctl is-active apt-daily.timer || true)"
-          echo "apt_daily_upgrade_timer_active=$(systemctl is-active apt-daily-upgrade.timer || true)"
-          if [ -e /var/run/reboot-required ]; then
-            echo 'REBOOT_REQUIRED_PRESENT'
-            cat /var/run/reboot-required
-            exit 1
-          fi
-          echo 'AUTOMATIC_PACKAGE_MUTATION_FROZEN'
-
-      - name: Checkout materialized target contract
+      - name: Checkout authoritative main
         uses: actions/checkout@v4
         with:
-          ref: ba10d7305ce2abd1b9d6c8d0d18b28e523951217
-          fetch-depth: 0
-          clean: true
+          ref: main
+          fetch-depth: 1
           persist-credentials: false
 
-      - name: Revalidate contract against hardened live runner
+      - name: Verify and dispatch exact merged main
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test -s /etc/planning-model-runner-image-id
-          test "$(stat -c '%U:%G:%a' /etc/planning-model-runner-image-id)" = 'root:root:444'
-          export FIXED_TARGET_RUNNER_IMAGE="$(cat /etc/planning-model-runner-image-id)"
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          from scripts.fixed_target_contract import (
-              collect_target_observation,
-              target_contract_sha256,
-              validate_target_contract,
-          )
+          observed_sha="$(git rev-parse HEAD)"
+          test "$observed_sha" = "$EXPECTED_MAIN_SHA" || {
+            echo "::error::MAIN_SHA_DRIFT: expected=$EXPECTED_MAIN_SHA observed=$observed_sha"
+            exit 1
+          }
+          test -f "$TARGET_CONTRACT_PATH" || {
+            echo "::error::TARGET_CONTRACT_NOT_ON_MAIN"
+            exit 1
+          }
 
-          contract = json.loads(Path('configs/fixed-cpu-target-1.0.json').read_text(encoding='utf-8'))
-          validate_target_contract(contract)
-          observation = collect_target_observation(contract)
-          print('target_contract_sha256=' + target_contract_sha256(contract))
-          print('observation_sha256=' + observation['observation_sha256'])
-          print('actual_atten_cpu_capability=' + observation['actual_atten_cpu_capability'])
-          print('FIXED_TARGET_HOST_HARDENED_AND_VALIDATED')
+          payload="$(python - <<'PY'
+          import json, os
+          print(json.dumps({
+              'ref': 'main',
+              'inputs': {
+                  'implementation_sha': os.environ['EXPECTED_MAIN_SHA'],
+                  'target_contract_path': os.environ['TARGET_CONTRACT_PATH'],
+              },
+          }))
           PY
+          )"
+
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/fixed-target-acceptance.yml/dispatches" \
+            -d "$payload"
+
+          echo "FORMAL_FIXED_TARGET_DISPATCH_ACCEPTED"
