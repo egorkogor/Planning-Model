@@ -1,4 +1,4 @@
-name: Fixed target runner bootstrap
+name: Fixed target contract live validation
 
 on:
   push:
@@ -10,182 +10,44 @@ permissions:
   contents: read
 
 jobs:
-  provision:
-    name: runner-runtime-provision
+  validate:
+    name: target-contract-live-validation
     runs-on:
       - self-hosted
       - linux
       - x64
       - planning-model-canonical-cpu-v1
-    timeout-minutes: 45
+    timeout-minutes: 10
     steps:
-      - name: Verify runner connectivity
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "runner_name=${RUNNER_NAME}"
-          echo "runner_os=${RUNNER_OS}"
-          echo "runner_arch=${RUNNER_ARCH}"
-          echo "hostname=$(hostname)"
-          echo "user=$(id -un)"
-          sudo -n true
-
-      - name: Checkout trusted main implementation
+      - name: Checkout materialized target contract
         uses: actions/checkout@v4
         with:
-          ref: 7006bd5f3eb0da748be7edc87ed2853b79f7b6ce
+          ref: ba10d7305ce2abd1b9d6c8d0d18b28e523951217
           fetch-depth: 0
           clean: true
           persist-credentials: false
 
-      - name: Provision canonical Python runtime
+      - name: Validate contract against the live runner
         shell: bash
         run: |
           set -euo pipefail
-
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            git \
-            ca-certificates \
-            curl \
-            python3.12-venv
-
-          sudo install -d -o ubuntu -g ubuntu /opt/planning-model
-          if [ ! -x /opt/planning-model/venv/bin/python ]; then
-            python3.12 -m venv /opt/planning-model/venv
-          fi
-
-          /opt/planning-model/venv/bin/python -m pip install -r requirements.lock
-          /opt/planning-model/venv/bin/python -m pip install \
-            'torch==2.12.0+cpu' \
-            --index-url https://download.pytorch.org/whl/cpu
-
-          sudo rm -f /usr/local/bin/python /usr/local/bin/pip
-          printf '%s\n' '#!/bin/sh' 'exec /opt/planning-model/venv/bin/python "$@"' \
-            | sudo tee /usr/local/bin/python >/dev/null
-          printf '%s\n' '#!/bin/sh' 'exec /opt/planning-model/venv/bin/python -m pip "$@"' \
-            | sudo tee /usr/local/bin/pip >/dev/null
-          sudo chmod 0755 /usr/local/bin/python /usr/local/bin/pip
-
-          hash -r
-          command -v python
-          python --version
-          python -c 'import torch; print(torch.__version__)'
-
-      - name: Materialize trusted runner image identity
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          token="$(curl -fsS -X PUT \
-            -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600' \
-            http://169.254.169.254/latest/api/token)"
-          instance_id="$(curl -fsS \
-            -H "X-aws-ec2-metadata-token: ${token}" \
-            http://169.254.169.254/latest/meta-data/instance-id)"
-          ami_id="$(curl -fsS \
-            -H "X-aws-ec2-metadata-token: ${token}" \
-            http://169.254.169.254/latest/meta-data/ami-id)"
-          instance_type="$(curl -fsS \
-            -H "X-aws-ec2-metadata-token: ${token}" \
-            http://169.254.169.254/latest/meta-data/instance-type)"
-
-          image_id="planning-model-canonical-cpu-v1|provider=aws-ec2|instance=${instance_id}|ami=${ami_id}|type=${instance_type}|runtime=1.1|torch=2.12.0+cpu"
-          printf '%s\n' "$image_id" | sudo tee /etc/planning-model-runner-image-id >/dev/null
-          sudo chown root:root /etc/planning-model-runner-image-id
-          sudo chmod 0444 /etc/planning-model-runner-image-id
-
           test -s /etc/planning-model-runner-image-id
-          stat -c 'runner_image_owner=%U:%G mode=%a' /etc/planning-model-runner-image-id
-          echo "runner_image=$(cat /etc/planning-model-runner-image-id)"
-
-      - name: Capture final target materialization observation
-        shell: bash
-        env:
-          ATEN_CPU_CAPABILITY: avx2
-          MKL_CBWR: COMPATIBLE
-          OMP_NUM_THREADS: '1'
-          MKL_NUM_THREADS: '1'
-          OPENBLAS_NUM_THREADS: '1'
-          NUMEXPR_NUM_THREADS: '1'
-        run: |
-          set -euo pipefail
+          export FIXED_TARGET_RUNNER_IMAGE="$(cat /etc/planning-model-runner-image-id)"
           python - <<'PY'
-          import hashlib
-          import importlib.metadata
           import json
-          import os
-          import platform
           from pathlib import Path
+          from scripts.fixed_target_contract import (
+              collect_target_observation,
+              target_contract_sha256,
+              validate_target_contract,
+          )
 
-          import torch
-
-          torch.use_deterministic_algorithms(True, warn_only=False)
-          torch.set_num_threads(1)
-          torch.set_num_interop_threads(1)
-          torch.backends.mkldnn.enabled = False
-
-          cpu = {}
-          first = Path('/proc/cpuinfo').read_text(encoding='utf-8').split('\n\n', 1)[0]
-          for line in first.splitlines():
-              if ':' in line:
-                  key, value = line.split(':', 1)
-                  cpu[key.strip()] = value.strip()
-
-          os_release = {}
-          for line in Path('/etc/os-release').read_text(encoding='utf-8').splitlines():
-              if '=' in line:
-                  key, value = line.split('=', 1)
-                  os_release[key] = value.strip().strip('"')
-
-          build_number, build_date = platform.python_build()
-          observation = {
-              'os': platform.system(),
-              'os_version': os_release.get('PRETTY_NAME', ''),
-              'kernel_version': platform.release(),
-              'architecture': platform.machine(),
-              'cpu_vendor': cpu.get('vendor_id', ''),
-              'cpu_family': cpu.get('cpu family', ''),
-              'cpu_model': cpu.get('model', ''),
-              'cpu_stepping': cpu.get('stepping', ''),
-              'cpu_model_name': cpu.get('model name', ''),
-              'microcode': cpu.get('microcode', ''),
-              'cpu_flags': sorted(set(cpu.get('flags', '').split())),
-              'logical_cpu_count': os.cpu_count(),
-              'runner_type': 'self-hosted-dedicated',
-              'runner_image': Path('/etc/planning-model-runner-image-id').read_text(encoding='utf-8').strip(),
-              'python_implementation': platform.python_implementation(),
-              'python_version': platform.python_version(),
-              'python_build': [build_number, build_date],
-              'python_compiler': platform.python_compiler(),
-              'pip_version': importlib.metadata.version('pip'),
-              'torch_version': torch.__version__,
-              'torch_build_configuration_sha256': 'sha256:' + hashlib.sha256(torch.__config__.show().encode('utf-8')).hexdigest(),
-              'mkl_available': torch.backends.mkl.is_available(),
-              'openmp_available': torch.backends.openmp.is_available(),
-              'mkldnn_available': torch.backends.mkldnn.is_available(),
-              'ATEN_CPU_CAPABILITY': os.environ['ATEN_CPU_CAPABILITY'],
-              'actual_atten_cpu_capability': torch.backends.cpu.get_cpu_capability(),
-              'MKL_CBWR': os.environ['MKL_CBWR'],
-              'torch_num_threads': torch.get_num_threads(),
-              'torch_num_interop_threads': torch.get_num_interop_threads(),
-              'OMP_NUM_THREADS': os.environ['OMP_NUM_THREADS'],
-              'MKL_NUM_THREADS': os.environ['MKL_NUM_THREADS'],
-              'OPENBLAS_NUM_THREADS': os.environ['OPENBLAS_NUM_THREADS'],
-              'NUMEXPR_NUM_THREADS': os.environ['NUMEXPR_NUM_THREADS'],
-              'mkldnn_enabled': torch.backends.mkldnn.enabled,
-              'deterministic_algorithms': torch.are_deterministic_algorithms_enabled(),
-              'deterministic_warn_only': torch.is_deterministic_algorithms_warn_only_enabled(),
-              'optimizer_foreach': False,
-              'optimizer_fused': False,
-          }
-          print('TARGET_MATERIALIZATION_OBSERVATION=' + json.dumps(observation, sort_keys=True, separators=(',', ':')))
-          if observation['torch_version'] != '2.12.0+cpu':
-              raise SystemExit('TORCH_VERSION_MISMATCH')
-          if observation['actual_atten_cpu_capability'] != 'AVX2':
-              raise SystemExit('ATEN_CPU_CAPABILITY_NOT_AVX2')
-          if observation['logical_cpu_count'] != 2:
-              raise SystemExit('LOGICAL_CPU_COUNT_DRIFT')
+          contract = json.loads(Path('configs/fixed-cpu-target-1.0.json').read_text(encoding='utf-8'))
+          validate_target_contract(contract)
+          observation = collect_target_observation(contract)
+          print('target_contract_sha256=' + target_contract_sha256(contract))
+          print('observation_sha256=' + observation['observation_sha256'])
+          print('actual_atten_cpu_capability=' + observation['actual_atten_cpu_capability'])
+          print('runner_image=' + observation['runner_image'])
+          print('TARGET_CONTRACT_LIVE_VALIDATION_OK')
           PY
-
-          echo 'FIXED_TARGET_RUNTIME_PROVISIONED_OK'
