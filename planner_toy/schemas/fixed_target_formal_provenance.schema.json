@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://planning-model.local/schemas/fixed_target_formal_provenance.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "formal_provenance_version",
+    "attempt_index",
+    "attempt_identity_sha256",
+    "workflow_run_id",
+    "job_id",
+    "workflow_sha",
+    "execution_context",
+    "execution_implementation_commit",
+    "scientific_parent_implementation_commit",
+    "target_contract_sha256",
+    "runtime_contract_sha256",
+    "target_observation_sha256",
+    "source_inventory_sha256",
+    "units",
+    "formal_provenance_sha256"
+  ],
+  "properties": {
+    "formal_provenance_version": {
+      "const": "toy-quality-fixed-target-formal-provenance/1.1"
+    },
+    "attempt_index": {
+      "enum": [
+        1,
+        2,
+        3
+      ]
+    },
+    "attempt_identity_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "workflow_run_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "job_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "workflow_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "execution_context": {
+      "const": "formal-fixed-target"
+    },
+    "execution_implementation_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "scientific_parent_implementation_commit": {
+      "const": "779172c3bbca3d03552deaed6421e82fcf19a932"
+    },
+    "target_contract_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "runtime_contract_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "target_observation_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "source_inventory_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "units": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": {
+        "$ref": "https://planning-model.local/schemas/fixed_target_quality_unit.schema.json"
+      }
+    },
+    "formal_provenance_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}
