@@ -290,6 +290,9 @@ def _validate_formal_provenance(
     unit_projection.sort(key=lambda item: (item["variant"], item["seed"]))
     return {
         "attempt_identity_sha256": provenance["attempt_identity_sha256"],
+        "workflow_run_id": provenance["workflow_run_id"],
+        "job_id": provenance["job_id"],
+        "workflow_sha": provenance["workflow_sha"],
         "formal_provenance_sha256": provenance["formal_provenance_sha256"],
         "units": unit_projection,
     }
