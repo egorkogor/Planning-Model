@@ -1246,6 +1246,47 @@ def _validate_training_execution_identity(config: dict[str, Any]) -> None:
         raise ValueError("FIXED_TARGET_SHARDED_EXECUTION_BINDING_MISMATCH")
 
 
+def _expected_canonical_dataset_manifest() -> dict[str, Any]:
+    """Re-derive the frozen dataset hash and claim-bearing execution order."""
+    from planner_toy.dataset import generate as generate_dataset  # noqa: PLC0415
+
+    dataset = generate_dataset(17)
+    if dataset["dataset_hash"] != HISTORICAL_QUALITY_DATASET_HASH:
+        raise ValueError("FIXED_TARGET_HISTORICAL_DATASET_HASH_MISMATCH")
+    train_task_ids = tuple(
+        row["task_id"] for row in sorted(dataset["train"], key=lambda row: row["task_id"])
+    )
+    eval_task_ids = tuple(
+        row["task_id"]
+        for row in sorted(dataset["validation"], key=lambda row: row["task_id"])
+    )
+    if train_task_ids != HISTORICAL_ORDERED_TRAIN_TASK_IDS:
+        raise ValueError("FIXED_TARGET_CANONICAL_TRAIN_TASK_ORDER_MISMATCH")
+    if eval_task_ids != HISTORICAL_ORDERED_EVAL_TASK_IDS:
+        raise ValueError("FIXED_TARGET_CANONICAL_EVAL_TASK_ORDER_MISMATCH")
+    return {
+        "dataset_hash": HISTORICAL_QUALITY_DATASET_HASH,
+        "train_task_ids": list(train_task_ids),
+        "eval_task_ids": list(eval_task_ids),
+    }
+
+
+def _validate_canonical_dataset_binding(
+    dataset_manifest: object,
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    expected = _expected_canonical_dataset_manifest()
+    if dataset_manifest != expected or any(
+        (
+            config.get("dataset_manifest_hash") != expected["dataset_hash"],
+            config.get("train_task_ids") != expected["train_task_ids"],
+            config.get("eval_task_ids") != expected["eval_task_ids"],
+        )
+    ):
+        raise ValueError("FIXED_TARGET_DATASET_MANIFEST_MISMATCH")
+    return expected
+
+
 def _validate_evaluation_integrity(evaluation_root: Path) -> str:
     from planner_toy.quality import (  # noqa: PLC0415
         _examples,
@@ -1293,23 +1334,11 @@ def _validate_evaluation_integrity(evaluation_root: Path) -> str:
         "FIXED_TARGET_EVALUATION_CONFIG_INVALID",
     )
     canonical_dataset = generate(17)
-    expected_dataset_manifest = {
-        "dataset_hash": canonical_dataset["dataset_hash"],
-        "train_task_ids": [row["task_id"] for row in canonical_dataset["train"]],
-        "eval_task_ids": [row["task_id"] for row in canonical_dataset["validation"]],
-    }
     dataset_manifest = _read_json(
         evaluation_root / "dataset-manifest.json",
         "FIXED_TARGET_DATASET_MANIFEST_INVALID",
     )
-    if dataset_manifest != expected_dataset_manifest or any(
-        (
-            config.get("dataset_manifest_hash") != expected_dataset_manifest["dataset_hash"],
-            config.get("train_task_ids") != expected_dataset_manifest["train_task_ids"],
-            config.get("eval_task_ids") != expected_dataset_manifest["eval_task_ids"],
-        )
-    ):
-        raise ValueError("FIXED_TARGET_DATASET_MANIFEST_MISMATCH")
+    _validate_canonical_dataset_binding(dataset_manifest, config)
     if config.get("training_execution_mode") == "TRAINED_IN_ATTEMPT_SHARDED":
         manifest_bindings = {
             "implementation_commit": config.get("implementation_commit"),
