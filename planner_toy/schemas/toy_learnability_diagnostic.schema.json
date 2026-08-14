@@ -1,0 +1,1829 @@
+{
+  "$defs": {
+    "checkpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_initialization_state_dict_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "canonical_optimizer_state_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "canonical_trained_state_dict_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "checkpoint_manifest_file_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "checkpoint_manifest_path": {
+          "type": "string"
+        },
+        "evaluated_train_split_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "frozen_dataset_lineage_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "initialization_path": {
+          "type": "string"
+        },
+        "optimizer_state_path": {
+          "type": "string"
+        },
+        "seed": {
+          "enum": [
+            17,
+            29,
+            43
+          ]
+        },
+        "trained_checkpoint_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "seed",
+        "checkpoint_manifest_path",
+        "checkpoint_manifest_file_sha256",
+        "initialization_path",
+        "trained_checkpoint_path",
+        "optimizer_state_path",
+        "frozen_dataset_lineage_hash",
+        "evaluated_train_split_hash",
+        "canonical_initialization_state_dict_sha256",
+        "canonical_trained_state_dict_sha256",
+        "canonical_optimizer_state_sha256"
+      ],
+      "type": "object"
+    },
+    "free_summary": {
+      "additionalProperties": false,
+      "properties": {
+        "exact_plan_rate": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "first_error_distribution": {
+          "additionalProperties": false,
+          "properties": {
+            "EARLY_END": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "EXTRA_ACTION_AFTER_GOLD_END": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "GOAL_NOT_ACHIEVED": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "NONE": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "PARSE_FAILURE": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "PRECONDITION_FAILURE": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "WRONG_ARG1": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "WRONG_ARG2": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "WRONG_OPERATOR": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "NONE",
+            "EARLY_END",
+            "WRONG_OPERATOR",
+            "WRONG_ARG1",
+            "WRONG_ARG2",
+            "EXTRA_ACTION_AFTER_GOLD_END",
+            "PARSE_FAILURE",
+            "PRECONDITION_FAILURE",
+            "GOAL_NOT_ACHIEVED"
+          ],
+          "type": "object"
+        },
+        "full_plan_executable_rate": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "goal_success_rate": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "joint_step_accuracy": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mean_end_probability": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mean_executable_prefix_fraction_of_gold": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mean_executable_prefix_fraction_of_predicted": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mean_executable_prefix_length": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mean_first_error_position": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nonempty_plan_rate": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operator_accuracy": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "predicted_position_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "task_count": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "task_count",
+        "predicted_position_count",
+        "operator_accuracy",
+        "joint_step_accuracy",
+        "mean_end_probability",
+        "nonempty_plan_rate",
+        "exact_plan_rate",
+        "mean_executable_prefix_length",
+        "mean_executable_prefix_fraction_of_predicted",
+        "mean_executable_prefix_fraction_of_gold",
+        "full_plan_executable_rate",
+        "goal_success_rate",
+        "mean_first_error_position",
+        "first_error_distribution"
+      ],
+      "type": "object"
+    },
+    "free_task": {
+      "additionalProperties": false,
+      "properties": {
+        "end_only": {
+          "type": "boolean"
+        },
+        "exact_plan_match": {
+          "type": "boolean"
+        },
+        "executable_prefix_fraction_of_gold": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executable_prefix_fraction_of_predicted": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executable_prefix_length": {
+          "maximum": 17,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failure_code": {
+          "oneOf": [
+            {
+              "enum": [
+                "PLAN_NO_END",
+                "PLAN_PARSE_ERROR",
+                "EXECUTOR_PRECONDITION_FAILED",
+                "GOAL_NOT_ACHIEVED"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "final_goal_success": {
+          "type": "boolean"
+        },
+        "final_state": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "first_mismatch_position": {
+          "oneOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "first_mismatch_type": {
+          "enum": [
+            "NONE",
+            "EARLY_END",
+            "WRONG_OPERATOR",
+            "WRONG_ARG1",
+            "WRONG_ARG2",
+            "EXTRA_ACTION_AFTER_GOLD_END",
+            "PARSE_FAILURE",
+            "PRECONDITION_FAILURE",
+            "GOAL_NOT_ACHIEVED"
+          ]
+        },
+        "first_predicted_operator": {
+          "oneOf": [
+            {
+              "enum": [
+                "PICK_UP",
+                "UNSTACK",
+                "PUT_DOWN",
+                "STACK",
+                "END"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "first_step_end_probability": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "full_plan_executable": {
+          "type": "boolean"
+        },
+        "generation_failure": {
+          "oneOf": [
+            {
+              "const": "PLAN_NO_END"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gold_action_count": {
+          "maximum": 16,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "initial_goal_satisfied": {
+          "type": "boolean"
+        },
+        "model_forward_count": {
+          "maximum": 17,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "parser_success": {
+          "type": "boolean"
+        },
+        "planner_call_count": {
+          "const": 1
+        },
+        "predicted_action_count": {
+          "maximum": 17,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "predicted_history_positions": {
+          "items": {
+            "$ref": "#/$defs/predicted_position"
+          },
+          "maxItems": 17,
+          "type": "array"
+        },
+        "predicted_plan": {
+          "items": {
+            "$ref": "#/$defs/plan_step"
+          },
+          "maxItems": 17,
+          "type": "array"
+        },
+        "predicted_plan_length": {
+          "maximum": 17,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "predicted_pre_end_action_count": {
+          "maximum": 17,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "replanning_count": {
+          "const": 0
+        },
+        "seed": {
+          "enum": [
+            17,
+            29,
+            43
+          ]
+        },
+        "split": {
+          "const": "train"
+        },
+        "task_id": {
+          "pattern": "^bw-[0-9]{8}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "split",
+        "task_id",
+        "seed",
+        "predicted_plan",
+        "predicted_history_positions",
+        "predicted_pre_end_action_count",
+        "first_predicted_operator",
+        "first_step_end_probability",
+        "predicted_plan_length",
+        "end_only",
+        "parser_success",
+        "exact_plan_match",
+        "first_mismatch_position",
+        "first_mismatch_type",
+        "executable_prefix_length",
+        "predicted_action_count",
+        "gold_action_count",
+        "executable_prefix_fraction_of_predicted",
+        "executable_prefix_fraction_of_gold",
+        "full_plan_executable",
+        "initial_goal_satisfied",
+        "final_goal_success",
+        "final_state",
+        "failure_code",
+        "generation_failure",
+        "model_forward_count",
+        "planner_call_count",
+        "replanning_count"
+      ],
+      "type": "object"
+    },
+    "invariance": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint_bytes_unchanged": {
+          "const": true
+        },
+        "checkpoint_canonical_after": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "checkpoint_canonical_before": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "model_parameters_unchanged": {
+          "const": true
+        },
+        "optimizer_canonical_after": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "optimizer_canonical_before": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "optimizer_state_unchanged": {
+          "const": true
+        },
+        "pipeline_replay_hash_after": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "pipeline_replay_hash_before": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "pipeline_replay_unchanged": {
+          "const": true
+        },
+        "rng_state_restored": {
+          "const": true
+        },
+        "seed": {
+          "enum": [
+            17,
+            29,
+            43
+          ]
+        }
+      },
+      "required": [
+        "seed",
+        "checkpoint_canonical_before",
+        "checkpoint_canonical_after",
+        "optimizer_canonical_before",
+        "optimizer_canonical_after",
+        "pipeline_replay_hash_before",
+        "pipeline_replay_hash_after",
+        "model_parameters_unchanged",
+        "checkpoint_bytes_unchanged",
+        "optimizer_state_unchanged",
+        "pipeline_replay_unchanged",
+        "rng_state_restored"
+      ],
+      "type": "object"
+    },
+    "loss": {
+      "additionalProperties": false,
+      "properties": {
+        "arg1_pointer_loss": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "arg1_target_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "arg2_pointer_loss": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "arg2_target_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "clipping_occurred": {
+          "type": "boolean"
+        },
+        "epoch_index": {
+          "maximum": 2,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "gradient_clip_norm": {
+          "const": 1.0
+        },
+        "gradient_norm": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "operator_loss": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "operator_target_count": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "seed": {
+          "enum": [
+            17,
+            29,
+            43
+          ]
+        },
+        "task_id": {
+          "pattern": "^bw-[0-9]{8}$",
+          "type": "string"
+        },
+        "total_loss": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "update_index": {
+          "maximum": 8,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seed",
+        "update_index",
+        "epoch_index",
+        "task_id",
+        "operator_loss",
+        "arg1_pointer_loss",
+        "arg2_pointer_loss",
+        "total_loss",
+        "operator_target_count",
+        "arg1_target_count",
+        "arg2_target_count",
+        "gradient_norm",
+        "gradient_clip_norm",
+        "clipping_occurred"
+      ],
+      "type": "object"
+    },
+    "loss_summary": {
+      "additionalProperties": false,
+      "properties": {
+        "arg1_target_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "arg2_target_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "clipping_occurrence_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mean_arg1_pointer_loss": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mean_arg2_pointer_loss": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mean_gradient_norm": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mean_operator_loss": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mean_total_loss": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operator_target_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "update_count": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "update_count",
+        "mean_operator_loss",
+        "mean_arg1_pointer_loss",
+        "mean_arg2_pointer_loss",
+        "mean_total_loss",
+        "operator_target_count",
+        "arg1_target_count",
+        "arg2_target_count",
+        "mean_gradient_norm",
+        "clipping_occurrence_count"
+      ],
+      "type": "object"
+    },
+    "plan_step": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "minItems": 1,
+      "type": "array"
+    },
+    "predicted_position": {
+      "additionalProperties": false,
+      "properties": {
+        "arg1_correct": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "arg2_correct": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gold_arg1": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gold_arg2": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gold_operator": {
+          "oneOf": [
+            {
+              "enum": [
+                "PICK_UP",
+                "UNSTACK",
+                "PUT_DOWN",
+                "STACK",
+                "END"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "joint_step_correct": {
+          "type": "boolean"
+        },
+        "operator_correct": {
+          "type": "boolean"
+        },
+        "position_index": {
+          "maximum": 16,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "predicted_arg1": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "predicted_arg2": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "predicted_operator": {
+          "enum": [
+            "PICK_UP",
+            "UNSTACK",
+            "PUT_DOWN",
+            "STACK",
+            "END"
+          ]
+        },
+        "probability_end": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "position_index",
+        "predicted_operator",
+        "predicted_arg1",
+        "predicted_arg2",
+        "probability_end",
+        "gold_operator",
+        "gold_arg1",
+        "gold_arg2",
+        "operator_correct",
+        "arg1_correct",
+        "arg2_correct",
+        "joint_step_correct"
+      ],
+      "type": "object"
+    },
+    "runtime_fingerprint": {
+      "additionalProperties": false,
+      "properties": {
+        "MKL_NUM_THREADS": {
+          "const": "1"
+        },
+        "NUMEXPR_NUM_THREADS": {
+          "const": "1"
+        },
+        "OMP_NUM_THREADS": {
+          "const": "1"
+        },
+        "OPENBLAS_NUM_THREADS": {
+          "const": "1"
+        },
+        "deterministic_algorithms_enabled": {
+          "const": true
+        },
+        "deterministic_warn_only_enabled": {
+          "const": false
+        },
+        "mkldnn_enabled": {
+          "const": false
+        },
+        "profile_version": {
+          "const": "toy-quality-canonical-cpu-runtime/1.0"
+        },
+        "torch_num_interop_threads": {
+          "const": 1
+        },
+        "torch_num_threads": {
+          "const": 1
+        }
+      },
+      "required": [
+        "profile_version",
+        "deterministic_algorithms_enabled",
+        "deterministic_warn_only_enabled",
+        "torch_num_threads",
+        "torch_num_interop_threads",
+        "mkldnn_enabled",
+        "OMP_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS"
+      ],
+      "type": "object"
+    },
+    "runtime_versions": {
+      "additionalProperties": false,
+      "properties": {
+        "cuda_available": {
+          "type": "boolean"
+        },
+        "cuda_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution_device": {
+          "const": "cpu"
+        },
+        "numpy": {
+          "type": "string"
+        },
+        "python": {
+          "type": "string"
+        },
+        "torch": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "python",
+        "torch",
+        "numpy",
+        "cuda_version",
+        "cuda_available",
+        "execution_device"
+      ],
+      "type": "object"
+    },
+    "source_file": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "pattern": "^[A-Za-z0-9_./-]+$",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "teacher_position": {
+      "additionalProperties": false,
+      "properties": {
+        "arg1_correct": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "arg1_head_prediction": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "arg2_correct": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "arg2_head_prediction": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decoded_arg1": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decoded_arg2": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "end_correct": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gold_arg1": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gold_arg2": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gold_operator": {
+          "enum": [
+            "PICK_UP",
+            "UNSTACK",
+            "PUT_DOWN",
+            "STACK",
+            "END"
+          ]
+        },
+        "has_arg1_target": {
+          "type": "boolean"
+        },
+        "has_arg2_target": {
+          "type": "boolean"
+        },
+        "joint_step_correct": {
+          "type": "boolean"
+        },
+        "operator_correct": {
+          "type": "boolean"
+        },
+        "operator_nll": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "position_index": {
+          "maximum": 16,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "predicted_operator": {
+          "enum": [
+            "PICK_UP",
+            "UNSTACK",
+            "PUT_DOWN",
+            "STACK",
+            "END"
+          ]
+        },
+        "probability_end": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "probability_gold_operator": {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        "seed": {
+          "enum": [
+            17,
+            29,
+            43
+          ]
+        },
+        "split": {
+          "const": "train"
+        },
+        "task_id": {
+          "pattern": "^bw-[0-9]{8}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "split",
+        "task_id",
+        "seed",
+        "position_index",
+        "gold_operator",
+        "predicted_operator",
+        "operator_correct",
+        "end_correct",
+        "probability_gold_operator",
+        "probability_end",
+        "operator_nll",
+        "has_arg1_target",
+        "has_arg2_target",
+        "gold_arg1",
+        "gold_arg2",
+        "arg1_head_prediction",
+        "arg2_head_prediction",
+        "decoded_arg1",
+        "decoded_arg2",
+        "arg1_correct",
+        "arg2_correct",
+        "joint_step_correct"
+      ],
+      "type": "object"
+    },
+    "teacher_summary": {
+      "additionalProperties": false,
+      "properties": {
+        "arg1_accuracy": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "arg1_correct_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "arg1_target_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "arg2_accuracy": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "arg2_correct_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "arg2_target_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "end_accuracy": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "end_correct_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "end_target_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "joint_step_accuracy": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "joint_step_correct_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mean_operator_nll": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mean_probability_end": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mean_probability_gold_operator": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operator_accuracy": {
+          "oneOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operator_correct_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "position_count": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "position_count",
+        "operator_correct_count",
+        "operator_accuracy",
+        "joint_step_correct_count",
+        "joint_step_accuracy",
+        "arg1_target_count",
+        "arg1_correct_count",
+        "arg1_accuracy",
+        "arg2_target_count",
+        "arg2_correct_count",
+        "arg2_accuracy",
+        "end_target_count",
+        "end_correct_count",
+        "end_accuracy",
+        "mean_probability_gold_operator",
+        "mean_probability_end",
+        "mean_operator_nll"
+      ],
+      "type": "object"
+    },
+    "teacher_task": {
+      "additionalProperties": false,
+      "properties": {
+        "positions": {
+          "items": {
+            "$ref": "#/$defs/teacher_position"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "seed": {
+          "enum": [
+            17,
+            29,
+            43
+          ]
+        },
+        "split": {
+          "const": "train"
+        },
+        "task_id": {
+          "pattern": "^bw-[0-9]{8}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "split",
+        "task_id",
+        "seed",
+        "positions"
+      ],
+      "type": "object"
+    },
+    "training_config": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint_policy": {
+          "const": "final_epoch_only_no_heldout_selection"
+        },
+        "epochs": {
+          "const": 3
+        },
+        "max_decoding_steps": {
+          "const": 17
+        },
+        "optimizer": {
+          "additionalProperties": false,
+          "properties": {
+            "betas": {
+              "const": [
+                0.9,
+                0.95
+              ]
+            },
+            "eps": {
+              "const": 1e-08
+            },
+            "gradient_clip_norm": {
+              "const": 1.0
+            },
+            "learning_rate": {
+              "const": 0.0003
+            },
+            "name": {
+              "const": "AdamW"
+            },
+            "weight_decay": {
+              "const": 0.01
+            }
+          },
+          "required": [
+            "name",
+            "learning_rate",
+            "betas",
+            "eps",
+            "weight_decay",
+            "gradient_clip_norm"
+          ],
+          "type": "object"
+        },
+        "train_task_order": {
+          "const": "task_id-ascending-per-epoch"
+        },
+        "updates_per_run": {
+          "const": 9
+        }
+      },
+      "required": [
+        "epochs",
+        "updates_per_run",
+        "train_task_order",
+        "optimizer",
+        "checkpoint_policy",
+        "max_decoding_steps"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://ml-brain.local/schemas/toy/development-learnability-diagnostic-0.1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "aggregates": {
+      "additionalProperties": false,
+      "properties": {
+        "free_running": {
+          "additionalProperties": false,
+          "properties": {
+            "by_seed": {
+              "additionalProperties": false,
+              "patternProperties": {
+                "^(17|29|43)$": {
+                  "$ref": "#/$defs/free_summary"
+                }
+              },
+              "type": "object"
+            },
+            "by_split": {
+              "additionalProperties": false,
+              "properties": {
+                "train": {
+                  "$ref": "#/$defs/free_summary"
+                }
+              },
+              "type": "object"
+            },
+            "overall": {
+              "$ref": "#/$defs/free_summary"
+            }
+          },
+          "required": [
+            "overall",
+            "by_split",
+            "by_seed"
+          ],
+          "type": "object"
+        },
+        "history_mode_comparison": {
+          "additionalProperties": false,
+          "properties": {
+            "gold_history": {
+              "$ref": "#/$defs/free_summary"
+            },
+            "predicted_history": {
+              "$ref": "#/$defs/free_summary"
+            }
+          },
+          "required": [
+            "gold_history",
+            "predicted_history"
+          ],
+          "type": "object"
+        },
+        "loss_breakdown": {
+          "additionalProperties": false,
+          "properties": {
+            "by_seed": {
+              "additionalProperties": false,
+              "patternProperties": {
+                "^(17|29|43)$": {
+                  "$ref": "#/$defs/loss_summary"
+                }
+              },
+              "type": "object"
+            },
+            "overall": {
+              "$ref": "#/$defs/loss_summary"
+            }
+          },
+          "required": [
+            "overall",
+            "by_seed"
+          ],
+          "type": "object"
+        },
+        "teacher_forced": {
+          "additionalProperties": false,
+          "properties": {
+            "by_operator": {
+              "additionalProperties": false,
+              "properties": {
+                "END": {
+                  "$ref": "#/$defs/teacher_summary"
+                },
+                "PICK_UP": {
+                  "$ref": "#/$defs/teacher_summary"
+                },
+                "PUT_DOWN": {
+                  "$ref": "#/$defs/teacher_summary"
+                },
+                "STACK": {
+                  "$ref": "#/$defs/teacher_summary"
+                },
+                "UNSTACK": {
+                  "$ref": "#/$defs/teacher_summary"
+                }
+              },
+              "type": "object"
+            },
+            "by_position_index": {
+              "additionalProperties": false,
+              "patternProperties": {
+                "^(0|[1-9]|1[0-6])$": {
+                  "$ref": "#/$defs/teacher_summary"
+                }
+              },
+              "type": "object"
+            },
+            "by_seed": {
+              "additionalProperties": false,
+              "patternProperties": {
+                "^(17|29|43)$": {
+                  "$ref": "#/$defs/teacher_summary"
+                }
+              },
+              "type": "object"
+            },
+            "by_split": {
+              "additionalProperties": false,
+              "properties": {
+                "train": {
+                  "$ref": "#/$defs/teacher_summary"
+                }
+              },
+              "type": "object"
+            },
+            "end": {
+              "$ref": "#/$defs/teacher_summary"
+            },
+            "non_end": {
+              "$ref": "#/$defs/teacher_summary"
+            },
+            "overall": {
+              "$ref": "#/$defs/teacher_summary"
+            }
+          },
+          "required": [
+            "overall",
+            "by_split",
+            "by_seed",
+            "by_position_index",
+            "by_operator",
+            "non_end",
+            "end"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "teacher_forced",
+        "free_running",
+        "history_mode_comparison",
+        "loss_breakdown"
+      ],
+      "type": "object"
+    },
+    "canonical_cpu_runtime": {
+      "$ref": "#/$defs/runtime_fingerprint"
+    },
+    "canonical_identity": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "checkpoints": {
+      "items": {
+        "$ref": "#/$defs/checkpoint"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "diagnostic_complete": {
+      "type": "boolean"
+    },
+    "diagnostic_invariance": {
+      "items": {
+        "$ref": "#/$defs/invariance"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "diagnostic_source_files": {
+      "items": {
+        "$ref": "#/$defs/source_file"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "diagnostic_source_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "diagnostic_version": {
+      "const": "development-learnability-diagnostic/0.1"
+    },
+    "evaluated_splits": {
+      "const": [
+        "train"
+      ]
+    },
+    "evaluated_task_ids": {
+      "items": {
+        "pattern": "^bw-[0-9]{8}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "evaluated_train_split_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "excluded_splits": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "const": "FROZEN_QUALITY_V0_1_HELDOUT"
+          },
+          "split": {
+            "const": "validation"
+          },
+          "task_ids": {
+            "const": [
+              "bw-00000004",
+              "bw-00000005"
+            ]
+          }
+        },
+        "required": [
+          "split",
+          "reason",
+          "task_ids"
+        ],
+        "type": "object"
+      },
+      "maxItems": 1,
+      "minItems": 1,
+      "type": "array"
+    },
+    "first_error_distribution": {
+      "additionalProperties": false,
+      "properties": {
+        "EARLY_END": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "EXTRA_ACTION_AFTER_GOLD_END": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "GOAL_NOT_ACHIEVED": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "NONE": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "PARSE_FAILURE": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "PRECONDITION_FAILURE": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "WRONG_ARG1": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "WRONG_ARG2": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "WRONG_OPERATOR": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "NONE",
+        "EARLY_END",
+        "WRONG_OPERATOR",
+        "WRONG_ARG1",
+        "WRONG_ARG2",
+        "EXTRA_ACTION_AFTER_GOLD_END",
+        "PARSE_FAILURE",
+        "PRECONDITION_FAILURE",
+        "GOAL_NOT_ACHIEVED"
+      ],
+      "type": "object"
+    },
+    "free_running": {
+      "items": {
+        "$ref": "#/$defs/free_task"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "frozen_dataset_lineage_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "gate_decision": {
+      "type": "null"
+    },
+    "heldout_accessed": {
+      "const": false
+    },
+    "implementation_commit": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "learnability_thresholds": {
+      "type": "null"
+    },
+    "per_update_loss_breakdown": {
+      "items": {
+        "$ref": "#/$defs/loss"
+      },
+      "minItems": 9,
+      "type": "array"
+    },
+    "requirements_lock_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "runtime_versions": {
+      "$ref": "#/$defs/runtime_versions"
+    },
+    "seeds": {
+      "items": {
+        "enum": [
+          17,
+          29,
+          43
+        ]
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "status": {
+      "const": "development-only-diagnostic"
+    },
+    "teacher_forced": {
+      "items": {
+        "$ref": "#/$defs/teacher_task"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "training_artifact_hashes": {
+      "additionalProperties": false,
+      "maxProperties": 21,
+      "minProperties": 1,
+      "patternProperties": {
+        "^training-runs/A2/seed-(17|29|43)/(checkpoint-manifest\\.json|initialization\\.pt|optimizer-evidence\\.json|optimizer-state\\.pt|trained\\.pt|training-config\\.json|training-report\\.json)$": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "training_config": {
+      "$ref": "#/$defs/training_config"
+    },
+    "training_policy_changed": {
+      "const": false
+    },
+    "variant": {
+      "const": "A2"
+    }
+  },
+  "required": [
+    "diagnostic_version",
+    "status",
+    "diagnostic_complete",
+    "variant",
+    "implementation_commit",
+    "diagnostic_source_files",
+    "diagnostic_source_sha256",
+    "requirements_lock_sha256",
+    "runtime_versions",
+    "canonical_cpu_runtime",
+    "frozen_dataset_lineage_hash",
+    "evaluated_train_split_hash",
+    "evaluated_splits",
+    "evaluated_task_ids",
+    "excluded_splits",
+    "seeds",
+    "training_config",
+    "heldout_accessed",
+    "training_policy_changed",
+    "gate_decision",
+    "learnability_thresholds",
+    "checkpoints",
+    "training_artifact_hashes",
+    "per_update_loss_breakdown",
+    "teacher_forced",
+    "free_running",
+    "aggregates",
+    "first_error_distribution",
+    "diagnostic_invariance",
+    "canonical_identity"
+  ],
+  "type": "object"
+}

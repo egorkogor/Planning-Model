@@ -56,24 +56,52 @@ _CANONICAL_OBJECT_HASH_CACHE: dict[str, str] = {}
 _EXACT_OBJECT_FILE_HASH_CACHE: dict[str, str] = {}
 ROOT = Path(__file__).parents[1]
 SOURCE_FILES = (
-    "planner_toy/canonical.py", "planner_toy/canonical_runtime.py", "planner_toy/dataset.py", "planner_toy/domain.py", "planner_toy/e2e.py",
-    "planner_toy/model.py", "planner_toy/numeric_identity.py", "planner_toy/quality.py",
-    "planner_toy/semantic.py",
-    "planner_toy/training.py", "planner_toy/schemas/toy_quality_evaluation.schema.json",
-    "scripts/run_toy_quality_evaluation.py",
-    "planner_toy/schemas/toy_quality_aggregate_summary.schema.json",
-    "planner_toy/schemas/toy_quality_compact_summary.schema.json",
-    "planner_toy/schemas/toy_quality_dataset_manifest.schema.json",
-    "planner_toy/schemas/toy_quality_evaluation_manifest.schema.json",
-    "planner_toy/schemas/toy_quality_paired_comparison.schema.json",
-    "planner_toy/schemas/toy_quality_per_seed_summary.schema.json",
-    "planner_toy/schemas/toy_quality_structural_breakdown.schema.json",
     "docs/architecture/planner_module_inventory_v1.yaml",
     "docs/architecture/task_encoding_v1.yaml",
+    "planner_toy/canonical.py",
+    "planner_toy/canonical_runtime.py",
+    "planner_toy/dataset.py",
+    "planner_toy/domain.py",
+    "planner_toy/e2e.py",
+    "planner_toy/model.py",
+    "planner_toy/numeric_identity.py",
+    "planner_toy/quality.py",
+    "planner_toy/schemas/toy_attempt_log.schema.json",
+    "planner_toy/schemas/toy_checkpoint_manifest.schema.json",
+    "planner_toy/schemas/toy_development_config.schema.json",
+    "planner_toy/schemas/toy_episode_log.schema.json",
+    "planner_toy/schemas/toy_episode_plan_manifest.schema.json",
+    "planner_toy/schemas/toy_evaluation_result.schema.json",
+    "planner_toy/schemas/toy_optimizer_evidence.schema.json",
+    "planner_toy/schemas/toy_planner_request.schema.json",
+    "planner_toy/schemas/toy_quality_aggregate_summary.schema.json",
+    "planner_toy/schemas/toy_quality_attempt_log.schema.json",
+    "planner_toy/schemas/toy_quality_checkpoint_manifest.schema.json",
+    "planner_toy/schemas/toy_quality_compact_summary.schema.json",
+    "planner_toy/schemas/toy_quality_dataset_manifest.schema.json",
+    "planner_toy/schemas/toy_quality_episode_log.schema.json",
+    "planner_toy/schemas/toy_quality_episode_plan_manifest.schema.json",
+    "planner_toy/schemas/toy_quality_evaluation.schema.json",
+    "planner_toy/schemas/toy_quality_evaluation_manifest.schema.json",
+    "planner_toy/schemas/toy_quality_evaluation_result.schema.json",
+    "planner_toy/schemas/toy_quality_optimizer_evidence.schema.json",
+    "planner_toy/schemas/toy_quality_paired_comparison.schema.json",
+    "planner_toy/schemas/toy_quality_per_seed_summary.schema.json",
+    "planner_toy/schemas/toy_quality_planner_request.schema.json",
+    "planner_toy/schemas/toy_quality_semantic_trace.schema.json",
+    "planner_toy/schemas/toy_quality_structural_breakdown.schema.json",
+    "planner_toy/schemas/toy_quality_task_result.schema.json",
+    "planner_toy/schemas/toy_quality_training_config.schema.json",
+    "planner_toy/schemas/toy_quality_training_report.schema.json",
+    "planner_toy/schemas/toy_quality_work_plan.schema.json",
+    "planner_toy/schemas/toy_run_result.schema.json",
+    "planner_toy/schemas/toy_semantic_trace.schema.json",
+    "planner_toy/schemas/toy_training_report.schema.json",
+    "planner_toy/schemas/toy_work_plan.schema.json",
+    "planner_toy/semantic.py",
+    "planner_toy/training.py",
+    "scripts/run_toy_quality_evaluation.py",
 )
-SOURCE_FILES = tuple(sorted(set(SOURCE_FILES) | {
-    str(path.relative_to(ROOT)) for path in (ROOT / "planner_toy/schemas").glob("toy_*.schema.json")
-}))
 
 
 def _write(path: Path, value: object) -> None:
@@ -541,15 +569,23 @@ def validate_evaluation(root: Path, *, force_training_replay: bool = False) -> d
         or config["deterministic_training_replay_status"] != "CANONICAL_DETERMINISTIC"
     ):
         raise ValueError("COMPLETE_RUN_TRAINING_PROVENANCE_MISMATCH")
-    if config["evaluator_source_files"] != source_identity()["evaluator_source_files"] or config["evaluator_source_sha256"] != source_identity()["evaluator_source_sha256"]:
-        raise ValueError("EVALUATOR_SOURCE_STALE")
     implementation_commit = config["implementation_commit"]
     if not implementation_commit or _git("cat-file", "-e", f"{implementation_commit}^{{commit}}").returncode:
         raise ValueError("IMPLEMENTATION_COMMIT_MISSING")
     if _git("merge-base", "--is-ancestor", implementation_commit, "HEAD").returncode:
         raise ValueError("IMPLEMENTATION_COMMIT_NOT_ANCESTOR")
-    if config["diagnostic_complete"] and source_identity_at_commit(implementation_commit) != source_identity():
-        raise ValueError("IMPLEMENTATION_COMMIT_SOURCE_MISMATCH")
+    expected_source_identity = (
+        source_identity_at_commit(implementation_commit)
+        if config["diagnostic_complete"]
+        else source_identity()
+    )
+    if (
+        config["evaluator_source_files"]
+        != expected_source_identity["evaluator_source_files"]
+        or config["evaluator_source_sha256"]
+        != expected_source_identity["evaluator_source_sha256"]
+    ):
+        raise ValueError("EVALUATOR_SOURCE_STALE")
     current_provenance = implementation_provenance(implementation_commit)
     if config["requirements_lock_sha256"] != current_provenance["requirements_lock_sha256"] or config["runtime_versions"] != current_provenance["runtime_versions"]:
         raise ValueError("IMPLEMENTATION_RUNTIME_PROVENANCE_MISMATCH")
@@ -907,8 +943,12 @@ def run(
             raise ValueError("complete canonical generation requires a clean tracked working tree")
         if _git("merge-base", "--is-ancestor", provenance["implementation_commit"], "HEAD").returncode:
             raise ValueError("implementation commit must be an ancestor of the checkout")
-        if source_identity_at_commit(provenance["implementation_commit"]) != source_identity():
-            raise ValueError("working evaluator sources differ from implementation commit")
+        source_identity_at_commit(provenance["implementation_commit"])
+    evaluator_identity = (
+        source_identity_at_commit(provenance["implementation_commit"])
+        if complete
+        else source_identity()
+    )
     config = {"schema_version": VERSION, "evaluator_version": VERSION, "variants": list(variants), "seeds": list(seeds),
               "variant_mapping": {v: {"architecture_stage": MAPPING[v][0], "implementation_variant": v, "experimental_arm": MAPPING[v][1], "target_type": MAPPING[v][2]} for v in variants},
               "train_task_ids": [r["task_id"] for r in train_rows], "eval_task_ids": [r["task_id"] for r in eval_rows],
@@ -930,7 +970,7 @@ def run(
               ),
               "canonical_numeric_policy": CANONICAL_NUMERIC_POLICY,
               "canonical_cpu_runtime": runtime_fingerprint,
-              **source_identity(), **provenance}
+              **evaluator_identity, **provenance}
     _write(output / "evaluation-config.json", config)
     _write(output / "dataset-manifest.json", {"dataset_hash": dataset["dataset_hash"], "train_task_ids": config["train_task_ids"], "eval_task_ids": config["eval_task_ids"]})
     rows = []

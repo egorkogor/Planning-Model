@@ -80,10 +80,11 @@ def test_full_canonical_compact_exports_are_byte_identical(tmp_path: Path) -> No
         "human-readable-examples.md",
     ]:
         assert (roots[0] / name).read_bytes() == (roots[1] / name).read_bytes()
+    committed_root = repository / "docs/evaluations"
     for name in [
         "data/a2_a3_a4_heldout_summary.json",
         "A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md",
     ]:
-        assert (compact_roots[0] / name).read_bytes() == (
-            compact_roots[1] / name
-        ).read_bytes()
+        first = (compact_roots[0] / name).read_bytes()
+        assert first == (compact_roots[1] / name).read_bytes()
+        assert first == (committed_root / name).read_bytes()
