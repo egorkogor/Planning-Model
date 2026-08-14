@@ -1,4 +1,4 @@
-name: Dispatch A2 learnability diagnostic (fresh)
+name: Dispatch A2 learnability diagnostic (post-fix fresh)
 
 on:
   push:
@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      EXPECTED_MAIN_SHA: 313c8b7bb312fb7563ad9ec464d1b2392c2c3041
+      EXPECTED_MAIN_SHA: 3530514572e4834cff9e34f58f4beac83f9f4b2c
       TARGET_CONTRACT_PATH: configs/fixed-cpu-target-1.0.json
     steps:
       - name: Checkout authoritative main
