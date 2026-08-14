@@ -1,8 +1,10 @@
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CI_PATH = ROOT / ".github" / "workflows" / "ci.yml"
 FORMAL_PATH = ROOT / ".github" / "workflows" / "fixed-target-acceptance.yml"
+BOOTSTRAP_MANIFEST_PATH = ROOT / "release" / "BOOTSTRAP_MANIFEST.json"
 
 
 def _ci_text() -> str:
@@ -64,10 +66,15 @@ def test_hosted_cross_worker_runs_remain_bound_and_diagnostic() -> None:
     assert "path: cross-worker-report.json" in workflow
 
 
-def test_formal_fixed_target_gate_remains_separate_and_authoritative() -> None:
+def test_hosted_ci_is_bootstrap_protected_and_formal_gate_remains_separate() -> None:
+    bootstrap = json.loads(BOOTSTRAP_MANIFEST_PATH.read_text(encoding="utf-8"))
+    hosted_digest = bootstrap["files"].get(".github/workflows/ci.yml")
     hosted = _ci_text()
     formal = FORMAL_PATH.read_text(encoding="utf-8")
 
+    assert isinstance(hosted_digest, str)
+    assert hosted_digest.startswith("sha256:")
+    assert len(hosted_digest) == len("sha256:") + 64
     assert "planning-model-canonical-cpu-v1" not in hosted
     assert "final-gate" not in hosted
     assert "planning-model-canonical-cpu-v1" in formal
