@@ -1,14 +1,21 @@
 import json
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 CI_PATH = ROOT / ".github" / "workflows" / "ci.yml"
 FORMAL_PATH = ROOT / ".github" / "workflows" / "fixed-target-acceptance.yml"
+A2_DIAGNOSTIC_PATH = ROOT / ".github" / "workflows" / "a2-learnability-diagnostic.yml"
 BOOTSTRAP_MANIFEST_PATH = ROOT / "release" / "BOOTSTRAP_MANIFEST.json"
 
 
 def _ci_text() -> str:
     return CI_PATH.read_text(encoding="utf-8")
+
+
+def _workflow_document(path: Path) -> dict:
+    return yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 
 
 def test_hosted_same_environment_reproducibility_remains_fail_closed() -> None:
@@ -82,3 +89,70 @@ def test_hosted_ci_is_bootstrap_protected_and_formal_gate_remains_separate() -> 
     assert "validate-bundle" in formal
     assert "Final runtime 1.1 acceptance gate" in formal
     assert "final-gate" in formal
+
+
+def test_a2_diagnostic_uses_canonical_runner_image_provenance_binding() -> None:
+    document = _workflow_document(A2_DIAGNOSTIC_PATH)
+    workflow = A2_DIAGNOSTIC_PATH.read_text(encoding="utf-8")
+
+    assert set(document["on"]) == {"workflow_dispatch"}
+    job = document["jobs"]["a2-learnability-diagnostic"]
+    assert job["name"] == "a2-learnability-diagnostic-development-only"
+    assert job["runs-on"] == [
+        "self-hosted",
+        "linux",
+        "x64",
+        "planning-model-canonical-cpu-v1",
+    ]
+
+    steps = job["steps"]
+    step_names = [step["name"] for step in steps]
+    identity_index = step_names.index("Verify immutable runner identity file")
+    preflight_index = step_names.index(
+        "Validate dedicated target observation for diagnostic provenance"
+    )
+    diagnostic_index = step_names.index("Run development-only A2 learnability diagnostic")
+    assert identity_index < preflight_index < diagnostic_index
+
+    identity_run = steps[identity_index]["run"]
+    preflight_run = steps[preflight_index]["run"]
+    diagnostic_run = steps[diagnostic_index]["run"]
+
+    assert "/etc/planning-model-runner-image-id" in identity_run
+    assert "printf 'FIXED_TARGET_RUNNER_IMAGE=%s\\n'" in identity_run
+    assert '>> "$GITHUB_ENV"' in identity_run
+    assert "python -m scripts.run_fixed_target_acceptance preflight" in preflight_run
+    assert (
+        'test "$(cat /etc/planning-model-runner-image-id)" = '
+        '"$FIXED_TARGET_RUNNER_IMAGE"'
+        in diagnostic_run
+    )
+
+    run_scripts = "\n".join(step.get("run", "") for step in steps)
+    assert "$A2_LEARNABILITY_RUNNER_IMAGE" not in run_scripts
+    assert "${A2_LEARNABILITY_RUNNER_IMAGE}" not in run_scripts
+    assert "A2_LEARNABILITY_RUNNER_IMAGE" not in job.get("env", {})
+    for step in steps:
+        assert "A2_LEARNABILITY_RUNNER_IMAGE" not in step.get("env", {})
+
+    runner_image_env_writes = [
+        line.strip()
+        for step in steps
+        for line in step.get("run", "").splitlines()
+        if "RUNNER_IMAGE" in line and "$GITHUB_ENV" in line
+    ]
+    assert runner_image_env_writes == [
+        "printf 'FIXED_TARGET_RUNNER_IMAGE=%s\\n' \"$runner_image\" >> \"$GITHUB_ENV\""
+    ]
+
+    assert "validate-bundle" not in workflow
+    assert "final-gate" not in workflow
+    assert "Final runtime 1.1 acceptance gate" not in workflow
+    assert "rerun" not in workflow.lower()
+
+
+def test_formal_workflow_keeps_canonical_runner_image_binding() -> None:
+    formal = FORMAL_PATH.read_text(encoding="utf-8")
+
+    assert "printf 'FIXED_TARGET_RUNNER_IMAGE=%s\\n'" in formal
+    assert "A2_LEARNABILITY_RUNNER_IMAGE" not in formal

@@ -48,7 +48,7 @@ jobs:
             echo "::error::A2_LEARNABILITY_RUNNER_IMAGE_ID_EMPTY"
             exit 1
           }
-          printf 'A2_LEARNABILITY_RUNNER_IMAGE=%s\n' "$runner_image" >> "$GITHUB_ENV"
+          printf 'FIXED_TARGET_RUNNER_IMAGE=%s\n' "$runner_image" >> "$GITHUB_ENV"
 
       - name: Checkout protected main for trust validation
         uses: actions/checkout@v4
@@ -120,7 +120,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(cat /etc/planning-model-runner-image-id)" = "$A2_LEARNABILITY_RUNNER_IMAGE" || {
+          test "$(cat /etc/planning-model-runner-image-id)" = "$FIXED_TARGET_RUNNER_IMAGE" || {
             echo "::error::A2_LEARNABILITY_RUNNER_IMAGE_DRIFT"
             exit 1
           }
