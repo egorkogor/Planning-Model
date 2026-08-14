@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ml-brain.local/schemas/toy/development-learnability-diagnostic-0.2.json",
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "source_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string", "pattern": "^[A-Za-z0-9_./-]+$"},
+        "sha256": {"$ref": "#/$defs/hash"}
+      },
+      "required": ["path", "sha256"]
+    },
+    "update": {
+      "type": "object",
+      "properties": {
+        "seed": {"enum": [17, 29, 43]},
+        "update_index": {"type": "integer", "minimum": 0, "maximum": 8},
+        "epoch_index": {"type": "integer", "minimum": 0, "maximum": 2},
+        "task_id": {"type": "string", "pattern": "^bw-[0-9]{8}$"},
+        "gradient_norm_pre_clip": {"type": "number", "minimum": 0},
+        "gradient_norm_post_clip": {"type": "number", "minimum": 0},
+        "gradient_tensor_count": {"type": "integer", "minimum": 0},
+        "nonzero_gradient_tensor_count": {"type": "integer", "minimum": 0},
+        "all_gradients_finite": {"const": true},
+        "gradient_clip_norm": {"const": 1.0},
+        "clipping_occurred": {"type": "boolean"},
+        "active_parameter_tensor_count": {"type": "integer", "minimum": 1},
+        "active_parameter_tensors_changed": {"type": "integer", "minimum": 0},
+        "active_parameter_update_l2": {"type": "number", "minimum": 0},
+        "teacher_forced": {"type": "object"},
+        "teacher_forced_by_gold_position": {"type": "object"},
+        "losses": {"type": "object"}
+      },
+      "required": [
+        "seed", "update_index", "epoch_index", "task_id",
+        "gradient_norm_pre_clip", "gradient_norm_post_clip",
+        "gradient_tensor_count", "nonzero_gradient_tensor_count",
+        "all_gradients_finite", "gradient_clip_norm", "clipping_occurred",
+        "active_parameter_tensor_count", "active_parameter_tensors_changed",
+        "active_parameter_update_l2", "teacher_forced",
+        "teacher_forced_by_gold_position", "losses"
+      ]
+    },
+    "checkpoint_delta": {
+      "type": "object",
+      "properties": {
+        "seed": {"enum": [17, 29, 43]},
+        "active_parameter_tensor_count": {"type": "integer", "minimum": 1},
+        "active_parameter_tensors_changed": {"type": "integer", "minimum": 0},
+        "fraction_active_tensors_changed": {"type": "number", "minimum": 0, "maximum": 1},
+        "active_parameter_delta_l2": {"type": "number", "minimum": 0},
+        "active_parameter_delta_l2_by_name": {"type": "object"},
+        "dormant_parameter_tensor_count": {"type": "integer", "minimum": 0},
+        "dormant_parameter_tensors_changed": {"const": 0},
+        "all_checkpoint_values_finite": {"const": true},
+        "optimizer_state_parameter_count": {"type": "integer", "minimum": 0},
+        "optimizer_nonzero_moment_tensor_count": {"type": "integer", "minimum": 0},
+        "optimizer_state_finite": {"const": true},
+        "action_head_weight_delta_l2": {"type": "number", "minimum": 0},
+        "action_head_bias_delta_l2": {"type": "number", "minimum": 0},
+        "end_action_weight_row_delta_l2": {"type": "number", "minimum": 0},
+        "end_action_bias_delta": {"type": "number"},
+        "arg1_pointer_weight_delta_l2": {"type": "number", "minimum": 0},
+        "arg2_pointer_weight_delta_l2": {"type": "number", "minimum": 0}
+      },
+      "required": [
+        "seed", "active_parameter_tensor_count", "active_parameter_tensors_changed",
+        "fraction_active_tensors_changed", "active_parameter_delta_l2",
+        "active_parameter_delta_l2_by_name", "dormant_parameter_tensor_count",
+        "dormant_parameter_tensors_changed", "all_checkpoint_values_finite",
+        "optimizer_state_parameter_count", "optimizer_nonzero_moment_tensor_count",
+        "optimizer_state_finite", "action_head_weight_delta_l2",
+        "action_head_bias_delta_l2", "end_action_weight_row_delta_l2",
+        "end_action_bias_delta", "arg1_pointer_weight_delta_l2",
+        "arg2_pointer_weight_delta_l2"
+      ]
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "diagnostic_version": {"const": "development-learnability-diagnostic/0.2"},
+    "status": {"const": "development-only-diagnostic"},
+    "implementation_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "source_files": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/source_file"}},
+    "source_sha256": {"$ref": "#/$defs/hash"},
+    "core_diagnostic_version": {"const": "development-learnability-diagnostic/0.1"},
+    "core_canonical_identity": {"$ref": "#/$defs/hash"},
+    "evaluated_splits": {"const": ["train"]},
+    "dataset_lineage_order": {"const": ["bw-00000001", "bw-00000003", "bw-00000002"]},
+    "optimizer_execution_task_order": {"const": ["bw-00000001", "bw-00000002", "bw-00000003"]},
+    "evaluated_task_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["bw-00000001", "bw-00000002", "bw-00000003"]}},
+    "seeds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": [17, 29, 43]}},
+    "frozen_dataset_lineage_hash": {"$ref": "#/$defs/hash"},
+    "evaluated_train_split_hash": {"$ref": "#/$defs/hash"},
+    "heldout_accessed": {"const": false},
+    "training_policy_changed": {"const": false},
+    "model_changed": {"const": false},
+    "gate_decision": {"type": "null"},
+    "learnability_thresholds": {"type": "null"},
+    "per_update_training_observation": {"type": "array", "minItems": 9, "items": {"$ref": "#/$defs/update"}},
+    "training_trajectory_summary": {"type": "object"},
+    "final_teacher_forced": {"type": "object"},
+    "gold_history_projected": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "history_mode_summary": {"type": "object"},
+    "free_running": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "free_running_aggregate": {"type": "object"},
+    "checkpoint_deltas": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/checkpoint_delta"}},
+    "interpretation": {"type": "object"},
+    "canonical_identity": {"$ref": "#/$defs/hash"}
+  },
+  "required": [
+    "diagnostic_version", "status", "implementation_commit", "source_files",
+    "source_sha256", "core_diagnostic_version", "core_canonical_identity",
+    "evaluated_splits", "dataset_lineage_order", "optimizer_execution_task_order",
+    "evaluated_task_ids", "seeds", "frozen_dataset_lineage_hash",
+    "evaluated_train_split_hash", "heldout_accessed", "training_policy_changed",
+    "model_changed", "gate_decision", "learnability_thresholds",
+    "per_update_training_observation", "training_trajectory_summary",
+    "final_teacher_forced", "gold_history_projected", "history_mode_summary",
+    "free_running", "free_running_aggregate", "checkpoint_deltas",
+    "interpretation", "canonical_identity"
+  ]
+}

@@ -1,0 +1,158 @@
+name: A2 END-only learnability diagnostic (development only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      implementation_sha:
+        description: Exact protected-main implementation commit to diagnose
+        required: true
+        type: string
+      target_contract_path:
+        description: Committed concrete fixed-target contract
+        required: true
+        default: configs/fixed-cpu-target-1.0.json
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: planning-model-a2-learnability-development
+  cancel-in-progress: false
+
+jobs:
+  a2-learnability-diagnostic:
+    name: a2-learnability-diagnostic-development-only
+    if: github.repository == 'egorkogor/Planning-Model'
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - planning-model-canonical-cpu-v1
+    timeout-minutes: 180
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONHASHSEED: "0"
+    steps:
+      - name: Verify immutable runner identity file
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s /etc/planning-model-runner-image-id || {
+            echo "::error::A2_LEARNABILITY_RUNNER_IMAGE_ID_MISSING"
+            exit 1
+          }
+          runner_image="$(cat /etc/planning-model-runner-image-id)"
+          test -n "$runner_image" || {
+            echo "::error::A2_LEARNABILITY_RUNNER_IMAGE_ID_EMPTY"
+            exit 1
+          }
+          printf 'A2_LEARNABILITY_RUNNER_IMAGE=%s\n' "$runner_image" >> "$GITHUB_ENV"
+
+      - name: Checkout protected main for trust validation
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          clean: true
+          persist-credentials: false
+
+      - name: Verify requested diagnostic implementation is protected and exact
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.implementation_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::A2_LEARNABILITY_IMPLEMENTATION_INVALID"
+            exit 1
+          }
+          test "$WORKFLOW_SHA" = "$REQUESTED_SHA" || {
+            echo "::error::A2_LEARNABILITY_WORKFLOW_IMPLEMENTATION_MISMATCH"
+            exit 1
+          }
+          git fetch --no-tags origin main
+          python -m scripts.run_fixed_target_acceptance validate-trusted-commit \
+            --implementation-commit "$REQUESTED_SHA" \
+            --protected-ref origin/main
+          git checkout --detach "$REQUESTED_SHA"
+          git reset --hard "$REQUESTED_SHA"
+          git clean -ffdqx
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA" || {
+            echo "::error::A2_LEARNABILITY_IMPLEMENTATION_CHECKOUT_MISMATCH"
+            exit 1
+          }
+          test -z "$(git status --porcelain=v1 --untracked-files=all)" || {
+            echo "::error::A2_LEARNABILITY_IMPLEMENTATION_DIRTY_TREE"
+            exit 1
+          }
+          printf 'A2_LEARNABILITY_IMPLEMENTATION_SHA=%s\n' "$REQUESTED_SHA" >> "$GITHUB_ENV"
+
+      - name: Validate dedicated target observation for diagnostic provenance
+        shell: bash
+        env:
+          CONTRACT_PATH: ${{ inputs.target_contract_path }}
+        run: |
+          set -euo pipefail
+          test "$CONTRACT_PATH" = "configs/fixed-cpu-target-1.0.json" || {
+            echo "::error::A2_LEARNABILITY_TARGET_CONTRACT_PATH_NOT_CANONICAL"
+            exit 1
+          }
+          test -f "$CONTRACT_PATH" || {
+            echo "::error::A2_LEARNABILITY_TARGET_CONTRACT_MISSING"
+            exit 1
+          }
+          rm -rf .a2-learnability
+          mkdir -p .a2-learnability
+          python -m scripts.run_fixed_target_acceptance preflight \
+            --target-contract "$CONTRACT_PATH" \
+            --implementation-commit "$A2_LEARNABILITY_IMPLEMENTATION_SHA" \
+            --protected-ref origin/main \
+            --output .a2-learnability/target-preflight.json
+          test -z "$(git status --porcelain=v1 --untracked-files=no)" || {
+            echo "::error::A2_LEARNABILITY_DIRTY_TREE_AFTER_PREFLIGHT"
+            exit 1
+          }
+
+      - name: Run development-only A2 learnability diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat /etc/planning-model-runner-image-id)" = "$A2_LEARNABILITY_RUNNER_IMAGE" || {
+            echo "::error::A2_LEARNABILITY_RUNNER_IMAGE_DRIFT"
+            exit 1
+          }
+          python -m scripts.run_toy_learnability_diagnostic_v0_2 \
+            --output-dir .a2-learnability/diagnostic \
+            --implementation-commit "$A2_LEARNABILITY_IMPLEMENTATION_SHA"
+
+      - name: Independently validate diagnostic bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.run_toy_learnability_diagnostic_v0_2 \
+            --output-dir .a2-learnability/diagnostic \
+            --implementation-commit "$A2_LEARNABILITY_IMPLEMENTATION_SHA" \
+            --validate-only
+          test -z "$(git status --porcelain=v1 --untracked-files=no)" || {
+            echo "::error::A2_LEARNABILITY_IMPLEMENTATION_DIRTY_TREE_AFTER_DIAGNOSTIC"
+            exit 1
+          }
+
+      - name: Upload development diagnostic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: a2-learnability-development-${{ github.run_id }}
+          path: .a2-learnability
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Cleanup diagnostic workspace
+        if: always()
+        shell: bash
+        run: |
+          rm -rf .a2-learnability .pytest-tmp .pytest_cache
+          git reset --hard HEAD
+          git clean -ffdx
