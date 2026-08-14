@@ -1,4 +1,4 @@
-name: Dispatch A2 learnability diagnostic
+name: Dispatch A2 learnability diagnostic (fresh)
 
 on:
   push:
