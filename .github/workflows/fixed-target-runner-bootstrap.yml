@@ -1,4 +1,4 @@
-name: Dispatch formal fixed-target acceptance
+name: Dispatch A2 learnability diagnostic
 
 on:
   push:
@@ -11,11 +11,11 @@ permissions:
 
 jobs:
   dispatch:
-    name: dispatch-formal-fixed-target-acceptance
+    name: dispatch-a2-learnability-diagnostic
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      EXPECTED_MAIN_SHA: 2a6d8ab1ac5e730435b6ee3a8a58c7888a2ba0e3
+      EXPECTED_MAIN_SHA: 313c8b7bb312fb7563ad9ec464d1b2392c2c3041
       TARGET_CONTRACT_PATH: configs/fixed-cpu-target-1.0.json
     steps:
       - name: Checkout authoritative main
@@ -58,7 +58,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/fixed-target-acceptance.yml/dispatches" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/a2-learnability-diagnostic.yml/dispatches" \
             -d "$payload"
 
-          echo "FORMAL_FIXED_TARGET_DISPATCH_ACCEPTED"
+          echo "A2_LEARNABILITY_DIAGNOSTIC_DISPATCH_ACCEPTED"
