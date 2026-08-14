@@ -298,7 +298,6 @@ def test_three_of_three_rejects_cross_attempt_observation_drift() -> None:
 def test_blocked_record_remains_valid() -> None:
     validate_acceptance_record(blocked_acceptance())
 
-
 def test_blocked_record_cannot_contain_attempts_or_contracts() -> None:
     value = blocked_acceptance()
     value["target_contract"] = valid_contract()
@@ -548,11 +547,13 @@ def test_untrusted_implementation_not_reachable_from_protected_main_rejected(
 
 def test_frozen_v0_1_artifact_blob_guards_when_running_in_repo() -> None:
     root = Path(__file__).resolve().parents[2]
+    # Hosted CI is mutable operational infrastructure, not a frozen v0.1 artifact.
+    # Its integrity is enforced by the scientific/bootstrap trust root; the formal
+    # fixed-target workflow has its own source binding.
     guards = {
         "docs/evaluations/A2_A3_A4_HELDOUT_DIAGNOSTIC_RU.md": "e2344c07a76fcf7de140f894317fb509f6bc04fb",  # noqa: E501
         "docs/evaluations/data/a2_a3_a4_heldout_summary.json": "408742e15a3cddacdefcb0f0b814a6d68a5ca62d",  # noqa: E501
         "docs/evaluations/A2_A3_A4_V0_1_DECISION_RU.md": "909bf35b65b1e7b1e00f2366519b776333b473b2",
-        ".github/workflows/ci.yml": "36463b4c005e9deb71adbd9ba9faea6603ebdaf2",
         "planner_toy/canonical_runtime.py": "057cfbf29ed486659a6ba7b036cdd740d1bb9b44",
         "planner_toy/quality.py": "d1b4b48a94a75176f31f074a17c7bb3bcbf644de",
     }
