@@ -151,6 +151,35 @@ def test_a2_diagnostic_uses_canonical_runner_image_provenance_binding() -> None:
     assert "rerun" not in workflow.lower()
 
 
+def test_a2_diagnostic_uploads_complete_hidden_evidence_after_validation() -> None:
+    document = _workflow_document(A2_DIAGNOSTIC_PATH)
+    job = document["jobs"]["a2-learnability-diagnostic"]
+    steps = job["steps"]
+    step_names = [step["name"] for step in steps]
+
+    validation_index = step_names.index("Independently validate diagnostic bundle")
+    upload_index = step_names.index("Upload development diagnostic evidence")
+    cleanup_index = step_names.index("Cleanup diagnostic workspace")
+    assert validation_index < upload_index < cleanup_index
+
+    canonical_uploads = [
+        step for step in steps if step.get("name") == "Upload development diagnostic evidence"
+    ]
+    assert len(canonical_uploads) == 1
+    upload = canonical_uploads[0]
+    assert upload["uses"] == "actions/upload-artifact@v4"
+
+    upload_config = upload["with"]
+    assert upload_config["path"] == ".a2-learnability"
+    assert upload_config["include-hidden-files"] == "true"
+    assert upload_config["if-no-files-found"] == "error"
+    assert upload_config["retention-days"] == "30"
+    assert upload_config["name"] == "a2-learnability-development-${{ github.run_id }}"
+
+    cleanup_run = steps[cleanup_index]["run"]
+    assert "rm -rf .a2-learnability" in cleanup_run
+
+
 def test_formal_workflow_keeps_canonical_runner_image_binding() -> None:
     formal = FORMAL_PATH.read_text(encoding="utf-8")
 
