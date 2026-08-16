@@ -86,14 +86,25 @@ def test_epoch3_prefix_exactly_matches_frozen_control(prefix_fixture) -> None:
         "updates": trajectory["updates"][:9],
     }
     _assert_prefix_equivalence(control, prefix, seed=17)
+    _validate_prefix_equivalence(record, trajectory, seed=17)
 
 
 def test_prefix_equivalence_tamper_is_rejected(prefix_fixture) -> None:
     _rows, _control, trajectory = prefix_fixture
     record = copy.deepcopy(trajectory["prefix_equivalence"])
     record["trajectory_prefix"]["updates"][0]["gradient_norm"] += 1.0
-    with pytest.raises(ValueError, match="PREFIX_EQUIVALENCE"):
-        _validate_prefix_equivalence(record, seed=17)
+    with pytest.raises(ValueError, match="PREFIX_"):
+        _validate_prefix_equivalence(record, trajectory, seed=17)
+
+
+def test_resigned_both_sides_prefix_tamper_is_rejected(prefix_fixture) -> None:
+    _rows, _control, trajectory = prefix_fixture
+    record = copy.deepcopy(trajectory["prefix_equivalence"])
+    record["control"]["updates"][0]["gradient_norm"] += 1.0
+    record["trajectory_prefix"]["updates"][0]["gradient_norm"] += 1.0
+    assert record["control"] == record["trajectory_prefix"]
+    with pytest.raises(ValueError, match="PREFIX_TRAJECTORY_BINDING"):
+        _validate_prefix_equivalence(record, trajectory, seed=17)
 
 
 def test_checkpoint_metric_tamper_is_rejected(prefix_fixture) -> None:
