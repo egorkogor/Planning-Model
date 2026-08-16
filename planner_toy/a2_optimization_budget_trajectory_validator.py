@@ -80,15 +80,40 @@ def _validate_training_schedule(
                 raise ValueError(f"A2_BUDGET_VALIDATOR_NONFINITE:{seed}:{index}:{field}")
 
 
-def _validate_prefix_equivalence(record: dict[str, Any], *, seed: int) -> None:
+def _project_actual_prefix(training: dict[str, Any]) -> dict[str, Any]:
+    checkpoint = next(
+        (item for item in training["checkpoints"] if item.get("epoch") == 3),
+        None,
+    )
+    if checkpoint is None:
+        raise ValueError("A2_BUDGET_VALIDATOR_PREFIX_CHECKPOINT_MISSING")
+    return {
+        "initialization_canonical_sha256": training["initialization_canonical_sha256"],
+        "trained_canonical_sha256": checkpoint["trained_canonical_sha256"],
+        "optimizer_canonical_sha256": checkpoint["optimizer_canonical_sha256"],
+        "updates": [
+            {field: update[field] for field in PREFIX_TRACE_FIELDS}
+            for update in training["updates"][:9]
+        ],
+    }
+
+
+def _validate_prefix_equivalence(
+    record: dict[str, Any], training: dict[str, Any], *, seed: int
+) -> None:
     if record.get("seed") != seed or record.get("status") != "PASS":
         raise ValueError(f"A2_BUDGET_VALIDATOR_PREFIX_STATUS:{seed}")
+    if record.get("purpose") != "NON_SCIENTIFIC_FROZEN_3_EPOCH_PREFIX_EQUIVALENCE":
+        raise ValueError(f"A2_BUDGET_VALIDATOR_PREFIX_PURPOSE:{seed}")
     if record.get("trace_fields") != list(PREFIX_TRACE_FIELDS):
         raise ValueError(f"A2_BUDGET_VALIDATOR_PREFIX_FIELDS:{seed}")
     control = record.get("control")
     prefix = record.get("trajectory_prefix")
-    if control != prefix:
-        raise ValueError(f"A2_BUDGET_VALIDATOR_PREFIX_EQUIVALENCE:{seed}")
+    actual_prefix = _project_actual_prefix(training)
+    if prefix != actual_prefix:
+        raise ValueError(f"A2_BUDGET_VALIDATOR_PREFIX_TRAJECTORY_BINDING:{seed}")
+    if control != actual_prefix:
+        raise ValueError(f"A2_BUDGET_VALIDATOR_PREFIX_CONTROL_BINDING:{seed}")
     if len(control["updates"]) != 9:
         raise ValueError(f"A2_BUDGET_VALIDATOR_PREFIX_UPDATE_COUNT:{seed}")
     expected = list(EXPECTED_TRAIN_TASK_IDS) * 3
@@ -147,11 +172,7 @@ def _validate_teacher_raw(
             arg2_correct = (
                 position.get("arg2_head_prediction") == gold_arg2 if expected_arg2 else None
             )
-            joint = (
-                operator_correct
-                and arg1_correct is not False
-                and arg2_correct is not False
-            )
+            joint = operator_correct and arg1_correct is not False and arg2_correct is not False
             if position.get("operator_correct") != operator_correct:
                 raise ValueError(
                     f"A2_BUDGET_VALIDATOR_TEACHER_OPERATOR_CLAIM:{seed}:{task_id}:{index}"
@@ -304,10 +325,8 @@ def _recompute_free_claims(row: dict[str, Any], item: dict[str, Any]) -> dict[st
             executable = False
             break
     predicted_plan_length = len(action_steps)
-    full_plan_executable = (
-        terminal_end
-        and executable
-        and (predicted_plan_length > 0 or initial_goal_satisfied)
+    full_plan_executable = terminal_end and executable and (
+        predicted_plan_length > 0 or initial_goal_satisfied
     )
     return {
         "initial_goal_satisfied": initial_goal_satisfied,
@@ -525,7 +544,7 @@ def validate_claims_from_evidence(payload: dict[str, Any]) -> dict[str, Any]:
     for seed in SEEDS:
         result = next(item for item in seed_results if item["seed"] == seed)
         _validate_training_schedule(result, row_by_id, seed=seed)
-        _validate_prefix_equivalence(result["prefix_equivalence"], seed=seed)
+        _validate_prefix_equivalence(result["prefix_equivalence"], result, seed=seed)
         checkpoints = result["checkpoints"]
         if [item["epoch"] for item in checkpoints] != list(CHECKPOINT_EPOCHS):
             raise ValueError(f"A2_BUDGET_VALIDATOR_CHECKPOINT_COVERAGE:{seed}")
