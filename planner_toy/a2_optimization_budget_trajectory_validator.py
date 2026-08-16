@@ -309,6 +309,152 @@ def _teacher_summary_from_raw(tasks: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _pooled_task_teacher_summary_from_raw(tasks: list[dict[str, Any]]) -> dict[str, Any]:
+    positions = [position for task in tasks for position in task["positions"]]
+    non_end = [row for row in positions if row["gold_operator"] != "END"]
+    end = [row for row in positions if row["gold_operator"] == "END"]
+    arg1 = [row for row in positions if row["has_arg1_target"]]
+    arg2 = [row for row in positions if row["has_arg2_target"]]
+    return {
+        "seed_count": len({int(task["seed"]) for task in tasks}),
+        "task_record_count": len(tasks),
+        "operator_target_count": len(positions),
+        "arg1_target_count": len(arg1),
+        "arg2_target_count": len(arg2),
+        "operator_accuracy": _rate([row["operator_correct"] for row in positions]),
+        "non_end_operator_accuracy": _rate([row["operator_correct"] for row in non_end]),
+        "end_accuracy": _rate([row["operator_correct"] for row in end]),
+        "arg1_accuracy": _rate([bool(row["arg1_correct"]) for row in arg1]),
+        "arg2_accuracy": _rate([bool(row["arg2_correct"]) for row in arg2]),
+        "joint_step_accuracy": _rate([row["joint_step_correct"] for row in positions]),
+    }
+
+
+def _aggregate_teacher_summary_from_raw(tasks: list[dict[str, Any]]) -> dict[str, Any]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for task in tasks:
+        grouped.setdefault(task["task_id"], []).append(task)
+    if set(grouped) != set(EXPECTED_TRAIN_TASK_IDS):
+        raise ValueError("A2_BUDGET_VALIDATOR_AGGREGATE_TASK_COVERAGE")
+
+    position0_by_task: dict[str, dict[str, Any]] = {}
+    for task_id in EXPECTED_TRAIN_TASK_IDS:
+        task_group = grouped[task_id]
+        seeds = [int(task["seed"]) for task in task_group]
+        if len(seeds) != len(set(seeds)):
+            raise ValueError(f"A2_BUDGET_VALIDATOR_AGGREGATE_DUPLICATE_SEED:{task_id}")
+        first_positions = [task["positions"][0] for task in task_group]
+        gold_operators = {position["gold_operator"] for position in first_positions}
+        if len(gold_operators) != 1:
+            raise ValueError(f"A2_BUDGET_VALIDATOR_AGGREGATE_GOLD:{task_id}")
+        position0_by_task[task_id] = {
+            "gold_operator": next(iter(gold_operators)),
+            "seed_count": len(set(seeds)),
+            "target_count": len(first_positions),
+            "operator_accuracy": _rate(
+                [position["operator_correct"] for position in first_positions]
+            ),
+            "mean_gold_operator_probability": _mean(
+                [float(position["probability_gold_operator"]) for position in first_positions]
+            ),
+            "mean_operator_nll": _mean(
+                [float(position["operator_nll"]) for position in first_positions]
+            ),
+            "mean_end_probability": _mean(
+                [float(position["probability_end"]) for position in first_positions]
+            ),
+        }
+
+    positions = [position for task in tasks for position in task["positions"]]
+    non_end = [row for row in positions if row["gold_operator"] != "END"]
+    end = [row for row in positions if row["gold_operator"] == "END"]
+    arg1 = [row for row in positions if row["has_arg1_target"]]
+    arg2 = [row for row in positions if row["has_arg2_target"]]
+    pos0_unstack = [
+        row
+        for row in positions
+        if row["position_index"] == 0 and row["gold_operator"] == "UNSTACK"
+    ]
+    pos4_end = [
+        row
+        for row in positions
+        if row["position_index"] == 4 and row["gold_operator"] == "END"
+    ]
+    end_probs = {
+        task_id: float(record["mean_end_probability"])
+        for task_id, record in position0_by_task.items()
+    }
+    nontrivial_mean = (end_probs["bw-00000002"] + end_probs["bw-00000003"]) / 2
+    return {
+        "aggregate": {
+            "operator_accuracy": _rate([row["operator_correct"] for row in positions]),
+            "non_end_operator_accuracy": _rate(
+                [row["operator_correct"] for row in non_end]
+            ),
+            "end_accuracy": _rate([row["operator_correct"] for row in end]),
+            "arg1_accuracy": _rate([bool(row["arg1_correct"]) for row in arg1]),
+            "arg2_accuracy": _rate([bool(row["arg2_correct"]) for row in arg2]),
+            "joint_step_accuracy": _rate(
+                [row["joint_step_correct"] for row in positions]
+            ),
+            "predicted_end_rate": _rate(
+                [row["predicted_operator"] == "END" for row in positions]
+            ),
+        },
+        "per_task": {
+            task_id: _pooled_task_teacher_summary_from_raw(grouped[task_id])
+            for task_id in EXPECTED_TRAIN_TASK_IDS
+        },
+        "position0_by_task": position0_by_task,
+        "position0_unstack": {
+            "target_count": len(pos0_unstack),
+            "accuracy": _rate([row["operator_correct"] for row in pos0_unstack]),
+            "mean_gold_operator_probability": _mean(
+                [float(row["probability_gold_operator"]) for row in pos0_unstack]
+            ),
+            "mean_operator_nll": _mean(
+                [float(row["operator_nll"]) for row in pos0_unstack]
+            ),
+            "mean_end_probability": _mean(
+                [float(row["probability_end"]) for row in pos0_unstack]
+            ),
+        },
+        "position4_end": {
+            "target_count": len(pos4_end),
+            "accuracy": _rate([row["operator_correct"] for row in pos4_end]),
+            "mean_gold_operator_probability": _mean(
+                [float(row["probability_gold_operator"]) for row in pos4_end]
+            ),
+            "mean_operator_nll": _mean(
+                [float(row["operator_nll"]) for row in pos4_end]
+            ),
+            "mean_end_probability": _mean(
+                [float(row["probability_end"]) for row in pos4_end]
+            ),
+        },
+        "position0_task_discrimination": {
+            "aggregation": "contrast_of_cross_seed_means",
+            "task01_mean_end_probability": end_probs["bw-00000001"],
+            "task02_mean_end_probability": end_probs["bw-00000002"],
+            "task03_mean_end_probability": end_probs["bw-00000003"],
+            "nontrivial_mean_end_probability": nontrivial_mean,
+            "task01_minus_nontrivial_mean_end_probability": (
+                end_probs["bw-00000001"] - nontrivial_mean
+            ),
+            "end_probability_range": max(end_probs.values()) - min(end_probs.values()),
+        },
+    }
+
+
+def _validate_aggregate_teacher_claim(
+    tasks: list[dict[str, Any]], claimed: dict[str, Any], *, epoch: int
+) -> dict[str, Any]:
+    expected = _aggregate_teacher_summary_from_raw(tasks)
+    if claimed != expected:
+        raise ValueError(f"A2_BUDGET_VALIDATOR_AGGREGATE_TEACHER_CLAIM:{epoch}")
+    return expected
+
+
 def _recompute_free_claims(row: dict[str, Any], item: dict[str, Any]) -> dict[str, Any]:
     task = task_from_row(row)
     raw = item["predicted_plan"]
@@ -492,12 +638,13 @@ def _aggregate_checkpoint_from_raw(
     discriminations = []
     for result in seed_results:
         checkpoint = next(item for item in result["checkpoints"] if item["epoch"] == epoch)
-        teacher.extend(checkpoint["teacher_forced"])
+        seed_teacher = checkpoint["teacher_forced"]
+        teacher.extend(seed_teacher)
         free.extend(checkpoint["free_running"])
         discriminations.append(
-            checkpoint["teacher_forced_summary"]["position0_task_discrimination"]
+            _teacher_summary_from_raw(seed_teacher)["position0_task_discrimination"]
         )
-    teacher_summary = _teacher_summary_from_raw(teacher)
+    teacher_summary = _aggregate_teacher_summary_from_raw(teacher)
     return {
         "epoch": epoch,
         "update_count_per_seed": epoch * len(EXPECTED_TRAIN_TASK_IDS),

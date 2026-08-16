@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import subprocess
 from pathlib import Path
 
@@ -14,13 +15,17 @@ from planner_toy.a2_optimization_budget_trajectory import (
     MAX_EPOCH,
     SEEDS,
     SOURCE_FILES,
+    VERSION,
+    _aggregate_teacher_summary,
     _assert_prefix_equivalence,
     _control_training,
     _train_rows,
     _train_trajectory,
 )
 from planner_toy.a2_optimization_budget_trajectory_validator import (
+    _aggregate_teacher_summary_from_raw,
     _first_rescue_from_raw,
+    _validate_aggregate_teacher_claim,
     _validate_checkpoint,
     _validate_position0_epoch_record,
     _validate_prefix_equivalence,
@@ -51,7 +56,35 @@ def prefix_fixture():
     return rows, control, trajectory
 
 
+def _cross_seed_teacher_records(prefix_fixture) -> list[dict]:
+    _rows, _control, trajectory = prefix_fixture
+    base = trajectory["checkpoints"][0]["teacher_forced"]
+    records = []
+    probabilities = {17: 0.2, 29: 0.5, 43: 0.8}
+    end_probabilities = {17: 0.75, 29: 0.45, 43: 0.15}
+    for seed in SEEDS:
+        for task in base:
+            item = copy.deepcopy(task)
+            item["seed"] = seed
+            if item["task_id"] == "bw-00000002":
+                position = item["positions"][0]
+                probability = probabilities[seed]
+                position["probability_gold_operator"] = probability
+                position["operator_nll"] = -math.log(probability)
+                position["probability_end"] = end_probabilities[seed]
+                position["predicted_operator"] = "UNSTACK" if seed == 43 else "END"
+                position["operator_correct"] = seed == 43
+                position["joint_step_correct"] = (
+                    position["operator_correct"]
+                    and position["arg1_correct"] is not False
+                    and position["arg2_correct"] is not False
+                )
+            records.append(item)
+    return records
+
+
 def test_budget_contract_is_prefix_preserving_and_train_only() -> None:
+    assert VERSION == "development-a2-optimization-budget-trajectory/0.2"
     assert EXPECTED_TRAIN_TASK_IDS == (
         "bw-00000001",
         "bw-00000002",
@@ -141,6 +174,97 @@ def test_first_rescue_claim_tamper_is_rejected(prefix_fixture) -> None:
         tampered["task_ids"] = ["bw-00000003"]
     with pytest.raises(ValueError, match="FIRST_RESCUE_CLAIM"):
         _validate_trajectory_claim(records, tampered, row_by_id, seed=17)
+
+
+def test_cross_seed_task_aggregates_pool_repeated_task_ids(prefix_fixture) -> None:
+    tasks = _cross_seed_teacher_records(prefix_fixture)
+    produced = _aggregate_teacher_summary(tasks)
+    independently_recomputed = _aggregate_teacher_summary_from_raw(tasks)
+    assert produced == independently_recomputed
+
+    task02 = produced["per_task"]["bw-00000002"]
+    assert task02["seed_count"] == 3
+    assert task02["task_record_count"] == 3
+    assert task02["operator_target_count"] == 15
+    assert task02["operator_accuracy"] != produced["per_task"]["bw-00000003"][
+        "operator_accuracy"
+    ]
+
+    position0 = produced["position0_by_task"]["bw-00000002"]
+    assert position0["seed_count"] == 3
+    assert position0["target_count"] == 3
+    assert position0["operator_accuracy"] == pytest.approx(1 / 3)
+    assert position0["mean_gold_operator_probability"] == pytest.approx(0.5)
+    assert position0["mean_end_probability"] == pytest.approx(0.45)
+    assert "predicted_operator" not in position0
+    assert "operator_correct" not in position0
+
+
+def test_cross_seed_discrimination_is_contrast_of_true_means(prefix_fixture) -> None:
+    tasks = _cross_seed_teacher_records(prefix_fixture)
+    summary = _aggregate_teacher_summary(tasks)
+    by_task = summary["position0_by_task"]
+    discrimination = summary["position0_task_discrimination"]
+    expected_nontrivial = (
+        by_task["bw-00000002"]["mean_end_probability"]
+        + by_task["bw-00000003"]["mean_end_probability"]
+    ) / 2
+    assert discrimination["aggregation"] == "contrast_of_cross_seed_means"
+    assert discrimination["task02_mean_end_probability"] == pytest.approx(0.45)
+    assert discrimination["nontrivial_mean_end_probability"] == pytest.approx(
+        expected_nontrivial
+    )
+    assert discrimination["task01_minus_nontrivial_mean_end_probability"] == pytest.approx(
+        by_task["bw-00000001"]["mean_end_probability"] - expected_nontrivial
+    )
+
+
+def test_last_seed_overwrite_aggregate_claim_is_rejected(prefix_fixture) -> None:
+    tasks = _cross_seed_teacher_records(prefix_fixture)
+    correct = _aggregate_teacher_summary_from_raw(tasks)
+    tainted = copy.deepcopy(correct)
+    task02_seed43 = next(
+        task
+        for task in tasks
+        if task["task_id"] == "bw-00000002" and task["seed"] == 43
+    )
+    position = task02_seed43["positions"][0]
+    tainted["position0_by_task"]["bw-00000002"] = {
+        "gold_operator": position["gold_operator"],
+        "seed_count": 1,
+        "target_count": 1,
+        "operator_accuracy": float(position["operator_correct"]),
+        "mean_gold_operator_probability": position["probability_gold_operator"],
+        "mean_operator_nll": position["operator_nll"],
+        "mean_end_probability": position["probability_end"],
+    }
+    with pytest.raises(ValueError, match="AGGREGATE_TEACHER_CLAIM"):
+        _validate_aggregate_teacher_claim(tasks, tainted, epoch=3)
+
+
+def test_raw_seed_probability_mutation_breaks_aggregate_binding(prefix_fixture) -> None:
+    tasks = _cross_seed_teacher_records(prefix_fixture)
+    original_claim = _aggregate_teacher_summary_from_raw(tasks)
+    mutated = copy.deepcopy(tasks)
+    task = next(
+        item
+        for item in mutated
+        if item["task_id"] == "bw-00000002" and item["seed"] == 17
+    )
+    position = task["positions"][0]
+    position["probability_gold_operator"] = 0.3
+    position["operator_nll"] = -math.log(0.3)
+    position["probability_end"] = 0.65
+    with pytest.raises(ValueError, match="AGGREGATE_TEACHER_CLAIM"):
+        _validate_aggregate_teacher_claim(mutated, original_claim, epoch=3)
+
+
+def test_validator_does_not_import_producer_aggregate_helpers() -> None:
+    validator = (
+        REPOSITORY / "planner_toy/a2_optimization_budget_trajectory_validator.py"
+    ).read_text()
+    assert "from .a2_optimization_budget_trajectory import" not in validator
+    assert "_aggregate_teacher_summary_from_raw" in validator
 
 
 def test_source_inventory_closes_transitive_claim_sources() -> None:
