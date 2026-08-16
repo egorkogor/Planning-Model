@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import platform
 import subprocess
 import tempfile
@@ -25,16 +24,24 @@ from .canonical_runtime import configure_canonical_cpu_runtime
 from .learnability import (
     FROZEN_QUALITY_V0_1_HELDOUT_TASK_IDS,
     SEEDS,
-    SOURCE_FILES as LEARNABILITY_SOURCE_FILES,
     _read_only_diagnostic_pass,
     _train_a2_with_loss_trace,
     free_running_task,
     teacher_forced_task,
 )
+from .learnability import (
+    SOURCE_FILES as LEARNABILITY_SOURCE_FILES,
+)
 from .model import LockedPlanner, canonical_task_encoding
-from .numeric_identity import canonical_state_dict_sha256, canonical_torch_object_sha256
+from .numeric_identity import (
+    canonical_state_dict_sha256,
+    canonical_torch_object_sha256,
+)
 from .quality import _optimizer_named_parameters
-from .train_only_dataset import FROZEN_DATASET_LINEAGE_HASH_V1, generate_train_only
+from .train_only_dataset import (
+    FROZEN_DATASET_LINEAGE_HASH_V1,
+    generate_train_only,
+)
 from .training import ACTIONS, labels
 
 VERSION = "development-a2-optimization-budget-trajectory/0.1"
