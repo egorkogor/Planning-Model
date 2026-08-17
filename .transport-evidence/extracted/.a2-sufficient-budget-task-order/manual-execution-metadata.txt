@@ -1,0 +1,5 @@
+execution_mode=MANUAL_FIXED_TARGET
+implementation_sha=2a3843b1c5774cb73de1c7bc3f9b724f7a697ba7
+runner_image=planning-model-canonical-cpu-v1|provider=aws-ec2|instance=i-0ef4e446bfb12ce21|ami=ami-05bfa4a7765f38076|type=m7i-flex.large|runtime=1.1|torch=2.12.0+cpu
+hostname=ip-172-31-2-180
+utc_completed=2026-08-17T16:31:01+00:00
