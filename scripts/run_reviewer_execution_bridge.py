@@ -45,6 +45,17 @@ REQUEST_PATTERN = re.compile(
 )
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 WORKSPACE_NAME_PATTERN = re.compile(r"^[0-9]+-[0-9]+$")
+REPOSITORY_CREDENTIAL_ENV_KEYS = frozenset(
+    {
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_PAT",
+        "GIT_ASKPASS",
+        "SSH_ASKPASS",
+        "GIT_SSH",
+        "GIT_SSH_COMMAND",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -74,6 +85,16 @@ def _sha256_file(path: Path) -> str:
     return _sha256_bytes(path.read_bytes())
 
 
+def _repository_subprocess_env(
+    source: dict[str, str] | None = None,
+) -> dict[str, str]:
+    env = dict(os.environ if source is None else source)
+    for key in tuple(env):
+        if key in REPOSITORY_CREDENTIAL_ENV_KEYS or key.startswith("GIT_CONFIG_"):
+            env.pop(key, None)
+    return env
+
+
 def _run(
     argv: list[str],
     *,
@@ -81,10 +102,11 @@ def _run(
     env: dict[str, str] | None = None,
     capture_output: bool = False,
 ) -> subprocess.CompletedProcess[str]:
+    effective_env = _repository_subprocess_env() if env is None else env
     return subprocess.run(
         argv,
         cwd=cwd,
-        env=env,
+        env=effective_env,
         check=True,
         text=True,
         capture_output=capture_output,
@@ -161,7 +183,7 @@ def _git_authenticated_env(token: str) -> dict[str, str]:
     if not token:
         raise ValueError("REVIEWER_BRIDGE_GITHUB_TOKEN_MISSING")
     encoded = base64.b64encode(f"x-access-token:{token}".encode()).decode()
-    env = os.environ.copy()
+    env = _repository_subprocess_env()
     env["GIT_CONFIG_COUNT"] = "1"
     env["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader"
     env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: basic {encoded}"
@@ -208,6 +230,7 @@ def validate_trusted_checkout(
             "origin/main",
         ],
         cwd=repo_root,
+        env=_repository_subprocess_env(),
         capture_output=True,
     )
     return result.stdout.strip()
@@ -238,6 +261,7 @@ def _git_show_bytes(repo_root: Path, commit: str, path: str) -> bytes:
     result = subprocess.run(
         ["git", "show", f"{commit}:{path}"],
         cwd=repo_root,
+        env=_repository_subprocess_env(),
         check=True,
         capture_output=True,
     )
@@ -328,6 +352,7 @@ def _execute_plan(
         completed = subprocess.run(
             argv,
             cwd=repo_root,
+            env=_repository_subprocess_env(),
             check=False,
             text=True,
             capture_output=True,
@@ -578,6 +603,7 @@ def _ref_exists(repo_root: Path, ref: str) -> bool:
     completed = subprocess.run(
         ["git", "ls-remote", "--exit-code", "--heads", "origin", ref],
         cwd=repo_root,
+        env=_repository_subprocess_env(),
         text=True,
         capture_output=True,
         check=False,

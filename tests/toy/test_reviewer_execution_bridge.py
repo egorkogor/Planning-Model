@@ -425,3 +425,104 @@ def test_workflow_publishes_before_terminal_failure_and_cleanup() -> None:
     cleanup = text.index("Cleanup only bridge-owned workspace")
     assert publish < propagate < cleanup
     assert "if: always() && steps.reserve.outcome == 'success'" in text
+
+
+def test_trusted_validator_scrubs_parent_write_credentials_and_push_auth_is_scoped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = bridge.parse_event(_event())
+    sentinels = {
+        "GITHUB_TOKEN": "sentinel-github-token",
+        "GH_TOKEN": "sentinel-gh-token",
+        "GITHUB_PAT": "sentinel-pat",
+        "GIT_ASKPASS": "/tmp/sentinel-askpass",
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+        "GIT_CONFIG_VALUE_0": "AUTHORIZATION: sentinel-old-header",
+    }
+    for key, value in sentinels.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("SAFE_ENV", "kept")
+
+    def fake_git(repo_root: Path, *args: str, capture_output: bool = False) -> str:
+        del repo_root, capture_output
+        if args == ("rev-parse", "HEAD"):
+            return SHA
+        if args[:2] == ("status", "--porcelain=v1"):
+            return ""
+        raise AssertionError(args)
+
+    captured: dict[str, str] = {}
+
+    def fake_run(*args, **kwargs):
+        del args
+        captured.update(kwargs["env"])
+        return subprocess.CompletedProcess(
+            args=["trusted-validator"],
+            returncode=0,
+            stdout='{"trusted": true}',
+            stderr="",
+        )
+
+    monkeypatch.setattr(bridge, "_git", fake_git)
+    monkeypatch.setattr(
+        bridge,
+        "_validate_workflow_sha",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(bridge, "_run", fake_run)
+
+    result = bridge.validate_trusted_checkout(
+        tmp_path,
+        request,
+        workflow_sha="b" * 40,
+    )
+    assert result == '{"trusted": true}'
+    assert captured["SAFE_ENV"] == "kept"
+    assert not bridge.REPOSITORY_CREDENTIAL_ENV_KEYS.intersection(captured)
+    assert not any(key.startswith("GIT_CONFIG_") for key in captured)
+
+    push_env = bridge._git_authenticated_env("intended-push-token")
+    assert push_env["SAFE_ENV"] == "kept"
+    assert not bridge.REPOSITORY_CREDENTIAL_ENV_KEYS.intersection(push_env)
+    assert push_env["GIT_CONFIG_COUNT"] == "1"
+    assert push_env["GIT_CONFIG_KEY_0"] == "http.https://github.com/.extraheader"
+    assert push_env["GIT_CONFIG_VALUE_0"].startswith("AUTHORIZATION: basic ")
+    for sentinel in sentinels.values():
+        assert sentinel not in push_env.values()
+
+
+def test_allowlisted_repository_tasks_also_receive_scrubbed_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "sentinel-github-token")
+    monkeypatch.setenv("GH_TOKEN", "sentinel-gh-token")
+    monkeypatch.setenv("GITHUB_PAT", "sentinel-pat")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "http.https://github.com/.extraheader")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "AUTHORIZATION: sentinel")
+    monkeypatch.setenv("SAFE_ENV", "kept")
+    captured: dict[str, str] = {}
+
+    def fake_subprocess_run(*args, **kwargs):
+        del args
+        captured.update(kwargs["env"])
+        return subprocess.CompletedProcess(
+            args=["producer"],
+            returncode=0,
+            stdout="ok\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_subprocess_run)
+    failure = bridge._execute_plan(
+        tmp_path,
+        tmp_path,
+        [("producer", ["python", "producer.py"])],
+    )
+    assert failure is None
+    assert captured["SAFE_ENV"] == "kept"
+    assert not bridge.REPOSITORY_CREDENTIAL_ENV_KEYS.intersection(captured)
+    assert not any(key.startswith("GIT_CONFIG_") for key in captured)
