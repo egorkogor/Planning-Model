@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      EXPECTED_MAIN_SHA: 5b153a23c5746209191115653875167391df9dbf
+      EXPECTED_MAIN_SHA: a04c83c5e24d3a9d3534da7a4631c105d312bffe
       TARGET_CONTRACT_PATH: configs/fixed-cpu-target-1.0.json
     steps:
       - name: Checkout authoritative main
