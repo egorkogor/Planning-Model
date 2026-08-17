@@ -1,0 +1,190 @@
+name: Guarded reviewer execution bridge
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: planning-model-reviewer-bridge-${{ github.event.comment.id }}
+  cancel-in-progress: false
+
+jobs:
+  reviewer-execution-bridge:
+    name: reviewer-execution-bridge
+    if: >-
+      github.repository == 'egorkogor/Planning-Model' &&
+      github.event.issue.number == 36 &&
+      github.actor == 'egorkogor' &&
+      startsWith(github.event.comment.body, '/reviewer-bridge/v1 ')
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - planning-model-canonical-cpu-v1
+    timeout-minutes: 360
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONHASHSEED: "0"
+    steps:
+      - name: Parse guarded bridge request before checkout
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENT_ACTOR: ${{ github.event.comment.user.login }}
+          EVENT_ACTOR: ${{ github.actor }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY_NAME: ${{ github.repository }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import re
+
+          pattern = re.compile(
+              r"^/reviewer-bridge/v1 "
+              r"task=(status-v1|preflight-v1|a2-sufficient-budget-task-order-v1) "
+              r"request=([a-z0-9][a-z0-9-]{6,62}[a-z0-9]) "
+              r"sha=([0-9a-f]{40})$"
+          )
+          if os.environ["REPOSITORY_NAME"] != "egorkogor/Planning-Model":
+              raise SystemExit("REVIEWER_BRIDGE_REPOSITORY_FORBIDDEN")
+          if os.environ["ISSUE_NUMBER"] != "36":
+              raise SystemExit("REVIEWER_BRIDGE_CONTROL_ISSUE_MISMATCH")
+          if os.environ["EVENT_ACTOR"] != "egorkogor":
+              raise SystemExit("REVIEWER_BRIDGE_ACTOR_FORBIDDEN")
+          if os.environ["COMMENT_ACTOR"] != "egorkogor":
+              raise SystemExit("REVIEWER_BRIDGE_COMMENT_ACTOR_FORBIDDEN")
+          if os.environ["RUN_ATTEMPT"] != "1":
+              raise SystemExit("REVIEWER_BRIDGE_WORKFLOW_RERUN_FORBIDDEN")
+          match = pattern.fullmatch(os.environ["COMMENT_BODY"])
+          if match is None:
+              raise SystemExit("REVIEWER_BRIDGE_COMMAND_INVALID")
+          task, request_id, implementation_sha = match.groups()
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              stream.write(f"BRIDGE_TASK={task}\n")
+              stream.write(f"BRIDGE_REQUEST_ID={request_id}\n")
+              stream.write(f"BRIDGE_IMPLEMENTATION_SHA={implementation_sha}\n")
+          PY
+
+      - name: Create fresh bridge-owned checkout with system git
+        shell: bash
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          bridge_root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge"
+          workspace="$bridge_root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          repo_root="$workspace/repository"
+          test ! -e "$workspace" || {
+            echo "::error::REVIEWER_BRIDGE_WORKSPACE_REUSE_FORBIDDEN"
+            exit 1
+          }
+          mkdir -p "$bridge_root" "$workspace"
+          chmod 700 "$bridge_root" "$workspace"
+          git init "$repo_root"
+          git -C "$repo_root" remote add origin \
+            "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$repo_root" fetch --no-tags --prune origin \
+            +refs/heads/main:refs/remotes/origin/main
+          git -C "$repo_root" cat-file -e "${BRIDGE_IMPLEMENTATION_SHA}^{commit}" || {
+            echo "::error::REVIEWER_BRIDGE_IMPLEMENTATION_COMMIT_MISSING"
+            exit 1
+          }
+          git -C "$repo_root" merge-base --is-ancestor \
+            "$BRIDGE_IMPLEMENTATION_SHA" origin/main || {
+            echo "::error::REVIEWER_BRIDGE_IMPLEMENTATION_NOT_ON_PROTECTED_MAIN"
+            exit 1
+          }
+          git -C "$repo_root" cat-file -e "${WORKFLOW_SHA}^{commit}" || {
+            echo "::error::REVIEWER_BRIDGE_WORKFLOW_COMMIT_MISSING"
+            exit 1
+          }
+          git -C "$repo_root" merge-base --is-ancestor "$WORKFLOW_SHA" origin/main || {
+            echo "::error::REVIEWER_BRIDGE_WORKFLOW_NOT_ON_PROTECTED_MAIN"
+            exit 1
+          }
+          git -C "$repo_root" checkout --detach "$BRIDGE_IMPLEMENTATION_SHA"
+          git -C "$repo_root" reset --hard "$BRIDGE_IMPLEMENTATION_SHA"
+          git -C "$repo_root" clean -ffdqx
+          test "$(git -C "$repo_root" rev-parse HEAD)" = "$BRIDGE_IMPLEMENTATION_SHA"
+          test -z "$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)"
+          (
+            cd "$repo_root"
+            python -m scripts.run_fixed_target_acceptance validate-trusted-commit \
+              --implementation-commit "$BRIDGE_IMPLEMENTATION_SHA" \
+              --protected-ref origin/main
+          )
+          printf 'BRIDGE_ROOT=%s\n' "$bridge_root" >> "$GITHUB_ENV"
+          printf 'BRIDGE_WORKSPACE=%s\n' "$workspace" >> "$GITHUB_ENV"
+          printf 'BRIDGE_REPO_ROOT=%s\n' "$repo_root" >> "$GITHUB_ENV"
+
+      - name: Reserve fresh request id before execution
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          cd "$BRIDGE_REPO_ROOT"
+          python -m scripts.run_reviewer_execution_bridge reserve \
+            --event "$GITHUB_EVENT_PATH" \
+            --repo-root "$BRIDGE_REPO_ROOT" \
+            --bridge-root "$BRIDGE_ROOT" \
+            --workspace "$BRIDGE_WORKSPACE" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
+
+      - name: Execute allowlisted repository task
+        shell: bash
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUNNER_NAME_VALUE: ${{ runner.name }}
+        run: |
+          set -euo pipefail
+          cd "$BRIDGE_REPO_ROOT"
+          python -m scripts.run_reviewer_execution_bridge execute \
+            --event "$GITHUB_EVENT_PATH" \
+            --repo-root "$BRIDGE_REPO_ROOT" \
+            --bridge-root "$BRIDGE_ROOT" \
+            --workspace "$BRIDGE_WORKSPACE" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --job-name "$GITHUB_JOB" \
+            --runner-name "$RUNNER_NAME_VALUE"
+
+      - name: Publish evidence to orphan non-source transport ref
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd "$BRIDGE_REPO_ROOT"
+          python -m scripts.run_reviewer_execution_bridge publish \
+            --event "$GITHUB_EVENT_PATH" \
+            --repo-root "$BRIDGE_REPO_ROOT" \
+            --bridge-root "$BRIDGE_ROOT" \
+            --workspace "$BRIDGE_WORKSPACE" \
+            --run-id "$GITHUB_RUN_ID"
+
+      - name: Cleanup only bridge-owned workspace
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          bridge_root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge"
+          workspace="${BRIDGE_WORKSPACE:-$bridge_root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}}"
+          case "$workspace" in
+            "$bridge_root"/[0-9]*-[0-9]*) rm -rf -- "$workspace" ;;
+            *)
+              echo "::error::REVIEWER_BRIDGE_CLEANUP_PATH_FORBIDDEN"
+              exit 1
+              ;;
+          esac
