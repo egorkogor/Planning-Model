@@ -437,8 +437,8 @@ def test_trusted_validator_scrubs_parent_write_credentials_and_push_auth_is_scop
         "GH_TOKEN": "sentinel-gh-token",
         "GITHUB_PAT": "sentinel-pat",
         "GIT_ASKPASS": "/tmp/sentinel-askpass",
-        "GIT_CONFIG_COUNT": "1",
-        "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+        "GIT_CONFIG_COUNT": "7",
+        "GIT_CONFIG_KEY_0": "http.https://sentinel.invalid/.extraheader",
         "GIT_CONFIG_VALUE_0": "AUTHORIZATION: sentinel-old-header",
     }
     for key, value in sentinels.items():
