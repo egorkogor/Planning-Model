@@ -1,0 +1,223 @@
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+import scripts.run_reviewer_execution_bridge as bridge
+
+SHA = "a" * 40
+WORKFLOW = Path(".github/workflows/reviewer-execution-bridge.yml")
+
+
+def _event(*, actor: str = "egorkogor", issue: int = 36, body: str | None = None) -> dict:
+    if body is None:
+        body = f"/reviewer-bridge/v1 task=status-v1 request=req-0001 sha={SHA}"
+    return {
+        "repository": {"full_name": "egorkogor/Planning-Model"},
+        "issue": {"number": issue},
+        "sender": {"login": actor},
+        "comment": {"id": 5310000000, "body": body, "user": {"login": actor}},
+    }
+
+
+def _write_event(path: Path, event: dict) -> None:
+    import json
+
+    path.write_text(json.dumps(event), encoding="utf-8")
+
+
+def test_exact_owner_control_issue_status_request_parses() -> None:
+    request = bridge.parse_event(_event())
+    assert request.task == "status-v1"
+    assert request.request_id == "req-0001"
+    assert request.implementation_sha == SHA
+
+
+def test_non_owner_comment_is_rejected() -> None:
+    with pytest.raises(ValueError, match="REVIEWER_BRIDGE_ACTOR_FORBIDDEN"):
+        bridge.parse_event(_event(actor="mallory"))
+
+
+def test_wrong_issue_is_rejected() -> None:
+    with pytest.raises(ValueError, match="REVIEWER_BRIDGE_CONTROL_ISSUE_MISMATCH"):
+        bridge.parse_event(_event(issue=35))
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        f"/reviewer-bridge/v1 task=unknown request=req-0001 sha={SHA}",
+        f"/reviewer-bridge/v1 task=status-v1 request=x sha={SHA}",
+        f"/reviewer-bridge/v1 task=status-v1 request=req-0001 sha={'A' * 40}",
+        f"/reviewer-bridge/v1 task=status-v1 request=req-0001 sha={SHA} extra=x",
+    ],
+)
+def test_malformed_or_unknown_commands_fail_closed(body: str) -> None:
+    with pytest.raises(ValueError, match="REVIEWER_BRIDGE_COMMAND_INVALID"):
+        bridge.parse_event(_event(body=body))
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        f"/reviewer-bridge/v1 task=status-v1 request=req-0001 sha={SHA};id",
+        f"/reviewer-bridge/v1 task=status-v1 request=../../tmp sha={SHA}",
+        f"/reviewer-bridge/v1 task=status-v1 request=req-0001 sha={SHA}\nwhoami",
+        f"/reviewer-bridge/v1 task=status-v1 request=req-0001 sha={SHA} path=/tmp/x",
+    ],
+)
+def test_shell_and_path_injection_is_rejected(payload: str) -> None:
+    with pytest.raises(ValueError, match="REVIEWER_BRIDGE_COMMAND_INVALID"):
+        bridge.parse_event(_event(body=payload))
+
+
+def test_status_and_preflight_have_fixed_allowlisted_plans(tmp_path: Path) -> None:
+    status = bridge.parse_event(_event())
+    assert bridge.task_plan(status, tmp_path) == []
+    preflight = bridge.parse_event(
+        _event(body=f"/reviewer-bridge/v1 task=preflight-v1 request=req-0002 sha={SHA}")
+    )
+    plan = bridge.task_plan(preflight, tmp_path)
+    assert [name for name, _ in plan] == ["fixed-target-preflight"]
+    argv = plan[0][1]
+    assert "scripts.run_fixed_target_acceptance" in argv
+    assert "preflight" in argv
+    assert bridge.TARGET_CONTRACT in argv
+    assert "-c" not in argv
+
+
+def test_scientific_registry_is_one_named_existing_producer_without_clipping(
+    tmp_path: Path,
+) -> None:
+    request = bridge.parse_event(
+        _event(
+            body=(
+                "/reviewer-bridge/v1 task=a2-sufficient-budget-task-order-v1 "
+                f"request=req-0003 sha={SHA}"
+            )
+        )
+    )
+    plan = bridge.task_plan(request, tmp_path)
+    assert [name for name, _ in plan] == [
+        "fixed-target-preflight",
+        "producer",
+        "independent-validator",
+    ]
+    flattened = " ".join(arg for _, argv in plan for arg in argv)
+    assert "scripts.run_a2_sufficient_budget_task_order" in flattened
+    assert "clipping" not in flattened.lower()
+    assert "bash" not in flattened
+    assert "ssh" not in flattened
+    assert "python -c" not in flattened
+
+
+def test_untrusted_commit_validator_failure_is_propagated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = bridge.parse_event(_event())
+
+    def fake_git(repo_root: Path, *args: str, capture_output: bool = False) -> str:
+        del repo_root, capture_output
+        if args == ("rev-parse", "HEAD"):
+            return SHA
+        if args[:2] == ("status", "--porcelain=v1"):
+            return ""
+        return ""
+
+    monkeypatch.setattr(bridge, "_git", fake_git)
+    monkeypatch.setattr(bridge, "_validate_workflow_sha", lambda *args, **kwargs: None)
+
+    def reject(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, ["trusted-validator"])
+
+    monkeypatch.setattr(bridge, "_run", reject)
+    with pytest.raises(subprocess.CalledProcessError):
+        bridge.validate_trusted_checkout(tmp_path, request, workflow_sha="b" * 40)
+
+
+def test_duplicate_request_id_is_rejected_before_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bridge_root = tmp_path / "bridge"
+    workspace = bridge_root / "100-1"
+    workspace.mkdir(parents=True)
+    event_path = tmp_path / "event.json"
+    _write_event(event_path, _event())
+    monkeypatch.setattr(bridge, "validate_trusted_checkout", lambda *args, **kwargs: "ok")
+    monkeypatch.setattr(bridge, "_ref_exists", lambda *args, **kwargs: True)
+    with pytest.raises(ValueError, match="REVIEWER_BRIDGE_REQUEST_ALREADY_CONSUMED"):
+        bridge.reserve_request(
+            event_path=event_path,
+            repo_root=tmp_path,
+            bridge_root=bridge_root,
+            workspace=workspace,
+            workflow_sha="b" * 40,
+            run_id=100,
+            run_attempt=1,
+            token="not-used",
+        )
+
+
+def test_workflow_has_strict_guards_and_no_marketplace_actions() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "issue_comment:" in text
+    assert "github.event.issue.number == 36" in text
+    assert "github.actor == 'egorkogor'" in text
+    assert "startsWith(github.event.comment.body, '/reviewer-bridge/v1 ')" in text
+    assert "uses:" not in text
+    assert "actions/checkout" not in text
+    assert "actions/upload-artifact" not in text
+    assert "workflow_dispatch" not in text
+    assert "ssh " not in text.lower()
+
+
+def test_evidence_manifest_binds_request_sha_runner_and_bridge_source(tmp_path: Path) -> None:
+    request = bridge.parse_event(_event())
+    (tmp_path / "producer-evidence").mkdir()
+    (tmp_path / "producer-evidence" / "result.json").write_text(
+        '{"ok":true}\n', encoding="utf-8"
+    )
+    runner = {"runner_name": "canonical", "runner_image_id": "image-123"}
+    source = {"workflow_sha": "b" * 40, "source_identity": "sha256:source"}
+    manifest = bridge.build_evidence_manifest(
+        tmp_path,
+        request=request,
+        runner_identity=runner,
+        source_identity=source,
+    )
+    assert manifest["request_id"] == request.request_id
+    assert manifest["implementation_sha"] == SHA
+    assert manifest["runner_identity"] == runner
+    assert manifest["bridge_source"] == source
+    assert manifest["files"]["producer-evidence/result.json"].startswith("sha256:")
+    assert manifest["manifest_sha256"].startswith("sha256:")
+
+
+def test_cleanup_cannot_delete_outside_bridge_owned_workspace(tmp_path: Path) -> None:
+    bridge_root = tmp_path / "bridge"
+    bridge_root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    with pytest.raises(ValueError, match="REVIEWER_BRIDGE_WORKSPACE_OUTSIDE_ROOT"):
+        bridge.cleanup_workspace(bridge_root, outside)
+    assert outside.is_dir()
+
+
+def test_cleanup_deletes_only_exact_bridge_owned_run_workspace(tmp_path: Path) -> None:
+    bridge_root = tmp_path / "bridge"
+    workspace = bridge_root / "123-1"
+    workspace.mkdir(parents=True)
+    (workspace / "evidence.txt").write_text("x", encoding="utf-8")
+    bridge.cleanup_workspace(bridge_root, workspace)
+    assert not workspace.exists()
+    assert bridge_root.is_dir()
+
+
+def test_transport_ref_is_explicit_non_source_orphan_namespace() -> None:
+    ref = bridge.transport_ref("req-0001")
+    assert ref == "refs/heads/evidence/reviewer-bridge/req-0001"
+    assert "EVIDENCE ONLY" in bridge.TRANSPORT_WARNING
+    assert "not source" in bridge.TRANSPORT_WARNING
+    assert "must never be merged" in bridge.TRANSPORT_WARNING
