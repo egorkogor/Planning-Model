@@ -5,19 +5,20 @@ from __future__ import annotations
 import hashlib
 import math
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
 import torch
 
 from .a2_optimization_budget_trajectory import PREFIX_TRACE_FIELDS
-from .a2_optimization_budget_trajectory import (
-    SOURCE_FILES as BUDGET_SOURCE_FILES,
-)
+from .a2_optimization_budget_trajectory import SOURCE_FILES as BUDGET_SOURCE_FILES
 from .canonical import sha256
+from .canonical_runtime import configure_canonical_cpu_runtime
 from .dataset import task_from_row
 from .domain import apply_action, goal_satisfied, validate_state
 from .e2e import parse_nonterminal_step
+from .learnability import _train_a2_with_loss_trace
 from .train_only_dataset import generate_train_only
 
 SEEDS = (17, 29, 43)
@@ -81,9 +82,17 @@ def _task_counts(row: dict[str, Any]) -> tuple[int, int, int]:
     return operator, arg1, arg2
 
 
+def _float32_total(operator: float, arg1: float | None, arg2: float | None) -> float:
+    total = torch.tensor(operator, dtype=torch.float32)
+    if arg1 is not None:
+        total = total + torch.tensor(arg1, dtype=torch.float32)
+    if arg2 is not None:
+        total = total + torch.tensor(arg2, dtype=torch.float32)
+    return float(total)
+
+
 def _validate_update_schedule(
-    result: dict[str, Any],
-    row_by_id: dict[str, dict[str, Any]],
+    result: dict[str, Any], row_by_id: dict[str, dict[str, Any]]
 ) -> None:
     arm = result["arm"]
     seed = int(result["seed"])
@@ -102,44 +111,62 @@ def _validate_update_schedule(
             or update.get("task_id") != expected_task
         ):
             raise ValueError(f"A2_ORDER_VALIDATOR_UPDATE_SCHEDULE:{arm}:{seed}:{index}")
-        operator, arg1, arg2 = _task_counts(row_by_id[expected_task])
+        operator_count, arg1_count, arg2_count = _task_counts(row_by_id[expected_task])
         if (
-            update.get("operator_target_count") != operator
-            or update.get("arg1_target_count") != arg1
-            or update.get("arg2_target_count") != arg2
-            or update.get("operator_position_weight") != 1.0 / operator
+            update.get("operator_target_count") != operator_count
+            or update.get("arg1_target_count") != arg1_count
+            or update.get("arg2_target_count") != arg2_count
+            or update.get("operator_position_weight") != 1.0 / operator_count
         ):
             raise ValueError(f"A2_ORDER_VALIDATOR_UPDATE_TARGETS:{arm}:{seed}:{index}")
+
+        operator_loss = float(update["operator_loss"])
+        arg1_loss = update.get("arg1_pointer_loss")
+        arg2_loss = update.get("arg2_pointer_loss")
+        if arg1_count == 0:
+            if arg1_loss is not None:
+                raise ValueError(f"A2_ORDER_VALIDATOR_ARG1_APPLICABILITY:{arm}:{seed}:{index}")
+        elif arg1_loss is None or not math.isfinite(float(arg1_loss)):
+            raise ValueError(f"A2_ORDER_VALIDATOR_ARG1_APPLICABILITY:{arm}:{seed}:{index}")
+        if arg2_count == 0:
+            if arg2_loss is not None:
+                raise ValueError(f"A2_ORDER_VALIDATOR_ARG2_APPLICABILITY:{arm}:{seed}:{index}")
+        elif arg2_loss is None or not math.isfinite(float(arg2_loss)):
+            raise ValueError(f"A2_ORDER_VALIDATOR_ARG2_APPLICABILITY:{arm}:{seed}:{index}")
+        if not math.isfinite(operator_loss) or not math.isfinite(float(update["total_loss"])):
+            raise ValueError(f"A2_ORDER_VALIDATOR_NONFINITE_LOSS:{arm}:{seed}:{index}")
+        expected_total = _float32_total(
+            operator_loss,
+            float(arg1_loss) if arg1_loss is not None else None,
+            float(arg2_loss) if arg2_loss is not None else None,
+        )
+        if float(update["total_loss"]) != expected_total:
+            raise ValueError(f"A2_ORDER_VALIDATOR_LOSS_DECOMPOSITION:{arm}:{seed}:{index}")
+
         grad = float(update["gradient_norm"])
         clip = float(update["gradient_clip_norm"])
-        if clip != 1.0 or update.get("clipping_occurred") != (grad > clip):
+        if not math.isfinite(grad) or clip != 1.0:
+            raise ValueError(f"A2_ORDER_VALIDATOR_GRADIENT:{arm}:{seed}:{index}")
+        if update.get("clipping_occurred") != (grad > clip):
             raise ValueError(f"A2_ORDER_VALIDATOR_CLIPPING:{arm}:{seed}:{index}")
-        for field in ("operator_loss", "total_loss", "gradient_norm"):
-            if not math.isfinite(float(update[field])):
-                raise ValueError(f"A2_ORDER_VALIDATOR_NONFINITE:{arm}:{seed}:{index}:{field}")
 
 
 def _validate_position0_record(
-    item: dict[str, Any],
-    row: dict[str, Any],
-    *,
-    arm: str,
-    seed: int,
-    epoch: int,
+    item: dict[str, Any], row: dict[str, Any], *, arm: str, seed: int, epoch: int
 ) -> None:
     gold = row["oracle_work_plan"][0][0]
-    if item.get("task_id") != row["task_id"] or item.get("gold_operator") != gold:
-        raise ValueError(f"A2_ORDER_VALIDATOR_P0_GOLD:{arm}:{seed}:{epoch}")
-    correct = item.get("predicted_operator") == gold
-    if item.get("operator_correct") != correct:
-        raise ValueError(f"A2_ORDER_VALIDATOR_P0_CORRECT:{arm}:{seed}:{epoch}:{row['task_id']}")
+    task_id = row["task_id"]
+    if item.get("task_id") != task_id or item.get("gold_operator") != gold:
+        raise ValueError(f"A2_ORDER_VALIDATOR_P0_GOLD:{arm}:{seed}:{epoch}:{task_id}")
+    if item.get("operator_correct") != (item.get("predicted_operator") == gold):
+        raise ValueError(f"A2_ORDER_VALIDATOR_P0_CORRECT:{arm}:{seed}:{epoch}:{task_id}")
     p_gold = float(item["probability_gold_operator"])
     p_end = float(item["probability_end"])
     if not 0.0 <= p_gold <= 1.0 or not 0.0 <= p_end <= 1.0:
-        raise ValueError(f"A2_ORDER_VALIDATOR_P0_PROB:{arm}:{seed}:{epoch}:{row['task_id']}")
+        raise ValueError(f"A2_ORDER_VALIDATOR_P0_PROB:{arm}:{seed}:{epoch}:{task_id}")
     expected_nll = -math.log(max(p_gold, torch.finfo(torch.float32).tiny))
     if float(item["operator_nll"]) != expected_nll:
-        raise ValueError(f"A2_ORDER_VALIDATOR_P0_NLL:{arm}:{seed}:{epoch}:{row['task_id']}")
+        raise ValueError(f"A2_ORDER_VALIDATOR_P0_NLL:{arm}:{seed}:{epoch}:{task_id}")
 
 
 def _free_goal_success(row: dict[str, Any], predicted_plan: Any) -> tuple[bool, bool, int]:
@@ -160,49 +187,38 @@ def _free_goal_success(row: dict[str, Any], predicted_plan: Any) -> tuple[bool, 
 
 
 def _validate_free_record(
-    item: dict[str, Any],
-    row: dict[str, Any],
-    *,
-    arm: str,
-    seed: int,
-    epoch: int,
+    item: dict[str, Any], row: dict[str, Any], *, arm: str, seed: int, epoch: int
 ) -> None:
-    if item.get("task_id") != row["task_id"]:
-        raise ValueError(f"A2_ORDER_VALIDATOR_FREE_TASK:{arm}:{seed}:{epoch}")
+    task_id = row["task_id"]
+    if item.get("task_id") != task_id:
+        raise ValueError(f"A2_ORDER_VALIDATOR_FREE_TASK:{arm}:{seed}:{epoch}:{task_id}")
     initial, success, length = _free_goal_success(row, item.get("predicted_plan"))
     if item.get("initial_goal_satisfied") != initial:
-        raise ValueError(f"A2_ORDER_VALIDATOR_FREE_INITIAL:{arm}:{seed}:{epoch}:{row['task_id']}")
+        raise ValueError(f"A2_ORDER_VALIDATOR_FREE_INITIAL:{arm}:{seed}:{epoch}:{task_id}")
     if item.get("final_goal_success") != success:
-        raise ValueError(f"A2_ORDER_VALIDATOR_FREE_GOAL:{arm}:{seed}:{epoch}:{row['task_id']}")
+        raise ValueError(f"A2_ORDER_VALIDATOR_FREE_GOAL:{arm}:{seed}:{epoch}:{task_id}")
     if item.get("predicted_plan_length") != length:
-        raise ValueError(f"A2_ORDER_VALIDATOR_FREE_LENGTH:{arm}:{seed}:{epoch}:{row['task_id']}")
+        raise ValueError(f"A2_ORDER_VALIDATOR_FREE_LENGTH:{arm}:{seed}:{epoch}:{task_id}")
     if item.get("exact_plan_match") != (item.get("predicted_plan") == row["oracle_work_plan"]):
-        raise ValueError(f"A2_ORDER_VALIDATOR_FREE_EXACT:{arm}:{seed}:{epoch}:{row['task_id']}")
+        raise ValueError(f"A2_ORDER_VALIDATOR_FREE_EXACT:{arm}:{seed}:{epoch}:{task_id}")
 
 
 def _validate_epoch_evidence(
-    result: dict[str, Any],
-    row_by_id: dict[str, dict[str, Any]],
+    result: dict[str, Any], row_by_id: dict[str, dict[str, Any]]
 ) -> None:
     arm = result["arm"]
     seed = int(result["seed"])
     records = result.get("epoch_evidence")
     if not isinstance(records, list) or len(records) != MAX_EPOCH:
         raise ValueError(f"A2_ORDER_VALIDATOR_EPOCH_COVERAGE:{arm}:{seed}")
-    seen_epochs = set()
     for expected_epoch, record in enumerate(records, 1):
         epoch = int(record.get("epoch"))
-        if epoch != expected_epoch or epoch in seen_epochs:
+        if epoch != expected_epoch or record.get("update_count") != epoch * 3:
             raise ValueError(f"A2_ORDER_VALIDATOR_EPOCH_INDEX:{arm}:{seed}:{expected_epoch}")
-        seen_epochs.add(epoch)
-        if record.get("update_count") != epoch * 3:
-            raise ValueError(f"A2_ORDER_VALIDATOR_EPOCH_UPDATE_COUNT:{arm}:{seed}:{epoch}")
         p0 = record.get("position0")
         free = record.get("free_running")
-        if not isinstance(p0, list) or not isinstance(free, list):
+        if not isinstance(p0, list) or not isinstance(free, list) or len(p0) != 3 or len(free) != 3:
             raise ValueError(f"A2_ORDER_VALIDATOR_EPOCH_SHAPE:{arm}:{seed}:{epoch}")
-        if len(p0) != 3 or len(free) != 3:
-            raise ValueError(f"A2_ORDER_VALIDATOR_EPOCH_TASK_COUNT:{arm}:{seed}:{epoch}")
         p0_by_id = {item.get("task_id"): item for item in p0}
         free_by_id = {item.get("task_id"): item for item in free}
         if set(p0_by_id) != set(TASKS) or len(p0_by_id) != 3:
@@ -244,9 +260,7 @@ def _first(records: list[dict[str, Any]], predicate) -> dict[str, int] | None:
 
 
 def _persistence(
-    records: list[dict[str, Any]],
-    event: dict[str, int] | None,
-    predicate,
+    records: list[dict[str, Any]], event: dict[str, int] | None, predicate
 ) -> dict[str, bool | None]:
     by_epoch = {int(record["epoch"]): record for record in records}
     return {
@@ -266,22 +280,26 @@ def _teacher_summary(tasks: list[dict[str, Any]]) -> dict[str, Any]:
     arg1 = [row for row in positions if row["has_arg1_target"]]
     arg2 = [row for row in positions if row["has_arg2_target"]]
     pos0_unstack = [
-        row for row in positions if row["position_index"] == 0 and row["gold_operator"] == "UNSTACK"
+        row
+        for row in positions
+        if row["position_index"] == 0 and row["gold_operator"] == "UNSTACK"
     ]
     pos4_end = [
-        row for row in positions if row["position_index"] == 4 and row["gold_operator"] == "END"
+        row
+        for row in positions
+        if row["position_index"] == 4 and row["gold_operator"] == "END"
     ]
-    position0_by_task = {}
-    for task in tasks:
-        row = task["positions"][0]
-        position0_by_task[task["task_id"]] = {
-            "gold_operator": row["gold_operator"],
-            "predicted_operator": row["predicted_operator"],
-            "operator_correct": row["operator_correct"],
-            "probability_gold_operator": row["probability_gold_operator"],
-            "operator_nll": row["operator_nll"],
-            "probability_end": row["probability_end"],
+    position0_by_task = {
+        task["task_id"]: {
+            "gold_operator": task["positions"][0]["gold_operator"],
+            "predicted_operator": task["positions"][0]["predicted_operator"],
+            "operator_correct": task["positions"][0]["operator_correct"],
+            "probability_gold_operator": task["positions"][0]["probability_gold_operator"],
+            "operator_nll": task["positions"][0]["operator_nll"],
+            "probability_end": task["positions"][0]["probability_end"],
         }
+        for task in tasks
+    }
     end_probs = {
         task_id: float(item["probability_end"])
         for task_id, item in position0_by_task.items()
@@ -359,15 +377,11 @@ def _validate_teacher_tasks(
     for task_id in TASKS:
         task = by_id[task_id]
         if task.get("seed") != seed or task.get("split") != "train":
-            raise ValueError(
-                f"A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_SCOPE:{arm}:{seed}:{epoch}:{task_id}"
-            )
+            raise ValueError(f"A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_SCOPE:{arm}:{seed}:{epoch}:{task_id}")
         gold_plan = row_by_id[task_id]["oracle_work_plan"]
         positions = task.get("positions")
         if not isinstance(positions, list) or len(positions) != len(gold_plan):
-            raise ValueError(
-                f"A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_POSITIONS:{arm}:{seed}:{epoch}:{task_id}"
-            )
+            raise ValueError(f"A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_POSITIONS:{arm}:{seed}:{epoch}:{task_id}")
         for index, (position, gold_step) in enumerate(zip(positions, gold_plan, strict=True)):
             gold_operator = gold_step[0]
             gold_arg1 = gold_step[1] if len(gold_step) > 1 else None
@@ -378,10 +392,7 @@ def _validate_teacher_tasks(
                 or position.get("gold_arg1") != gold_arg1
                 or position.get("gold_arg2") != gold_arg2
             ):
-                raise ValueError(
-                    "A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_GOLD:"
-                    f"{arm}:{seed}:{epoch}:{task_id}:{index}"
-                )
+                raise ValueError(f"A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_GOLD:{arm}:{seed}:{epoch}:{task_id}:{index}")
             operator_correct = position.get("predicted_operator") == gold_operator
             arg1_correct = (
                 position.get("arg1_head_prediction") == gold_arg1 if gold_arg1 is not None else None
@@ -396,10 +407,7 @@ def _validate_teacher_tasks(
                 or position.get("arg2_correct") != arg2_correct
                 or position.get("joint_step_correct") != joint
             ):
-                raise ValueError(
-                    "A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_CLAIM:"
-                    f"{arm}:{seed}:{epoch}:{task_id}:{index}"
-                )
+                raise ValueError(f"A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_CLAIM:{arm}:{seed}:{epoch}:{task_id}:{index}")
 
 
 def _free_summary(tasks: list[dict[str, Any]]) -> dict[str, Any]:
@@ -416,15 +424,12 @@ def _free_summary(tasks: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _validate_checkpoints(
-    result: dict[str, Any],
-    row_by_id: dict[str, dict[str, Any]],
+    result: dict[str, Any], row_by_id: dict[str, dict[str, Any]]
 ) -> None:
     arm = result["arm"]
     seed = int(result["seed"])
     checkpoints = result.get("checkpoints")
-    if not isinstance(checkpoints, list) or [
-        item.get("epoch") for item in checkpoints
-    ] != list(CHECKPOINTS):
+    if not isinstance(checkpoints, list) or [item.get("epoch") for item in checkpoints] != list(CHECKPOINTS):
         raise ValueError(f"A2_ORDER_VALIDATOR_CHECKPOINT_COVERAGE:{arm}:{seed}")
     for checkpoint in checkpoints:
         epoch = int(checkpoint["epoch"])
@@ -440,16 +445,19 @@ def _validate_checkpoints(
             raise ValueError(f"A2_ORDER_VALIDATOR_CHECKPOINT_FREE_COVERAGE:{arm}:{seed}:{epoch}")
         for task_id in TASKS:
             task = free_by_id[task_id]
-            light = {
-                "task_id": task_id,
-                "initial_goal_satisfied": task["initial_goal_satisfied"],
-                "predicted_plan": task["predicted_plan"],
-                "predicted_plan_length": task["predicted_plan_length"],
-                "exact_plan_match": task["exact_plan_match"],
-                "final_goal_success": task["final_goal_success"],
-            }
             _validate_free_record(
-                light, row_by_id[task_id], arm=arm, seed=seed, epoch=epoch
+                {
+                    "task_id": task_id,
+                    "initial_goal_satisfied": task["initial_goal_satisfied"],
+                    "predicted_plan": task["predicted_plan"],
+                    "predicted_plan_length": task["predicted_plan_length"],
+                    "exact_plan_match": task["exact_plan_match"],
+                    "final_goal_success": task["final_goal_success"],
+                },
+                row_by_id[task_id],
+                arm=arm,
+                seed=seed,
+                epoch=epoch,
             )
         if checkpoint.get("free_running_summary") != _free_summary(free):
             raise ValueError(f"A2_ORDER_VALIDATOR_CHECKPOINT_FREE_SUMMARY:{arm}:{seed}:{epoch}")
@@ -488,7 +496,33 @@ def _actual_prefix(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _validate_prefix(result: dict[str, Any]) -> None:
+def _frozen_control_projection(
+    rows: list[dict[str, Any]], *, seed: int, dataset_hash: str
+) -> dict[str, Any]:
+    """Reconstruct the real frozen historical 3-epoch A2 control independently."""
+    configure_canonical_cpu_runtime(seed)
+    with tempfile.TemporaryDirectory(prefix="a2-order-validator-control-") as temp:
+        _model, checkpoint, trace = _train_a2_with_loss_trace(
+            rows, seed, Path(temp), dataset_hash
+        )
+    updates = []
+    for update in trace:
+        operator_count = int(update["operator_target_count"])
+        enriched = {**update, "operator_position_weight": 1.0 / operator_count}
+        updates.append({field: enriched[field] for field in PREFIX_TRACE_FIELDS})
+    return {
+        "initialization_canonical_sha256": checkpoint[
+            "canonical_initialization_state_dict_sha256"
+        ],
+        "trained_canonical_sha256": checkpoint["canonical_trained_state_dict_sha256"],
+        "optimizer_canonical_sha256": checkpoint["canonical_optimizer_state_sha256"],
+        "updates": updates,
+    }
+
+
+def _validate_prefix(
+    result: dict[str, Any], frozen_control: dict[str, Any] | None
+) -> None:
     arm = result["arm"]
     seed = int(result["seed"])
     record = result.get("prefix_equivalence")
@@ -496,14 +530,16 @@ def _validate_prefix(result: dict[str, Any]) -> None:
         if record is not None:
             raise ValueError(f"A2_ORDER_VALIDATOR_NONCANONICAL_PREFIX:{arm}:{seed}")
         return
+    if frozen_control is None:
+        raise ValueError(f"A2_ORDER_VALIDATOR_FROZEN_CONTROL_MISSING:{seed}")
     if not isinstance(record, dict) or record.get("status") != "PASS":
         raise ValueError(f"A2_ORDER_VALIDATOR_CANONICAL_PREFIX_STATUS:{seed}")
-    if record.get("seed") != seed:
-        raise ValueError(f"A2_ORDER_VALIDATOR_CANONICAL_PREFIX_SEED:{seed}")
-    if record.get("trace_fields") != list(PREFIX_TRACE_FIELDS):
-        raise ValueError(f"A2_ORDER_VALIDATOR_CANONICAL_PREFIX_FIELDS:{seed}")
+    if record.get("seed") != seed or record.get("trace_fields") != list(PREFIX_TRACE_FIELDS):
+        raise ValueError(f"A2_ORDER_VALIDATOR_CANONICAL_PREFIX_METADATA:{seed}")
     actual = _actual_prefix(result)
-    if record.get("arm_prefix") != actual or record.get("control") != actual:
+    if actual != frozen_control:
+        raise ValueError(f"A2_ORDER_VALIDATOR_FROZEN_CONTROL_ANCHOR:{seed}")
+    if record.get("arm_prefix") != actual or record.get("control") != frozen_control:
         raise ValueError(f"A2_ORDER_VALIDATOR_CANONICAL_PREFIX_BINDING:{seed}")
 
 
@@ -568,9 +604,7 @@ def _recompute_deltas(results: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def validate_claims_from_evidence(
-    payload: dict[str, Any],
-    *,
-    implementation_commit: str,
+    payload: dict[str, Any], *, implementation_commit: str
 ) -> dict[str, Any]:
     if payload.get("implementation_commit") != implementation_commit:
         raise ValueError("A2_ORDER_VALIDATOR_IMPLEMENTATION_MISMATCH")
@@ -587,22 +621,22 @@ def validate_claims_from_evidence(
         raise ValueError("A2_ORDER_VALIDATOR_SEEDS")
     if payload.get("arms") != {name: list(order) for name, order in ARMS.items()}:
         raise ValueError("A2_ORDER_VALIDATOR_ARMS")
-    if (
-        payload.get("checkpoint_epochs") != list(CHECKPOINTS)
-        or payload.get("max_epoch") != MAX_EPOCH
-    ):
+    if payload.get("checkpoint_epochs") != list(CHECKPOINTS) or payload.get("max_epoch") != MAX_EPOCH:
         raise ValueError("A2_ORDER_VALIDATOR_BUDGET")
     unsigned = {key: value for key, value in payload.items() if key != "canonical_identity"}
     if payload.get("canonical_identity") != sha256(unsigned):
         raise ValueError("A2_ORDER_VALIDATOR_CANONICAL_IDENTITY")
 
     dataset = generate_train_only()
-    rows = list(dataset["train"])
+    rows = sorted(list(dataset["train"]), key=lambda row: row["task_id"])
     row_by_id = {row["task_id"]: row for row in rows}
     if set(row_by_id) != set(TASKS) or len(row_by_id) != 3:
         raise ValueError("A2_ORDER_VALIDATOR_DATASET_SCOPE")
     if payload.get("dataset", {}).get("evaluated_task_ids") != list(TASKS):
         raise ValueError("A2_ORDER_VALIDATOR_EVALUATED_TASKS")
+    dataset_hash = dataset["frozen_dataset_lineage_hash"]
+    if payload.get("dataset", {}).get("frozen_dataset_lineage_hash") != dataset_hash:
+        raise ValueError("A2_ORDER_VALIDATOR_DATASET_HASH")
 
     results = payload.get("arm_seed_results")
     if not isinstance(results, list) or len(results) != len(ARMS) * len(SEEDS):
@@ -612,6 +646,10 @@ def validate_claims_from_evidence(
     if set(keys) != expected_keys or len(keys) != len(set(keys)):
         raise ValueError("A2_ORDER_VALIDATOR_ARM_SEED_COVERAGE")
 
+    frozen_by_seed = {
+        seed: _frozen_control_projection(rows, seed=seed, dataset_hash=dataset_hash)
+        for seed in SEEDS
+    }
     init_by_seed: dict[int, str] = {}
     for result in results:
         seed = int(result["seed"])
@@ -623,7 +661,10 @@ def validate_claims_from_evidence(
         _validate_epoch_evidence(result, row_by_id)
         _validate_checkpoints(result, row_by_id)
         _validate_rescue_claims(result)
-        _validate_prefix(result)
+        _validate_prefix(
+            result,
+            frozen_by_seed[seed] if result["arm"] == "canonical_order" else None,
+        )
 
     summaries = _recompute_arm_summaries(results)
     if payload.get("cross_seed_arm_summaries") != summaries:
@@ -637,6 +678,8 @@ def validate_claims_from_evidence(
         "arm_seed_coverage": len(results),
         "source_binding": "PASS",
         "canonical_prefix_equivalence": "PASS",
+        "frozen_control_anchor": "PASS",
+        "loss_decomposition_validation": "PASS",
         "rescue_reconstruction": "PASS",
         "cross_arm_delta_reconstruction": "PASS",
     }
