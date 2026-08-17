@@ -15,10 +15,12 @@ import torch.nn.functional as F
 
 from .a2_optimization_budget_trajectory import (
     PREFIX_TRACE_FIELDS,
-    SOURCE_FILES as BUDGET_SOURCE_FILES,
     _checkpoint_evidence,
     _control_training,
     _train_rows,
+)
+from .a2_optimization_budget_trajectory import (
+    SOURCE_FILES as BUDGET_SOURCE_FILES,
 )
 from .canonical import canonical_bytes, sha256
 from .canonical_runtime import configure_canonical_cpu_runtime
@@ -30,7 +32,10 @@ from .learnability import (
     teacher_forced_task,
 )
 from .model import LockedPlanner, canonical_task_encoding
-from .numeric_identity import canonical_state_dict_sha256, canonical_torch_object_sha256
+from .numeric_identity import (
+    canonical_state_dict_sha256,
+    canonical_torch_object_sha256,
+)
 from .quality import _optimizer_named_parameters
 from .training import ACTIONS, labels
 
@@ -102,7 +107,11 @@ def _runtime() -> dict[str, Any]:
     }
 
 
-def _prefix_projection(training: dict[str, Any], *, checkpoint: dict[str, Any] | None = None) -> dict[str, Any]:
+def _prefix_projection(
+    training: dict[str, Any],
+    *,
+    checkpoint: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     if checkpoint is None:
         trained = training["trained_canonical_sha256"]
         optimizer = training["optimizer_canonical_sha256"]
