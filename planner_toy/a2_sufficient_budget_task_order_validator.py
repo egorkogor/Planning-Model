@@ -10,8 +10,8 @@ from typing import Any
 
 import torch
 
+from .a2_optimization_budget_trajectory import PREFIX_TRACE_FIELDS
 from .a2_optimization_budget_trajectory import (
-    PREFIX_TRACE_FIELDS,
     SOURCE_FILES as BUDGET_SOURCE_FILES,
 )
 from .canonical import sha256
@@ -282,7 +282,10 @@ def _teacher_summary(tasks: list[dict[str, Any]]) -> dict[str, Any]:
             "operator_nll": row["operator_nll"],
             "probability_end": row["probability_end"],
         }
-    end_probs = {task_id: float(item["probability_end"]) for task_id, item in position0_by_task.items()}
+    end_probs = {
+        task_id: float(item["probability_end"])
+        for task_id, item in position0_by_task.items()
+    }
     nontrivial_mean = (end_probs["bw-00000002"] + end_probs["bw-00000003"]) / 2
     per_task = {}
     for task in tasks:
@@ -356,11 +359,15 @@ def _validate_teacher_tasks(
     for task_id in TASKS:
         task = by_id[task_id]
         if task.get("seed") != seed or task.get("split") != "train":
-            raise ValueError(f"A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_SCOPE:{arm}:{seed}:{epoch}:{task_id}")
+            raise ValueError(
+                f"A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_SCOPE:{arm}:{seed}:{epoch}:{task_id}"
+            )
         gold_plan = row_by_id[task_id]["oracle_work_plan"]
         positions = task.get("positions")
         if not isinstance(positions, list) or len(positions) != len(gold_plan):
-            raise ValueError(f"A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_POSITIONS:{arm}:{seed}:{epoch}:{task_id}")
+            raise ValueError(
+                f"A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_POSITIONS:{arm}:{seed}:{epoch}:{task_id}"
+            )
         for index, (position, gold_step) in enumerate(zip(positions, gold_plan, strict=True)):
             gold_operator = gold_step[0]
             gold_arg1 = gold_step[1] if len(gold_step) > 1 else None
@@ -371,7 +378,10 @@ def _validate_teacher_tasks(
                 or position.get("gold_arg1") != gold_arg1
                 or position.get("gold_arg2") != gold_arg2
             ):
-                raise ValueError(f"A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_GOLD:{arm}:{seed}:{epoch}:{task_id}:{index}")
+                raise ValueError(
+                    "A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_GOLD:"
+                    f"{arm}:{seed}:{epoch}:{task_id}:{index}"
+                )
             operator_correct = position.get("predicted_operator") == gold_operator
             arg1_correct = (
                 position.get("arg1_head_prediction") == gold_arg1 if gold_arg1 is not None else None
@@ -386,7 +396,10 @@ def _validate_teacher_tasks(
                 or position.get("arg2_correct") != arg2_correct
                 or position.get("joint_step_correct") != joint
             ):
-                raise ValueError(f"A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_CLAIM:{arm}:{seed}:{epoch}:{task_id}:{index}")
+                raise ValueError(
+                    "A2_ORDER_VALIDATOR_CHECKPOINT_TEACHER_CLAIM:"
+                    f"{arm}:{seed}:{epoch}:{task_id}:{index}"
+                )
 
 
 def _free_summary(tasks: list[dict[str, Any]]) -> dict[str, Any]:
@@ -409,7 +422,9 @@ def _validate_checkpoints(
     arm = result["arm"]
     seed = int(result["seed"])
     checkpoints = result.get("checkpoints")
-    if not isinstance(checkpoints, list) or [item.get("epoch") for item in checkpoints] != list(CHECKPOINTS):
+    if not isinstance(checkpoints, list) or [
+        item.get("epoch") for item in checkpoints
+    ] != list(CHECKPOINTS):
         raise ValueError(f"A2_ORDER_VALIDATOR_CHECKPOINT_COVERAGE:{arm}:{seed}")
     for checkpoint in checkpoints:
         epoch = int(checkpoint["epoch"])
@@ -572,7 +587,10 @@ def validate_claims_from_evidence(
         raise ValueError("A2_ORDER_VALIDATOR_SEEDS")
     if payload.get("arms") != {name: list(order) for name, order in ARMS.items()}:
         raise ValueError("A2_ORDER_VALIDATOR_ARMS")
-    if payload.get("checkpoint_epochs") != list(CHECKPOINTS) or payload.get("max_epoch") != MAX_EPOCH:
+    if (
+        payload.get("checkpoint_epochs") != list(CHECKPOINTS)
+        or payload.get("max_epoch") != MAX_EPOCH
+    ):
         raise ValueError("A2_ORDER_VALIDATOR_BUDGET")
     unsigned = {key: value for key, value in payload.items() if key != "canonical_identity"}
     if payload.get("canonical_identity") != sha256(unsigned):
@@ -596,7 +614,6 @@ def validate_claims_from_evidence(
 
     init_by_seed: dict[int, str] = {}
     for result in results:
-        arm = result["arm"]
         seed = int(result["seed"])
         init = result["initialization_canonical_sha256"]
         if seed in init_by_seed and init_by_seed[seed] != init:
