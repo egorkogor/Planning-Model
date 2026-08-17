@@ -554,7 +554,12 @@ def _produce_payload(*, implementation_commit: str) -> dict[str, Any]:
     return payload
 
 
+def _ordered_mapping(mapping: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+    return {key: mapping[key] for key in keys}
+
+
 def render_markdown(payload: dict[str, Any]) -> str:
+    ordered_arms = _ordered_mapping(payload["arms"], tuple(ARMS))
     lines = [
         "# A2 sufficient-budget task-order causal discrimination",
         "",
@@ -562,7 +567,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- Implementation: `{payload['implementation_commit']}`",
         f"- Source: `{payload['source_sha256']}`",
         f"- Seeds: `{payload['seeds']}`",
-        f"- Arms: `{payload['arms']}`",
+        f"- Arms: `{ordered_arms}`",
         "- Budget: `100 epochs / 300 updates per seed-arm`",
         "- Canonical frozen first-9-update equivalence: `PASS` for every seed",
         "- Held-out accessed: `false`",
@@ -571,15 +576,21 @@ def render_markdown(payload: dict[str, Any]) -> str:
         "## Rescue events",
         "",
     ]
-    for arm, summary in payload["cross_seed_arm_summaries"].items():
+    seed_keys = tuple(str(seed) for seed in SEEDS)
+    for arm in ARMS:
+        summary = payload["cross_seed_arm_summaries"][arm]
+        p0_by_seed = _ordered_mapping(
+            summary["first_position0_operator_rescue_update_by_seed"], seed_keys
+        )
+        free_by_seed = _ordered_mapping(
+            summary["first_full_free_running_rescue_update_by_seed"], seed_keys
+        )
         lines.extend(
             [
                 f"### {arm}",
                 f"- order: `{summary['task_order']}`",
-                "- first position-0 rescue by seed: "
-                f"`{summary['first_position0_operator_rescue_update_by_seed']}`",
-                "- first full free-running rescue by seed: "
-                f"`{summary['first_full_free_running_rescue_update_by_seed']}`",
+                "- first position-0 rescue by seed: " f"`{p0_by_seed}`",
+                "- first full free-running rescue by seed: " f"`{free_by_seed}`",
                 "",
             ]
         )
