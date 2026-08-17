@@ -219,12 +219,18 @@ def _runner_identity(runner_name: str) -> dict[str, Any]:
     image_id = RUNNER_IMAGE_ID_PATH.read_text(encoding="utf-8").strip()
     if not image_id:
         raise ValueError("REVIEWER_BRIDGE_RUNNER_IMAGE_ID_EMPTY")
+    materialized = os.environ.get("FIXED_TARGET_RUNNER_IMAGE", "").strip()
+    if not materialized:
+        raise ValueError("REVIEWER_BRIDGE_FIXED_TARGET_RUNNER_IMAGE_MISSING")
+    if materialized != image_id:
+        raise ValueError("REVIEWER_BRIDGE_FIXED_TARGET_RUNNER_IMAGE_DRIFT")
     if not runner_name:
         raise ValueError("REVIEWER_BRIDGE_RUNNER_NAME_EMPTY")
     return {
         "runner_name": runner_name,
         "runner_image_id": image_id,
         "runner_image_id_path": str(RUNNER_IMAGE_ID_PATH),
+        "fixed_target_runner_image": materialized,
     }
 
 
@@ -317,7 +323,7 @@ def _execute_plan(
     repo_root: Path,
     evidence_root: Path,
     plan: list[tuple[str, list[str]]],
-) -> None:
+) -> dict[str, Any] | None:
     for name, argv in plan:
         completed = subprocess.run(
             argv,
@@ -328,7 +334,19 @@ def _execute_plan(
         )
         _write_command_log(evidence_root / f"{name}.log", completed)
         if completed.returncode != 0:
-            raise RuntimeError(f"REVIEWER_BRIDGE_TASK_FAILED:{name}")
+            terminal_status = (
+                "VALIDATOR_FAILED" if name == "independent-validator" else "FAILED"
+            )
+            failure = {
+                "terminal_status": terminal_status,
+                "failed_task": name,
+                "return_code": completed.returncode,
+                "stdout": completed.stdout,
+                "stderr": completed.stderr,
+            }
+            _json_dump(evidence_root / "task-failure.json", failure)
+            return failure
+    return None
 
 
 def _evidence_files(root: Path) -> list[Path]:
@@ -388,6 +406,26 @@ def _write_deterministic_archive(evidence_root: Path) -> str:
     return digest
 
 
+def _terminal_status_payload(
+    *,
+    request: BridgeRequest,
+    terminal_status: str,
+    failure: dict[str, Any] | None,
+) -> dict[str, Any]:
+    value: dict[str, Any] = {
+        "version": BRIDGE_VERSION,
+        "task": request.task,
+        "implementation_sha": request.implementation_sha,
+        "terminal_status": terminal_status,
+        "valid": terminal_status == "SUCCEEDED",
+        "go_latent": "NOT EVALUATED",
+        "science_policy": "NO_RERUN_PERMISSION_GRANTED",
+    }
+    if failure is not None:
+        value["failure"] = failure
+    return value
+
+
 def execute_request(
     *,
     event_path: Path,
@@ -404,13 +442,6 @@ def execute_request(
     if run_attempt != 1:
         raise ValueError("REVIEWER_BRIDGE_WORKFLOW_RERUN_FORBIDDEN")
     request = parse_event_file(event_path)
-    trust_result = validate_trusted_checkout(
-        repo_root,
-        request,
-        workflow_sha=workflow_sha,
-    )
-    runner_identity = _runner_identity(runner_name)
-    source_identity = bridge_source_identity(repo_root, workflow_sha)
     evidence_root = work / "evidence"
     if evidence_root.exists():
         raise ValueError("REVIEWER_BRIDGE_EVIDENCE_REUSE_FORBIDDEN")
@@ -429,33 +460,86 @@ def execute_request(
             "control_issue": request.issue_number,
         },
     )
-    _json_dump(evidence_root / "runner-identity.json", runner_identity)
-    _json_dump(evidence_root / "bridge-source.json", source_identity)
-    (evidence_root / "trusted-commit-validator.jsonl").write_text(
-        trust_result + "\n", encoding="utf-8"
-    )
+
+    runner_identity: dict[str, Any] = {
+        "available": False,
+        "runner_name": runner_name,
+        "runner_image_id_path": str(RUNNER_IMAGE_ID_PATH),
+    }
+    source_identity: dict[str, Any] = {
+        "available": False,
+        "workflow_sha": workflow_sha,
+    }
+    failure: dict[str, Any] | None = None
+    trust_result = ""
+
+    try:
+        trust_result = validate_trusted_checkout(
+            repo_root,
+            request,
+            workflow_sha=workflow_sha,
+        )
+        runner_identity = _runner_identity(runner_name)
+        source_identity = bridge_source_identity(repo_root, workflow_sha)
+        _json_dump(evidence_root / "runner-identity.json", runner_identity)
+        _json_dump(evidence_root / "bridge-source.json", source_identity)
+        (evidence_root / "trusted-commit-validator.jsonl").write_text(
+            trust_result + "\n", encoding="utf-8"
+        )
+        _json_dump(
+            evidence_root / "status.json",
+            _terminal_status_payload(
+                request=request,
+                terminal_status="RUNNING",
+                failure=None,
+            ),
+        )
+
+        plan = task_plan(request, evidence_root)
+        failure = _execute_plan(repo_root, evidence_root, plan)
+        if failure is None:
+            dirty = _git(
+                repo_root,
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=no",
+                capture_output=True,
+            )
+            if dirty:
+                failure = {
+                    "terminal_status": "FAILED",
+                    "failed_task": "post-task-clean-tree",
+                    "return_code": None,
+                    "stdout": "",
+                    "stderr": "REVIEWER_BRIDGE_IMPLEMENTATION_DIRTY_AFTER_TASK",
+                }
+                _json_dump(evidence_root / "task-failure.json", failure)
+    except Exception as exc:
+        failure = {
+            "terminal_status": "FAILED",
+            "failed_task": "bridge-infrastructure",
+            "return_code": None,
+            "stdout": "",
+            "stderr": str(exc),
+            "exception_type": type(exc).__name__,
+        }
+        _json_dump(evidence_root / "task-failure.json", failure)
+        if trust_result:
+            (evidence_root / "trusted-commit-validator.jsonl").write_text(
+                trust_result + "\n", encoding="utf-8"
+            )
+        _json_dump(evidence_root / "runner-identity.json", runner_identity)
+        _json_dump(evidence_root / "bridge-source.json", source_identity)
+
+    terminal_status = "SUCCEEDED" if failure is None else failure["terminal_status"]
     _json_dump(
         evidence_root / "status.json",
-        {
-            "version": BRIDGE_VERSION,
-            "task": request.task,
-            "implementation_sha": request.implementation_sha,
-            "go_latent": "NOT EVALUATED",
-            "science_policy": "NO_RERUN_PERMISSION_GRANTED",
-        },
+        _terminal_status_payload(
+            request=request,
+            terminal_status=terminal_status,
+            failure=failure,
+        ),
     )
-
-    plan = task_plan(request, evidence_root)
-    _execute_plan(repo_root, evidence_root, plan)
-    dirty = _git(
-        repo_root,
-        "status",
-        "--porcelain=v1",
-        "--untracked-files=no",
-        capture_output=True,
-    )
-    if dirty:
-        raise ValueError("REVIEWER_BRIDGE_IMPLEMENTATION_DIRTY_AFTER_TASK")
 
     manifest = build_evidence_manifest(
         evidence_root,
@@ -466,7 +550,8 @@ def execute_request(
     _json_dump(evidence_root / "manifest.json", manifest)
     archive_sha256 = _write_deterministic_archive(evidence_root)
     result = {
-        "valid": True,
+        "valid": failure is None,
+        "terminal_status": terminal_status,
         "task": request.task,
         "request_id": request.request_id,
         "implementation_sha": request.implementation_sha,
@@ -474,6 +559,9 @@ def execute_request(
         "archive_sha256": archive_sha256,
         "transport_ref": transport_ref(request.request_id),
     }
+    if failure is not None:
+        result["failed_task"] = failure["failed_task"]
+        result["return_code"] = failure["return_code"]
     _json_dump(evidence_root / "result.json", result)
     return result
 

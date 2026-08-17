@@ -133,12 +133,29 @@ jobs:
               --implementation-commit "$BRIDGE_IMPLEMENTATION_SHA" \
               --protected-ref origin/main
           )
+          runner_image_path="/etc/planning-model-runner-image-id"
+          test -s "$runner_image_path" || {
+            echo "::error::REVIEWER_BRIDGE_RUNNER_IMAGE_ID_MISSING_OR_EMPTY"
+            exit 1
+          }
+          runner_image="$(cat "$runner_image_path")"
+          test -n "$runner_image" || {
+            echo "::error::REVIEWER_BRIDGE_RUNNER_IMAGE_ID_EMPTY"
+            exit 1
+          }
+          if test -n "${FIXED_TARGET_RUNNER_IMAGE:-}" && \
+             test "$FIXED_TARGET_RUNNER_IMAGE" != "$runner_image"; then
+            echo "::error::REVIEWER_BRIDGE_FIXED_TARGET_RUNNER_IMAGE_DRIFT"
+            exit 1
+          fi
+          printf 'FIXED_TARGET_RUNNER_IMAGE=%s\n' "$runner_image" >> "$GITHUB_ENV"
           printf 'BRIDGE_ROOT=%s\n' "$bridge_root" >> "$GITHUB_ENV"
           printf 'BRIDGE_WORKSPACE=%s\n' "$workspace" >> "$GITHUB_ENV"
           printf 'BRIDGE_REPO_ROOT=%s\n' "$repo_root" >> "$GITHUB_ENV"
           printf 'BRIDGE_DRIVER=%s\n' "$bridge_driver" >> "$GITHUB_ENV"
 
       - name: Reserve fresh request id before execution
+        id: reserve
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -156,6 +173,7 @@ jobs:
             --run-attempt "$GITHUB_RUN_ATTEMPT"
 
       - name: Execute allowlisted repository task
+        id: execute
         shell: bash
         env:
           WORKFLOW_SHA: ${{ github.workflow_sha }}
@@ -174,7 +192,8 @@ jobs:
             --job-name "$GITHUB_JOB" \
             --runner-name "$RUNNER_NAME_VALUE"
 
-      - name: Publish evidence to orphan non-source transport ref
+      - name: Publish terminal evidence to orphan non-source transport ref
+        if: always() && steps.reserve.outcome == 'success'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -187,6 +206,25 @@ jobs:
             --bridge-root "$BRIDGE_ROOT" \
             --workspace "$BRIDGE_WORKSPACE" \
             --run-id "$GITHUB_RUN_ID"
+
+      - name: Propagate terminal task failure after evidence publication
+        if: always() && steps.reserve.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          result_path = Path(os.environ["BRIDGE_WORKSPACE"]) / "evidence" / "result.json"
+          if not result_path.is_file():
+              raise SystemExit("REVIEWER_BRIDGE_TERMINAL_RESULT_MISSING")
+          result = json.loads(result_path.read_text(encoding="utf-8"))
+          if result.get("valid") is not True:
+              status = result.get("terminal_status", "FAILED")
+              raise SystemExit(f"REVIEWER_BRIDGE_TERMINAL_{status}")
+          PY
 
       - name: Cleanup only bridge-owned workspace
         if: always()

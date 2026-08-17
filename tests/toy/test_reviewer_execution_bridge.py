@@ -308,3 +308,120 @@ def test_transport_ref_is_explicit_non_source_orphan_namespace() -> None:
     assert "EVIDENCE ONLY" in bridge.TRANSPORT_WARNING
     assert "not source" in bridge.TRANSPORT_WARNING
     assert "must never be merged" in bridge.TRANSPORT_WARNING
+
+
+def test_workflow_materializes_required_fixed_target_runner_image() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "/etc/planning-model-runner-image-id" in text
+    assert "REVIEWER_BRIDGE_RUNNER_IMAGE_ID_MISSING_OR_EMPTY" in text
+    assert "FIXED_TARGET_RUNNER_IMAGE=%s" in text
+    assert "REVIEWER_BRIDGE_FIXED_TARGET_RUNNER_IMAGE_DRIFT" in text
+
+
+def test_runner_identity_requires_materialized_exact_image(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image_path = tmp_path / "runner-image-id"
+    image_path.write_text("image-123\n", encoding="utf-8")
+    monkeypatch.setattr(bridge, "RUNNER_IMAGE_ID_PATH", image_path)
+    monkeypatch.delenv("FIXED_TARGET_RUNNER_IMAGE", raising=False)
+    with pytest.raises(ValueError, match="FIXED_TARGET_RUNNER_IMAGE_MISSING"):
+        bridge._runner_identity("canonical")
+    monkeypatch.setenv("FIXED_TARGET_RUNNER_IMAGE", "image-drift")
+    with pytest.raises(ValueError, match="FIXED_TARGET_RUNNER_IMAGE_DRIFT"):
+        bridge._runner_identity("canonical")
+    monkeypatch.setenv("FIXED_TARGET_RUNNER_IMAGE", "image-123")
+    identity = bridge._runner_identity("canonical")
+    assert identity["fixed_target_runner_image"] == "image-123"
+
+
+@pytest.mark.parametrize(
+    ("failed_task", "terminal_status"),
+    [("producer", "FAILED"), ("independent-validator", "VALIDATOR_FAILED")],
+)
+def test_failed_execution_persists_terminal_content_addressed_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failed_task: str,
+    terminal_status: str,
+) -> None:
+    import json
+    import sys
+
+    bridge_root = tmp_path / "bridge"
+    workspace = bridge_root / "100-1"
+    workspace.mkdir(parents=True)
+    event_path = tmp_path / "event.json"
+    _write_event(event_path, _event())
+    image_path = tmp_path / "runner-image-id"
+    image_path.write_text("image-123\n", encoding="utf-8")
+    monkeypatch.setattr(bridge, "RUNNER_IMAGE_ID_PATH", image_path)
+    monkeypatch.setenv("FIXED_TARGET_RUNNER_IMAGE", "image-123")
+    monkeypatch.setattr(
+        bridge,
+        "validate_trusted_checkout",
+        lambda *args, **kwargs: '{"trusted":true}',
+    )
+    monkeypatch.setattr(
+        bridge,
+        "bridge_source_identity",
+        lambda *args, **kwargs: {
+            "workflow_sha": "b" * 40,
+            "source_identity": "sha256:source",
+        },
+    )
+    fail_script = tmp_path / "synthetic_fail.py"
+    fail_script.write_text(
+        "import sys\nprint('synthetic stdout')\n"
+        "print('synthetic stderr', file=sys.stderr)\nsys.exit(7)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        bridge,
+        "task_plan",
+        lambda *args, **kwargs: [(failed_task, [sys.executable, str(fail_script)])],
+    )
+
+    result = bridge.execute_request(
+        event_path=event_path,
+        repo_root=tmp_path,
+        bridge_root=bridge_root,
+        workspace=workspace,
+        workflow_sha="b" * 40,
+        run_id=100,
+        run_attempt=1,
+        job_name="reviewer-execution-bridge",
+        runner_name="canonical",
+    )
+
+    evidence = workspace / "evidence"
+    failure = json.loads((evidence / "task-failure.json").read_text(encoding="utf-8"))
+    manifest = json.loads((evidence / "manifest.json").read_text(encoding="utf-8"))
+    status = json.loads((evidence / "status.json").read_text(encoding="utf-8"))
+    assert result["valid"] is False
+    assert result["terminal_status"] == terminal_status
+    assert result["return_code"] == 7
+    assert failure["failed_task"] == failed_task
+    assert failure["return_code"] == 7
+    assert failure["stdout"] == "synthetic stdout\n"
+    assert failure["stderr"] == "synthetic stderr\n"
+    assert status["valid"] is False
+    assert status["terminal_status"] == terminal_status
+    assert "task-failure.json" in manifest["files"]
+    assert f"{failed_task}.log" in manifest["files"]
+    assert manifest["manifest_sha256"].startswith("sha256:")
+    assert result["archive_sha256"].startswith("sha256:")
+    assert (evidence / "evidence.tar.gz").is_file()
+    assert (evidence / "archive.sha256").read_text(encoding="utf-8").strip() == result[
+        "archive_sha256"
+    ]
+
+
+def test_workflow_publishes_before_terminal_failure_and_cleanup() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    publish = text.index("Publish terminal evidence to orphan non-source transport ref")
+    propagate = text.index("Propagate terminal task failure after evidence publication")
+    cleanup = text.index("Cleanup only bridge-owned workspace")
+    assert publish < propagate < cleanup
+    assert "if: always() && steps.reserve.outcome == 'success'" in text
