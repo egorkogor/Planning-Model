@@ -1,0 +1,275 @@
+name: TEMP A2 evidence independent raw review
+
+on:
+  push:
+    branches:
+      - temp/manual-a2-order-evidence
+    paths:
+      - .github/workflows/temp-a2-evidence-review.yml
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Independently recompute raw evidence claims
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib, json, math, os, struct, subprocess, tarfile, tempfile, unicodedata
+          from pathlib import Path
+
+          EXPECTED_SHA = "2a3843b1c5774cb73de1c7bc3f9b724f7a697ba7"
+          EXPECTED_ARCHIVE_SHA = "a0387f3afdc23813c9cb8ff687bc92574a81da6a05cd3855c3bedd3aa597ee39"
+          TASKS = ("bw-00000001", "bw-00000002", "bw-00000003")
+          NONTRIVIAL = ("bw-00000002", "bw-00000003")
+          SEEDS = (17, 29, 43)
+          ARMS = {
+              "canonical_order": ("bw-00000001", "bw-00000002", "bw-00000003"),
+              "task01_middle": ("bw-00000002", "bw-00000001", "bw-00000003"),
+              "task01_last": ("bw-00000002", "bw-00000003", "bw-00000001"),
+          }
+          CHECKPOINTS = (3, 10, 30, 100)
+          PERSISTENCE = (10, 30, 100)
+          ROOT = Path(".transport-evidence/extracted/.a2-sufficient-budget-task-order")
+          JSON_PATH = ROOT / "experiment/a2-sufficient-budget-task-order.json"
+          MD_PATH = ROOT / "experiment/A2_SUFFICIENT_BUDGET_TASK_ORDER.md"
+          PRE_PATH = ROOT / "target-preflight.json"
+          META_PATH = ROOT / "manual-execution-metadata.txt"
+          ARCHIVE = Path(".transport-evidence/a2-sufficient-budget-task-order-manual-2a3843b1c577.tar.gz")
+
+          def req(cond, msg):
+              if not cond:
+                  raise AssertionError(msg)
+
+          def normalize(x):
+              if isinstance(x, str): return unicodedata.normalize("NFC", x)
+              if x is None or isinstance(x, (bool, int)): return x
+              if isinstance(x, float):
+                  req(math.isfinite(x), "nonfinite canonical float")
+                  return x
+              if isinstance(x, list): return [normalize(v) for v in x]
+              if isinstance(x, dict):
+                  out = {}
+                  for k, v in x.items():
+                      req(isinstance(k, str), "non-string canonical key")
+                      nk = unicodedata.normalize("NFC", k)
+                      req(nk not in out, "duplicate normalized key")
+                      out[nk] = normalize(v)
+                  return {k: out[k] for k in sorted(out)}
+              raise TypeError(type(x))
+
+          def cbytes(x):
+              return json.dumps(normalize(x), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+
+          def csha(x): return "sha256:" + hashlib.sha256(cbytes(x)).hexdigest()
+          def file_sha(b): return "sha256:" + hashlib.sha256(b).hexdigest()
+          def git_show(commit, path): return subprocess.check_output(["git", "show", f"{commit}:{path}"])
+          def f32(x): return struct.unpack("<f", struct.pack("<f", float(x)))[0]
+          def f32_total(a, b, c):
+              t = f32(a)
+              if b is not None: t = f32(t + f32(b))
+              if c is not None: t = f32(t + f32(c))
+              return t
+
+          payload = json.loads(JSON_PATH.read_text())
+          pre = json.loads(PRE_PATH.read_text())
+          meta = dict(line.split("=", 1) for line in META_PATH.read_text().splitlines() if "=" in line)
+
+          # Transport integrity: archive digest and extracted files byte-identical to archive members.
+          req(hashlib.sha256(ARCHIVE.read_bytes()).hexdigest() == EXPECTED_ARCHIVE_SHA, "archive sha mismatch")
+          with tarfile.open(ARCHIVE, "r:gz") as tf:
+              names = set(tf.getnames())
+              for rel in [
+                  "experiment/a2-sufficient-budget-task-order.json",
+                  "experiment/A2_SUFFICIENT_BUDGET_TASK_ORDER.md",
+                  "target-preflight.json",
+                  "manual-execution-metadata.txt",
+              ]:
+                  member = ".a2-sufficient-budget-task-order/" + rel
+                  req(member in names, f"archive member missing:{member}")
+                  archived = tf.extractfile(member).read()
+                  req(archived == (ROOT / rel).read_bytes(), f"archive/extracted mismatch:{rel}")
+
+          # Manual fixed-target provenance and preflight binding.
+          req(meta.get("execution_mode") == "MANUAL_FIXED_TARGET", "manual execution mode")
+          req(meta.get("implementation_sha") == EXPECTED_SHA, "manual implementation sha")
+          req(meta.get("hostname") == "ip-172-31-2-180", "manual hostname")
+          runner_image = meta.get("runner_image", "")
+          req(runner_image.startswith("planning-model-canonical-cpu-v1|provider=aws-ec2|"), "manual runner image")
+          req(pre.get("implementation_commit") == EXPECTED_SHA, "preflight implementation")
+          obs = pre["target_observation"]
+          req(obs["runner_image"] == runner_image, "preflight/manual runner identity")
+          req(obs["target_name"] == "planning-model-canonical-cpu-v1", "preflight target")
+          req(obs["runner_type"] == "self-hosted-dedicated", "preflight runner type")
+          req(obs["python_version"] == "3.12.3", "preflight python")
+          req(obs["torch_version"] == "2.12.0+cpu", "preflight torch")
+          req(obs["architecture"] == "x86_64" and obs["logical_cpu_count"] == 2, "preflight cpu shape")
+          req("avx2" in obs["cpu_flags"] and obs["ATEN_CPU_CAPABILITY"] == "avx2", "preflight avx2")
+          req(obs["MKL_CBWR"] == "COMPATIBLE", "preflight mkl cbwr")
+          req(obs["torch_num_threads"] == 1 and obs["torch_num_interop_threads"] == 1, "preflight threads")
+          req(obs["mkldnn_enabled"] is False and obs["deterministic_algorithms"] is True, "preflight deterministic runtime")
+          for item in pre["source_inventory"]["files"]:
+              req(file_sha(git_show(EXPECTED_SHA, item["path"])) == item["sha256"], f"preflight source inventory:{item['path']}")
+
+          # Experiment identity and source binding.
+          req(payload["implementation_commit"] == EXPECTED_SHA, "payload implementation")
+          identity = payload["canonical_identity"]
+          unsigned = dict(payload); unsigned.pop("canonical_identity")
+          req(identity == csha(unsigned), "canonical identity")
+          for item in payload["source_files"]:
+              req(file_sha(git_show(EXPECTED_SHA, item["path"])) == item["sha256"], f"experiment source file:{item['path']}")
+          req(payload["source_sha256"] == csha(payload["source_files"]), "experiment source identity")
+          req(payload["heldout_accessed"] is False, "heldout accessed")
+          req(payload["dataset"]["evaluated_task_ids"] == list(TASKS), "train task coverage")
+          req(payload["seeds"] == list(SEEDS), "seed scope")
+          req(payload["arms"] == {k:list(v) for k,v in ARMS.items()}, "arm scope")
+          req(payload["checkpoint_epochs"] == list(CHECKPOINTS) and payload["max_epoch"] == 100, "budget scope")
+          req(payload["optimizer_updates_per_seed_arm"] == 300, "update budget")
+          req(payload["go_latent"] == "NOT EVALUATED", "go latent")
+
+          results = payload["arm_seed_results"]
+          req(len(results) == 9, "arm-seed result count")
+          by = {(r["arm"], int(r["seed"])): r for r in results}
+          req(set(by) == {(a,s) for a in ARMS for s in SEEDS}, "arm-seed coverage")
+
+          target_counts = {}
+          recomputed = {}
+          persistence_recomputed = {}
+          transient = {}
+          final_state = {}
+          clip_counts = {}
+          initial_hashes = {}
+
+          def p0_rescued(record):
+              m = {x["task_id"]: x for x in record["position0"]}
+              return all(m[t]["gold_operator"] == "UNSTACK" and bool(m[t]["operator_correct"]) for t in NONTRIVIAL)
+
+          def free_rescued(record):
+              m = {x["task_id"]: x for x in record["free_running"]}
+              return all(m[t]["initial_goal_satisfied"] is False and bool(m[t]["final_goal_success"]) for t in NONTRIVIAL)
+
+          def first(records, pred):
+              for rec in records:
+                  if pred(rec): return {"epoch": int(rec["epoch"]), "update_count": int(rec["update_count"])}
+              return None
+
+          def persist(records, event, pred):
+              m = {int(x["epoch"]): x for x in records}
+              return {str(e): (None if event is None or e < event["epoch"] else bool(pred(m[e]))) for e in PERSISTENCE}
+
+          for arm, order in ARMS.items():
+              for seed in SEEDS:
+                  r = by[(arm, seed)]
+                  req(r["task_order"] == list(order), f"task order:{arm}:{seed}")
+                  initial_hashes.setdefault(seed, set()).add(r["initialization_canonical_sha256"])
+                  updates = r["updates"]
+                  req(len(updates) == 300, f"updates:{arm}:{seed}")
+                  clipped = 0
+                  for i, u in enumerate(updates):
+                      task = order[i % 3]
+                      req(u["update_index"] == i and u["epoch_index"] == i // 3 and u["task_id"] == task, f"schedule:{arm}:{seed}:{i}")
+                      counts = (u["operator_target_count"], u["arg1_target_count"], u["arg2_target_count"])
+                      if task in target_counts: req(target_counts[task] == counts, f"target counts inconsistent:{task}")
+                      else: target_counts[task] = counts
+                      req(u["operator_position_weight"] == 1.0 / u["operator_target_count"], f"position weight:{arm}:{seed}:{i}")
+                      a1, a2 = u["arg1_pointer_loss"], u["arg2_pointer_loss"]
+                      req((a1 is None) == (u["arg1_target_count"] == 0), f"arg1 applicability:{arm}:{seed}:{i}")
+                      req((a2 is None) == (u["arg2_target_count"] == 0), f"arg2 applicability:{arm}:{seed}:{i}")
+                      req(math.isfinite(float(u["operator_loss"])) and math.isfinite(float(u["total_loss"])), f"finite loss:{arm}:{seed}:{i}")
+                      if a1 is not None: req(math.isfinite(float(a1)), f"finite arg1:{arm}:{seed}:{i}")
+                      if a2 is not None: req(math.isfinite(float(a2)), f"finite arg2:{arm}:{seed}:{i}")
+                      req(float(u["total_loss"]) == f32_total(u["operator_loss"], a1, a2), f"loss decomposition:{arm}:{seed}:{i}")
+                      grad = float(u["gradient_norm"]); clip = float(u["gradient_clip_norm"])
+                      req(math.isfinite(grad) and clip == 1.0, f"gradient:{arm}:{seed}:{i}")
+                      req(bool(u["clipping_occurred"]) == (grad > 1.0), f"clip flag:{arm}:{seed}:{i}")
+                      clipped += int(grad > 1.0)
+                  clip_counts[f"{arm}:{seed}"] = clipped
+
+                  epochs = r["epoch_evidence"]
+                  req(len(epochs) == 100, f"epoch coverage:{arm}:{seed}")
+                  for e, rec in enumerate(epochs, 1):
+                      req(rec["epoch"] == e and rec["update_count"] == 3*e, f"epoch index:{arm}:{seed}:{e}")
+                      req({x["task_id"] for x in rec["position0"]} == set(TASKS) and len(rec["position0"]) == 3, f"p0 coverage:{arm}:{seed}:{e}")
+                      req({x["task_id"] for x in rec["free_running"]} == set(TASKS) and len(rec["free_running"]) == 3, f"free coverage:{arm}:{seed}:{e}")
+                  p0 = first(epochs, p0_rescued); free = first(epochs, free_rescued)
+                  ev = {"first_position0_operator_rescue": p0, "first_full_free_running_rescue": free}
+                  req(r["rescue_events"] == ev, f"rescue events:{arm}:{seed}")
+                  ps = {"position0_operator_rescue": persist(epochs,p0,p0_rescued), "full_free_running_rescue": persist(epochs,free,free_rescued)}
+                  req(r["rescue_persistence"] == ps, f"persistence:{arm}:{seed}")
+                  recomputed[f"{arm}:{seed}"] = {"p0": p0["update_count"] if p0 else None, "free": free["update_count"] if free else None}
+                  persistence_recomputed[f"{arm}:{seed}"] = ps
+                  p0_fail = [x["epoch"] for x in epochs if p0 and x["epoch"] >= p0["epoch"] and not p0_rescued(x)]
+                  free_fail = [x["epoch"] for x in epochs if free and x["epoch"] >= free["epoch"] and not free_rescued(x)]
+                  transient[f"{arm}:{seed}"] = {"p0_fail_after_first": len(p0_fail), "p0_last_fail": max(p0_fail) if p0_fail else None, "free_fail_after_first": len(free_fail), "free_last_fail": max(free_fail) if free_fail else None}
+                  final_state[f"{arm}:{seed}"] = {"p0": p0_rescued(epochs[-1]), "free": free_rescued(epochs[-1])}
+
+                  cps = r["checkpoints"]
+                  req([x["epoch"] for x in cps] == list(CHECKPOINTS), f"checkpoints:{arm}:{seed}")
+                  req([x["update_count"] for x in cps] == [3*e for e in CHECKPOINTS], f"checkpoint updates:{arm}:{seed}")
+                  cp100 = cps[-1]
+                  free_cp = {x["task_id"]: x for x in cp100["free_running"]}
+                  req(all(free_cp[t]["initial_goal_satisfied"] is False and free_cp[t]["final_goal_success"] for t in NONTRIVIAL), f"checkpoint100 free rescue:{arm}:{seed}")
+
+                  pe = r["prefix_equivalence"]
+                  if arm == "canonical_order":
+                      req(pe and pe["status"] == "PASS" and pe["seed"] == seed, f"prefix status:{seed}")
+                      req(pe["control"] == pe["arm_prefix"], f"prefix exact equivalence:{seed}")
+                      req(pe["purpose"] == "NON_SCIENTIFIC_FROZEN_3_EPOCH_PREFIX_EQUIVALENCE", f"prefix purpose:{seed}")
+                  else:
+                      req(pe is None, f"unexpected prefix:{arm}:{seed}")
+
+          req(all(len(v) == 1 for v in initial_hashes.values()), "same-seed initialization differs across arms")
+          req(all(x["p0"] and x["free"] for x in final_state.values()), "not all final states rescued")
+
+          # Recompute cross-seed summaries and cross-arm deltas from the nine raw trajectories.
+          summaries = {}
+          for arm in ARMS:
+              p0s = {str(s): recomputed[f"{arm}:{s}"]["p0"] for s in SEEDS}
+              frees = {str(s): recomputed[f"{arm}:{s}"]["free"] for s in SEEDS}
+              summaries[arm] = {
+                  "seed_count": 3,
+                  "task_order": list(ARMS[arm]),
+                  "first_position0_operator_rescue_update_by_seed": p0s,
+                  "first_position0_operator_rescue_mean_update_if_all_seeds": sum(p0s.values())/3,
+                  "first_full_free_running_rescue_update_by_seed": frees,
+                  "first_full_free_running_rescue_mean_update_if_all_seeds": sum(frees.values())/3,
+              }
+          req(payload["cross_seed_arm_summaries"] == summaries, "cross-seed summaries")
+          deltas = {}
+          for arm in ("task01_middle", "task01_last"):
+              deltas[arm] = {"by_seed": {}}
+              for s in SEEDS:
+                  deltas[arm]["by_seed"][str(s)] = {
+                      "first_position0_operator_rescue_update_delta_vs_canonical": recomputed[f"{arm}:{s}"]["p0"] - recomputed[f"canonical_order:{s}"]["p0"],
+                      "first_full_free_running_rescue_update_delta_vs_canonical": recomputed[f"{arm}:{s}"]["free"] - recomputed[f"canonical_order:{s}"]["free"],
+                  }
+          req(payload["cross_arm_rescue_deltas"] == deltas, "cross-arm deltas")
+
+          # Markdown must bind to the persisted identities and interpretation boundary.
+          md = MD_PATH.read_text()
+          for needle in [EXPECTED_SHA, payload["source_sha256"], "SUPPORTED HYPOTHESIS / NOT PROVEN", "GO_LATENT: `NOT EVALUATED`"]:
+              req(needle in md, f"markdown binding:{needle}")
+
+          report = {
+              "status": "PASS",
+              "archive_sha256": EXPECTED_ARCHIVE_SHA,
+              "canonical_identity": identity,
+              "source_sha256": payload["source_sha256"],
+              "preflight_observation_sha256": obs["observation_sha256"],
+              "target_counts": target_counts,
+              "rescue_recomputed": recomputed,
+              "persistence_recomputed": persistence_recomputed,
+              "transience_after_first_rescue": transient,
+              "final_rescue_9_of_9": True,
+              "clipped_update_counts": clip_counts,
+              "initialization_same_within_seed_across_arms": True,
+          }
+          print("INDEPENDENT_RAW_REVIEW=" + json.dumps(report, sort_keys=True, separators=(",", ":")))
+          PY
