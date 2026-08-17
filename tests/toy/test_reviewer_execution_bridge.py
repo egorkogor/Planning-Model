@@ -113,6 +113,29 @@ def test_scientific_registry_is_one_named_existing_producer_without_clipping(
     assert "python -c" not in flattened
 
 
+def test_exact_trusted_status_checkout_succeeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = bridge.parse_event(_event())
+
+    def fake_git(repo_root: Path, *args: str, capture_output: bool = False) -> str:
+        del repo_root, capture_output
+        if args == ("rev-parse", "HEAD"):
+            return SHA
+        if args[:2] == ("status", "--porcelain=v1"):
+            return ""
+        raise AssertionError(args)
+
+    completed = subprocess.CompletedProcess(
+        args=["trusted-validator"], returncode=0, stdout='{"trusted": true}', stderr=""
+    )
+    monkeypatch.setattr(bridge, "_git", fake_git)
+    monkeypatch.setattr(bridge, "_validate_workflow_sha", lambda *args, **kwargs: None)
+    monkeypatch.setattr(bridge, "_run", lambda *args, **kwargs: completed)
+    result = bridge.validate_trusted_checkout(tmp_path, request, workflow_sha="b" * 40)
+    assert result == '{"trusted": true}'
+
+
 def test_untrusted_commit_validator_failure_is_propagated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -173,6 +196,16 @@ def test_workflow_has_strict_guards_and_no_marketplace_actions() -> None:
     assert "ssh " not in text.lower()
 
 
+def test_workflow_executes_bridge_driver_from_workflow_sha_not_scientific_checkout() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert '"${WORKFLOW_SHA}:scripts/run_reviewer_execution_bridge.py"' in text
+    assert "BRIDGE_DRIVER=%s" in text
+    assert 'python "$BRIDGE_DRIVER" reserve' in text
+    assert 'python "$BRIDGE_DRIVER" execute' in text
+    assert 'python "$BRIDGE_DRIVER" publish' in text
+    assert "python -m scripts.run_reviewer_execution_bridge" not in text
+
+
 def test_evidence_manifest_binds_request_sha_runner_and_bridge_source(tmp_path: Path) -> None:
     request = bridge.parse_event(_event())
     (tmp_path / "producer-evidence").mkdir()
@@ -193,6 +226,15 @@ def test_evidence_manifest_binds_request_sha_runner_and_bridge_source(tmp_path: 
     assert manifest["bridge_source"] == source
     assert manifest["files"]["producer-evidence/result.json"].startswith("sha256:")
     assert manifest["manifest_sha256"].startswith("sha256:")
+
+
+def test_evidence_archive_is_content_addressed(tmp_path: Path) -> None:
+    (tmp_path / "request.json").write_text('{"request":"req-0001"}\n', encoding="utf-8")
+    (tmp_path / "manifest.json").write_text('{"manifest":"sha256:test"}\n', encoding="utf-8")
+    digest = bridge._write_deterministic_archive(tmp_path)
+    assert digest.startswith("sha256:")
+    assert (tmp_path / "archive.sha256").read_text(encoding="utf-8") == digest + "\n"
+    assert bridge._sha256_file(tmp_path / "evidence.tar.gz") == digest
 
 
 def test_cleanup_cannot_delete_outside_bridge_owned_workspace(tmp_path: Path) -> None:
