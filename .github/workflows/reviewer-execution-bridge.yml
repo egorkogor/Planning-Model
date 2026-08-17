@@ -81,6 +81,7 @@ jobs:
           bridge_root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge"
           workspace="$bridge_root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           repo_root="$workspace/repository"
+          bridge_driver="$workspace/run_reviewer_execution_bridge.py"
           test ! -e "$workspace" || {
             echo "::error::REVIEWER_BRIDGE_WORKSPACE_REUSE_FORBIDDEN"
             exit 1
@@ -109,6 +110,18 @@ jobs:
             echo "::error::REVIEWER_BRIDGE_WORKFLOW_NOT_ON_PROTECTED_MAIN"
             exit 1
           }
+          git -C "$repo_root" cat-file -e \
+            "${WORKFLOW_SHA}:scripts/run_reviewer_execution_bridge.py" || {
+            echo "::error::REVIEWER_BRIDGE_DRIVER_MISSING_AT_WORKFLOW_SHA"
+            exit 1
+          }
+          git -C "$repo_root" show \
+            "${WORKFLOW_SHA}:scripts/run_reviewer_execution_bridge.py" > "$bridge_driver"
+          test -s "$bridge_driver" || {
+            echo "::error::REVIEWER_BRIDGE_DRIVER_EMPTY"
+            exit 1
+          }
+          chmod 500 "$bridge_driver"
           git -C "$repo_root" checkout --detach "$BRIDGE_IMPLEMENTATION_SHA"
           git -C "$repo_root" reset --hard "$BRIDGE_IMPLEMENTATION_SHA"
           git -C "$repo_root" clean -ffdqx
@@ -123,6 +136,7 @@ jobs:
           printf 'BRIDGE_ROOT=%s\n' "$bridge_root" >> "$GITHUB_ENV"
           printf 'BRIDGE_WORKSPACE=%s\n' "$workspace" >> "$GITHUB_ENV"
           printf 'BRIDGE_REPO_ROOT=%s\n' "$repo_root" >> "$GITHUB_ENV"
+          printf 'BRIDGE_DRIVER=%s\n' "$bridge_driver" >> "$GITHUB_ENV"
 
       - name: Reserve fresh request id before execution
         shell: bash
@@ -132,7 +146,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$BRIDGE_REPO_ROOT"
-          python -m scripts.run_reviewer_execution_bridge reserve \
+          python "$BRIDGE_DRIVER" reserve \
             --event "$GITHUB_EVENT_PATH" \
             --repo-root "$BRIDGE_REPO_ROOT" \
             --bridge-root "$BRIDGE_ROOT" \
@@ -149,7 +163,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$BRIDGE_REPO_ROOT"
-          python -m scripts.run_reviewer_execution_bridge execute \
+          python "$BRIDGE_DRIVER" execute \
             --event "$GITHUB_EVENT_PATH" \
             --repo-root "$BRIDGE_REPO_ROOT" \
             --bridge-root "$BRIDGE_ROOT" \
@@ -167,7 +181,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$BRIDGE_REPO_ROOT"
-          python -m scripts.run_reviewer_execution_bridge publish \
+          python "$BRIDGE_DRIVER" publish \
             --event "$GITHUB_EVENT_PATH" \
             --repo-root "$BRIDGE_REPO_ROOT" \
             --bridge-root "$BRIDGE_ROOT" \
