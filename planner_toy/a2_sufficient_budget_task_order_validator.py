@@ -173,17 +173,25 @@ def _free_goal_success(row: dict[str, Any], predicted_plan: Any) -> tuple[bool, 
     task = task_from_row(row)
     state = validate_state(task.blocks, task.initial)
     initial = goal_satisfied(state, task.goal)
-    if not isinstance(predicted_plan, list) or not predicted_plan or predicted_plan[-1] != ["END"]:
+    if not isinstance(predicted_plan, list):
         return initial, False, 0
-    action_steps = predicted_plan[:-1]
+    terminal_end = bool(predicted_plan and predicted_plan[-1] == ["END"])
+    action_steps = predicted_plan[:-1] if terminal_end else predicted_plan
+    predicted_action_count = len(action_steps)
     for step in action_steps:
         try:
             action = parse_nonterminal_step(step, list(task.blocks))
             state = apply_action(task.blocks, state, action)
         except (ValueError, TypeError, IndexError):
-            return initial, False, len(action_steps)
+            return initial, False, predicted_action_count
+    if not terminal_end:
+        return initial, False, predicted_action_count
     executable = bool(action_steps) or initial
-    return initial, bool(executable and goal_satisfied(state, task.goal)), len(action_steps)
+    return (
+        initial,
+        bool(executable and goal_satisfied(state, task.goal)),
+        predicted_action_count,
+    )
 
 
 def _validate_free_record(
