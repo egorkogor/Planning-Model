@@ -60,13 +60,13 @@ raw teacher-forced и true free-running records, включая:
 - true free-running plan/result для всех `01/02/03`;
 - epoch и cumulative update count.
 
-Update trace сохраняет все 300 updates per seed-arm: task order, total/operator/pointer losses,
+Update trace сохраняет все 300 updates per seed-arm: task order, operator/arg1/arg2/total losses,
 target counts, pre-clip gradient norm и clipping.
 
 ## Exact canonical prefix
 
-`canonical_order` обязан в first 9 updates точно воспроизводить accepted frozen control для
-каждого seed. Producer fail-closed сравнивает:
+`canonical_order` обязан в first 9 updates точно воспроизводить реальный frozen historical
+3-epoch A2 control для каждого seed. Producer fail-closed сравнивает:
 
 - deterministic initialization hash;
 - epoch-3 trained-state canonical hash;
@@ -74,6 +74,29 @@ target counts, pre-clip gradient norm и clipping.
 - все first-nine update records по frozen trace fields.
 
 Никаких tolerances. Noncanonical arms не притворяются frozen-control equivalent.
+
+Independent validator не доверяет двум persisted копиям `control`/`arm_prefix`: он отдельно
+запускает именно frozen historical 3-epoch path `_train_a2_with_loss_trace` на canonical train
+rows для каждого seed и строит независимый immutable-in-the-artifact control projection. Затем
+он требует exact equality между independently reconstructed control, raw first-nine arm evidence,
+epoch-3 hashes и persisted prefix records. Поэтому coherent reseal raw trace + обеих prefix copies
+не может пройти validation.
+
+## Неизменность objective
+
+Для каждого persisted update independent validator проверяет не только task/target counts, но и
+структуру canonical objective:
+
+- `arg1_pointer_loss` обязан быть `null` тогда и только тогда, когда `arg1_target_count == 0`;
+- `arg2_pointer_loss` обязан быть `null` тогда и только тогда, когда `arg2_target_count == 0`;
+- применимые component losses конечны;
+- `total_loss` обязан точно совпадать с float32 accumulation
+  `operator_loss + applicable arg1_pointer_loss + applicable arg2_pointer_loss`;
+- operator position weight остаётся `1 / operator_target_count`;
+- pre-clip gradient norm и clipping semantics остаются canonical.
+
+Это bind-ит persisted update evidence к заявлению, что между arms меняется только task order, а
+не decomposition/objective.
 
 ## Pre-specified rescue events
 
@@ -86,8 +109,8 @@ gold `UNSTACK` в position 0.
 
 ### `first_full_free_running_rescue`
 
-Самый ранний completed epoch/update, где обе initially-unsatisfied tasks `02` и `03` успешно
-решаются настоящим free-running execution.
+Самый ранний completed epoch/update, где обе initially-unsatisfied train tasks `02` и `03`
+успешно решаются настоящим free-running execution.
 
 После first rescue отдельно сохраняется persistence на later full checkpoints `10/30/100`
 (только на checkpoints, которые не раньше самого event).
@@ -96,52 +119,40 @@ Rescue definition после результатов не меняется.
 
 ## Cross-seed и cross-arm claims
 
-Для каждого arm сохраняются:
-
-- rescue update по каждому seed;
-- mean rescue update только если rescue есть у всех трёх seeds;
-- explicit task order и seed count.
-
-Для `task01_middle` и `task01_last` сохраняются per-seed deltas относительно
-`canonical_order` отдельно для:
-
-- first position-0 rescue update;
-- first full free-running rescue update.
-
-Если любой из сравниваемых event отсутствует, delta остаётся `null`, а не заменяется
-favorable subset statistic.
+Для каждого arm сохраняются rescue update по каждому seed и mean rescue update только если
+rescue есть у всех трёх seeds. Для `task01_middle` и `task01_last` сохраняются per-seed deltas
+относительно `canonical_order` отдельно для first position-0 и first full free-running rescue.
+Если любой сравниваемый event отсутствует, delta остаётся `null`.
 
 ## Independent validation
 
 `a2_sufficient_budget_task_order_validator.py` не импортирует producer aggregation/contrast
-helpers нового experiment и не запускает training повторно.
-
-Он независимо:
+helpers нового experiment и не запускает экспериментальные arms повторно. Он независимо:
 
 - bind-ит workflow-requested implementation SHA;
 - строит transitive source inventory поверх accepted budget source closure;
 - проверяет exact arm × seed × update × epoch × checkpoint coverage;
-- проверяет, что arm-order metadata совпадает с фактическим update trace;
-- проверяет target counts, canonical per-task weighting и clipping semantics;
+- проверяет actual task order против arm metadata;
+- проверяет target counts, pointer-loss applicability, exact loss decomposition и clipping;
 - валидирует raw position-0 probability/NLL/correctness;
 - независимо исполняет persisted free-running predicted plans через task/domain semantics;
 - пересчитывает full-checkpoint teacher/free summaries;
-- заново определяет оба first-rescue event;
-- заново определяет persistence;
-- заново строит cross-seed summaries и cross-arm rescue deltas;
-- bind-ит canonical prefix-equivalence к фактическому persisted first-nine trace + epoch-3 hashes.
-
-Validator не принимает auto-generated favorable label как доказательство.
+- заново определяет оба first-rescue event и persistence;
+- независимо реконструирует frozen historical 3-epoch canonical control для prefix anchor;
+- заново строит cross-seed summaries и cross-arm rescue deltas.
 
 ## Tamper coverage
 
 Tests обязаны отвергать как минимум:
 
-- изменение одного per-epoch position-0 raw record при stale first-rescue claim;
+- изменение per-epoch position-0 raw record при stale first-rescue claim;
 - изменение free-running plan/result при stale free-running rescue claim;
 - arm-order metadata, не совпадающий с update trace;
 - duplicate/missing arm/seed/task/checkpoint evidence;
-- forged canonical prefix-equivalence;
+- forged persisted canonical prefix record;
+- coherent forge raw first-nine trace + epoch-3 hashes + обеих prefix copies;
+- неверный total-loss decomposition;
+- coherent pointer-loss mutation, нарушающий target applicability;
 - cross-arm rescue delta, не совпадающий с raw per-arm rescue events;
 - stale full-checkpoint summary после raw teacher mutation.
 
