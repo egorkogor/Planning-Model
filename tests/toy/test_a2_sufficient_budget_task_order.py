@@ -425,9 +425,10 @@ def test_stale_cross_arm_rescue_delta_is_rejected() -> None:
 def test_changed_raw_checkpoint_claim_is_rejected() -> None:
     payload, commit = _payload()
     result = payload["arm_seed_results"][0]
-    position = result["checkpoints"][0]["teacher_forced"][1]["positions"][0]
+    position = result["checkpoints"][2]["teacher_forced"][1]["positions"][0]
     position["predicted_operator"] = "END"
     position["operator_correct"] = False
+    position["joint_step_correct"] = False
     _resign(payload)
     with pytest.raises(ValueError, match="CHECKPOINT_TEACHER_SUMMARY"):
         validate_claims_from_evidence(payload, implementation_commit=commit)
