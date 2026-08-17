@@ -1,0 +1,38 @@
+name: TEMP A2 evidence independent raw review v2
+
+on:
+  push:
+    branches:
+      - temp/manual-a2-order-evidence
+    paths:
+      - .github/workflows/temp-a2-evidence-review-v2.yml
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Execute corrected independent review harness
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          source = Path('.github/workflows/temp-a2-evidence-review.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(source) if line.strip() == "python - <<'PY'")
+          end = next(i for i in range(start + 1, len(source)) if source[i].strip() == 'PY')
+          code = textwrap.dedent('\n'.join(source[start + 1:end]))
+          old = 'req(obs["target_name"] == "planning-model-canonical-cpu-v1", "preflight target")'
+          new = 'req(pre["target_contract"]["target_name"] == "planning-model-canonical-cpu-v1", "preflight target")'
+          if code.count(old) != 1:
+              raise RuntimeError('TEMP_REVIEW_PATCH_TARGET_NOT_UNIQUE')
+          code = code.replace(old, new)
+          exec(compile(code, '<independent-a2-review>', 'exec'), {'__name__': '__main__'})
+          PY
