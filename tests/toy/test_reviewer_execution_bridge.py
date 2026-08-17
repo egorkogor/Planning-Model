@@ -11,7 +11,12 @@ SHA = "a" * 40
 WORKFLOW = Path(".github/workflows/reviewer-execution-bridge.yml")
 
 
-def _event(*, actor: str = "egorkogor", issue: int = 36, body: str | None = None) -> dict:
+def _event(
+    *,
+    actor: str = "egorkogor",
+    issue: int = 36,
+    body: str | None = None,
+) -> dict:
     if body is None:
         body = f"/reviewer-bridge/v1 task=status-v1 request=req-0001 sha={SHA}"
     return {
@@ -76,9 +81,10 @@ def test_shell_and_path_injection_is_rejected(payload: str) -> None:
 def test_status_and_preflight_have_fixed_allowlisted_plans(tmp_path: Path) -> None:
     status = bridge.parse_event(_event())
     assert bridge.task_plan(status, tmp_path) == []
-    preflight = bridge.parse_event(
-        _event(body=f"/reviewer-bridge/v1 task=preflight-v1 request=req-0002 sha={SHA}")
+    preflight_body = (
+        f"/reviewer-bridge/v1 task=preflight-v1 request=req-0002 sha={SHA}"
     )
+    preflight = bridge.parse_event(_event(body=preflight_body))
     plan = bridge.task_plan(preflight, tmp_path)
     assert [name for name, _ in plan] == ["fixed-target-preflight"]
     argv = plan[0][1]
@@ -114,7 +120,8 @@ def test_scientific_registry_is_one_named_existing_producer_without_clipping(
 
 
 def test_exact_trusted_status_checkout_succeeds(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = bridge.parse_event(_event())
 
@@ -127,17 +134,29 @@ def test_exact_trusted_status_checkout_succeeds(
         raise AssertionError(args)
 
     completed = subprocess.CompletedProcess(
-        args=["trusted-validator"], returncode=0, stdout='{"trusted": true}', stderr=""
+        args=["trusted-validator"],
+        returncode=0,
+        stdout='{"trusted": true}',
+        stderr="",
     )
     monkeypatch.setattr(bridge, "_git", fake_git)
-    monkeypatch.setattr(bridge, "_validate_workflow_sha", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        bridge,
+        "_validate_workflow_sha",
+        lambda *args, **kwargs: None,
+    )
     monkeypatch.setattr(bridge, "_run", lambda *args, **kwargs: completed)
-    result = bridge.validate_trusted_checkout(tmp_path, request, workflow_sha="b" * 40)
+    result = bridge.validate_trusted_checkout(
+        tmp_path,
+        request,
+        workflow_sha="b" * 40,
+    )
     assert result == '{"trusted": true}'
 
 
 def test_untrusted_commit_validator_failure_is_propagated(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = bridge.parse_event(_event())
 
@@ -150,25 +169,38 @@ def test_untrusted_commit_validator_failure_is_propagated(
         return ""
 
     monkeypatch.setattr(bridge, "_git", fake_git)
-    monkeypatch.setattr(bridge, "_validate_workflow_sha", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        bridge,
+        "_validate_workflow_sha",
+        lambda *args, **kwargs: None,
+    )
 
     def reject(*args, **kwargs):
         raise subprocess.CalledProcessError(1, ["trusted-validator"])
 
     monkeypatch.setattr(bridge, "_run", reject)
     with pytest.raises(subprocess.CalledProcessError):
-        bridge.validate_trusted_checkout(tmp_path, request, workflow_sha="b" * 40)
+        bridge.validate_trusted_checkout(
+            tmp_path,
+            request,
+            workflow_sha="b" * 40,
+        )
 
 
 def test_duplicate_request_id_is_rejected_before_execution(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bridge_root = tmp_path / "bridge"
     workspace = bridge_root / "100-1"
     workspace.mkdir(parents=True)
     event_path = tmp_path / "event.json"
     _write_event(event_path, _event())
-    monkeypatch.setattr(bridge, "validate_trusted_checkout", lambda *args, **kwargs: "ok")
+    monkeypatch.setattr(
+        bridge,
+        "validate_trusted_checkout",
+        lambda *args, **kwargs: "ok",
+    )
     monkeypatch.setattr(bridge, "_ref_exists", lambda *args, **kwargs: True)
     with pytest.raises(ValueError, match="REVIEWER_BRIDGE_REQUEST_ALREADY_CONSUMED"):
         bridge.reserve_request(
@@ -188,7 +220,8 @@ def test_workflow_has_strict_guards_and_no_marketplace_actions() -> None:
     assert "issue_comment:" in text
     assert "github.event.issue.number == 36" in text
     assert "github.actor == 'egorkogor'" in text
-    assert "startsWith(github.event.comment.body, '/reviewer-bridge/v1 ')" in text
+    prefix_guard = "startsWith(github.event.comment.body, '/reviewer-bridge/v1 ')"
+    assert prefix_guard in text
     assert "uses:" not in text
     assert "actions/checkout" not in text
     assert "actions/upload-artifact" not in text
@@ -196,9 +229,10 @@ def test_workflow_has_strict_guards_and_no_marketplace_actions() -> None:
     assert "ssh " not in text.lower()
 
 
-def test_workflow_executes_bridge_driver_from_workflow_sha_not_scientific_checkout() -> None:
+def test_workflow_bridge_driver_is_bound_to_workflow_sha() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert '"${WORKFLOW_SHA}:scripts/run_reviewer_execution_bridge.py"' in text
+    driver_object = '"${WORKFLOW_SHA}:scripts/run_reviewer_execution_bridge.py"'
+    assert driver_object in text
     assert "BRIDGE_DRIVER=%s" in text
     assert 'python "$BRIDGE_DRIVER" reserve' in text
     assert 'python "$BRIDGE_DRIVER" execute' in text
@@ -206,11 +240,14 @@ def test_workflow_executes_bridge_driver_from_workflow_sha_not_scientific_checko
     assert "python -m scripts.run_reviewer_execution_bridge" not in text
 
 
-def test_evidence_manifest_binds_request_sha_runner_and_bridge_source(tmp_path: Path) -> None:
+def test_evidence_manifest_binds_request_sha_runner_and_bridge_source(
+    tmp_path: Path,
+) -> None:
     request = bridge.parse_event(_event())
     (tmp_path / "producer-evidence").mkdir()
     (tmp_path / "producer-evidence" / "result.json").write_text(
-        '{"ok":true}\n', encoding="utf-8"
+        '{"ok":true}\n',
+        encoding="utf-8",
     )
     runner = {"runner_name": "canonical", "runner_image_id": "image-123"}
     source = {"workflow_sha": "b" * 40, "source_identity": "sha256:source"}
@@ -224,16 +261,24 @@ def test_evidence_manifest_binds_request_sha_runner_and_bridge_source(tmp_path: 
     assert manifest["implementation_sha"] == SHA
     assert manifest["runner_identity"] == runner
     assert manifest["bridge_source"] == source
-    assert manifest["files"]["producer-evidence/result.json"].startswith("sha256:")
+    result_digest = manifest["files"]["producer-evidence/result.json"]
+    assert result_digest.startswith("sha256:")
     assert manifest["manifest_sha256"].startswith("sha256:")
 
 
 def test_evidence_archive_is_content_addressed(tmp_path: Path) -> None:
-    (tmp_path / "request.json").write_text('{"request":"req-0001"}\n', encoding="utf-8")
-    (tmp_path / "manifest.json").write_text('{"manifest":"sha256:test"}\n', encoding="utf-8")
+    (tmp_path / "request.json").write_text(
+        '{"request":"req-0001"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "manifest.json").write_text(
+        '{"manifest":"sha256:test"}\n',
+        encoding="utf-8",
+    )
     digest = bridge._write_deterministic_archive(tmp_path)
+    archive_digest = (tmp_path / "archive.sha256").read_text(encoding="utf-8")
     assert digest.startswith("sha256:")
-    assert (tmp_path / "archive.sha256").read_text(encoding="utf-8") == digest + "\n"
+    assert archive_digest == digest + "\n"
     assert bridge._sha256_file(tmp_path / "evidence.tar.gz") == digest
 
 
