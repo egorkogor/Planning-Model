@@ -7,6 +7,7 @@ import subprocess
 import pytest
 import torch
 
+import planner_toy.a2_sufficient_budget_task_order_validator as validator
 from planner_toy.a2_sufficient_budget_task_order import (
     ARMS,
     CHECKPOINT_EPOCHS,
@@ -99,7 +100,6 @@ def _teacher_task(row, seed: int, *, p0_solved: bool) -> dict:
 def _free_task(row, seed: int, *, solved: bool) -> dict:
     plan = copy.deepcopy(row["oracle_work_plan"]) if solved else [["END"]]
     initial = row["task_id"] == "bw-00000001"
-    success = solved or initial
     return {
         "split": "train",
         "task_id": row["task_id"],
@@ -108,7 +108,7 @@ def _free_task(row, seed: int, *, solved: bool) -> dict:
         "predicted_plan_length": max(len(plan) - 1, 0),
         "exact_plan_match": plan == row["oracle_work_plan"],
         "initial_goal_satisfied": initial,
-        "final_goal_success": success,
+        "final_goal_success": solved or initial,
     }
 
 
@@ -117,9 +117,11 @@ def _epoch_record(rows, seed: int, epoch: int, *, p0_epoch: int, free_epoch: int
     free = []
     for row in rows:
         nontrivial = row["task_id"] in {"bw-00000002", "bw-00000003"}
-        p0_solved = (not nontrivial) or epoch >= p0_epoch
-        free_solved = (not nontrivial) or epoch >= free_epoch
-        teacher = _teacher_task(row, seed, p0_solved=p0_solved)
+        teacher = _teacher_task(
+            row,
+            seed,
+            p0_solved=(not nontrivial) or epoch >= p0_epoch,
+        )
         first = teacher["positions"][0]
         p0.append(
             {
@@ -132,7 +134,11 @@ def _epoch_record(rows, seed: int, epoch: int, *, p0_epoch: int, free_epoch: int
                 "probability_end": first["probability_end"],
             }
         )
-        task = _free_task(row, seed, solved=free_solved)
+        task = _free_task(
+            row,
+            seed,
+            solved=(not nontrivial) or epoch >= free_epoch,
+        )
         free.append(
             {
                 "task_id": task["task_id"],
@@ -161,15 +167,17 @@ def _updates(rows, arm: str) -> list[dict]:
             operator = len(row["oracle_work_plan"])
             arg1 = sum(step[0] != "END" for step in row["oracle_work_plan"])
             arg2 = sum(step[0] in {"UNSTACK", "STACK"} for step in row["oracle_work_plan"])
+            arg1_loss = 1.0 if arg1 else None
+            arg2_loss = 1.0 if arg2 else None
             records.append(
                 {
                     "update_index": len(records),
                     "epoch_index": epoch_index,
                     "task_id": task_id,
                     "operator_loss": 1.0,
-                    "arg1_pointer_loss": 1.0 if arg1 else None,
-                    "arg2_pointer_loss": 1.0 if arg2 else None,
-                    "total_loss": 1.0 + bool(arg1) + bool(arg2),
+                    "arg1_pointer_loss": arg1_loss,
+                    "arg2_pointer_loss": arg2_loss,
+                    "total_loss": validator._float32_total(1.0, arg1_loss, arg2_loss),
                     "operator_target_count": operator,
                     "arg1_target_count": arg1,
                     "arg2_target_count": arg2,
@@ -223,16 +231,6 @@ def _result(rows, arm: str, seed: int) -> dict:
     updates = _updates(rows, arm)
     p0_event = {"epoch": p0_epoch, "update_count": p0_epoch * 3}
     free_event = {"epoch": free_epoch, "update_count": free_epoch * 3}
-    persistence = {
-        "position0_operator_rescue": {
-            str(epoch): (None if epoch < p0_epoch else True)
-            for epoch in (10, 30, 100)
-        },
-        "full_free_running_rescue": {
-            str(epoch): (None if epoch < free_epoch else True)
-            for epoch in (10, 30, 100)
-        },
-    }
     result = {
         "arm": arm,
         "task_order": list(ARMS[arm]),
@@ -247,41 +245,25 @@ def _result(rows, arm: str, seed: int) -> dict:
             "first_position0_operator_rescue": p0_event,
             "first_full_free_running_rescue": free_event,
         },
-        "rescue_persistence": persistence,
+        "rescue_persistence": {
+            "position0_operator_rescue": {
+                str(epoch): (None if epoch < p0_epoch else True)
+                for epoch in (10, 30, 100)
+            },
+            "full_free_running_rescue": {
+                str(epoch): (None if epoch < free_epoch else True)
+                for epoch in (10, 30, 100)
+            },
+        },
         "prefix_equivalence": None,
     }
     if arm == "canonical_order":
-        checkpoint3 = checkpoints[0]
-        trace_fields = (
-            "update_index",
-            "epoch_index",
-            "task_id",
-            "operator_loss",
-            "arg1_pointer_loss",
-            "arg2_pointer_loss",
-            "total_loss",
-            "operator_target_count",
-            "arg1_target_count",
-            "arg2_target_count",
-            "gradient_norm",
-            "gradient_clip_norm",
-            "clipping_occurred",
-            "operator_position_weight",
-        )
-        actual = {
-            "initialization_canonical_sha256": result["initialization_canonical_sha256"],
-            "trained_canonical_sha256": checkpoint3["trained_canonical_sha256"],
-            "optimizer_canonical_sha256": checkpoint3["optimizer_canonical_sha256"],
-            "updates": [
-                {field: update[field] for field in trace_fields}
-                for update in updates[:9]
-            ],
-        }
+        actual = validator._actual_prefix(result)
         result["prefix_equivalence"] = {
             "seed": seed,
             "status": "PASS",
             "purpose": "NON_SCIENTIFIC_FROZEN_3_EPOCH_PREFIX_EQUIVALENCE",
-            "trace_fields": list(trace_fields),
+            "trace_fields": list(validator.PREFIX_TRACE_FIELDS),
             "control": copy.deepcopy(actual),
             "arm_prefix": copy.deepcopy(actual),
         }
@@ -306,7 +288,10 @@ def _payload() -> tuple[dict, str]:
         "max_epoch": MAX_EPOCH,
         "heldout_accessed": False,
         "go_latent": "NOT EVALUATED",
-        "dataset": {"evaluated_task_ids": list(TASKS)},
+        "dataset": {
+            "evaluated_task_ids": list(TASKS),
+            "frozen_dataset_lineage_hash": dataset["frozen_dataset_lineage_hash"],
+        },
         "arm_seed_results": results,
         "cross_seed_arm_summaries": _recompute_arm_summaries(results),
         "cross_arm_rescue_deltas": _recompute_deltas(results),
@@ -320,10 +305,24 @@ def _resign(payload: dict) -> None:
     payload["canonical_identity"] = sha256(unsigned)
 
 
+@pytest.fixture(autouse=True)
+def _synthetic_frozen_anchor(monkeypatch):
+    original = validator._frozen_control_projection
+
+    def fake(rows, *, seed: int, dataset_hash: str):
+        del dataset_hash
+        return validator._actual_prefix(_result(rows, "canonical_order", seed))
+
+    monkeypatch.setattr(validator, "_frozen_control_projection", fake)
+    return original
+
+
 def test_valid_synthetic_evidence_passes() -> None:
     payload, commit = _payload()
     result = validate_claims_from_evidence(payload, implementation_commit=commit)
     assert result["independent_claim_validation"] == "PASS"
+    assert result["frozen_control_anchor"] == "PASS"
+    assert result["loss_decomposition_validation"] == "PASS"
 
 
 def test_producer_and_validator_cross_arm_reductions_agree() -> None:
@@ -336,11 +335,15 @@ def test_producer_and_validator_cross_arm_reductions_agree() -> None:
 def test_tamper_position0_raw_with_stale_rescue_is_rejected() -> None:
     payload, commit = _payload()
     result = next(
-        item for item in payload["arm_seed_results"]
+        item
+        for item in payload["arm_seed_results"]
         if item["arm"] == "canonical_order" and item["seed"] == 17
     )
-    epoch = result["epoch_evidence"][10]
-    item = next(x for x in epoch["position0"] if x["task_id"] == "bw-00000002")
+    item = next(
+        x
+        for x in result["epoch_evidence"][10]["position0"]
+        if x["task_id"] == "bw-00000002"
+    )
     item.update(
         {
             "predicted_operator": "END",
@@ -358,11 +361,15 @@ def test_tamper_position0_raw_with_stale_rescue_is_rejected() -> None:
 def test_tamper_free_plan_with_stale_rescue_is_rejected() -> None:
     payload, commit = _payload()
     result = next(
-        item for item in payload["arm_seed_results"]
+        item
+        for item in payload["arm_seed_results"]
         if item["arm"] == "canonical_order" and item["seed"] == 17
     )
-    epoch = result["epoch_evidence"][11]
-    item = next(x for x in epoch["free_running"] if x["task_id"] == "bw-00000002")
+    item = next(
+        x
+        for x in result["epoch_evidence"][11]["free_running"]
+        if x["task_id"] == "bw-00000002"
+    )
     item.update(
         {
             "predicted_plan": [["END"]],
@@ -403,12 +410,62 @@ def test_duplicate_or_missing_coverage_is_rejected(kind: str) -> None:
 def test_forged_canonical_prefix_record_is_rejected() -> None:
     payload, commit = _payload()
     result = next(
-        item for item in payload["arm_seed_results"]
+        item
+        for item in payload["arm_seed_results"]
         if item["arm"] == "canonical_order" and item["seed"] == 17
     )
     result["prefix_equivalence"]["control"]["trained_canonical_sha256"] = "sha256:forged"
     _resign(payload)
     with pytest.raises(ValueError, match="CANONICAL_PREFIX_BINDING"):
+        validate_claims_from_evidence(payload, implementation_commit=commit)
+
+
+def test_coherent_raw_and_prefix_forge_is_rejected_by_frozen_anchor() -> None:
+    payload, commit = _payload()
+    result = next(
+        item
+        for item in payload["arm_seed_results"]
+        if item["arm"] == "canonical_order" and item["seed"] == 17
+    )
+    update = result["updates"][0]
+    update["operator_loss"] = float(update["operator_loss"]) + 0.25
+    update["total_loss"] = validator._float32_total(
+        float(update["operator_loss"]),
+        update["arg1_pointer_loss"],
+        update["arg2_pointer_loss"],
+    )
+    checkpoint3 = next(item for item in result["checkpoints"] if item["epoch"] == 3)
+    checkpoint3["trained_canonical_sha256"] = "sha256:coherently-forged-trained"
+    checkpoint3["optimizer_canonical_sha256"] = "sha256:coherently-forged-optimizer"
+    forged = validator._actual_prefix(result)
+    result["prefix_equivalence"]["control"] = copy.deepcopy(forged)
+    result["prefix_equivalence"]["arm_prefix"] = copy.deepcopy(forged)
+    _resign(payload)
+    with pytest.raises(ValueError, match="FROZEN_CONTROL_ANCHOR"):
+        validate_claims_from_evidence(payload, implementation_commit=commit)
+
+
+def test_loss_decomposition_tamper_is_rejected() -> None:
+    payload, commit = _payload()
+    update = payload["arm_seed_results"][0]["updates"][1]
+    update["total_loss"] = float(update["total_loss"]) + 0.5
+    _resign(payload)
+    with pytest.raises(ValueError, match="LOSS_DECOMPOSITION"):
+        validate_claims_from_evidence(payload, implementation_commit=commit)
+
+
+def test_coherent_pointer_loss_tamper_is_rejected_by_applicability() -> None:
+    payload, commit = _payload()
+    update = payload["arm_seed_results"][0]["updates"][0]
+    assert update["arg1_target_count"] == 0
+    update["arg1_pointer_loss"] = 0.25
+    update["total_loss"] = validator._float32_total(
+        float(update["operator_loss"]),
+        0.25,
+        update["arg2_pointer_loss"],
+    )
+    _resign(payload)
+    with pytest.raises(ValueError, match="ARG1_APPLICABILITY"):
         validate_claims_from_evidence(payload, implementation_commit=commit)
 
 
@@ -432,3 +489,18 @@ def test_changed_raw_checkpoint_claim_is_rejected() -> None:
     _resign(payload)
     with pytest.raises(ValueError, match="CHECKPOINT_TEACHER_SUMMARY"):
         validate_claims_from_evidence(payload, implementation_commit=commit)
+
+
+def test_real_frozen_control_reconstruction_has_exact_nine_updates(
+    _synthetic_frozen_anchor,
+) -> None:
+    dataset = generate_train_only()
+    rows = sorted(list(dataset["train"]), key=lambda row: row["task_id"])
+    control = _synthetic_frozen_anchor(
+        rows,
+        seed=17,
+        dataset_hash=dataset["frozen_dataset_lineage_hash"],
+    )
+    assert len(control["updates"]) == 9
+    assert [update["task_id"] for update in control["updates"]] == list(TASKS) * 3
+    assert all(set(update) == set(validator.PREFIX_TRACE_FIELDS) for update in control["updates"])
