@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 WORKFLOW = Path('.github/workflows/reviewer-execution-bridge.yml')
@@ -135,6 +136,13 @@ def test_workflow_hands_off_unique_traversable_execution_root_to_seal() -> None:
     assert 'REVIEWER_BRIDGE_EXECUTION_ROOT_OWNERSHIP_MISMATCH' in text
     assert 'REVIEWER_BRIDGE_EXECUTION_WORKSPACE_OWNERSHIP_MISMATCH' in text
     seal = text[text.index('- id: seal'):text.index('- id: publish')]
+    kill = seal.index('sudo -n pkill -KILL -u "$EXEC_UID"')
+    assert seal.index('REVIEWER_BRIDGE_EXECUTION_ROOT_OWNERSHIP_MISMATCH') < kill
+    assert kill < seal.index('test -d "$workspace"')
+    assert kill < seal.index('test -L "$workspace"')
+    assert kill < seal.index("stat -c '%u:%g:%a' \"$workspace\"")
+    assert 'workspace_boundary_error=' in seal
+    assert 'if workspace_boundary_error:' in seal
     assert 'rm -rf -- "$execution_root"' in seal
     assert 'chmod 711 "$execution_root"' not in seal
 
@@ -228,6 +236,107 @@ def test_real_os_principal_cannot_traverse_runner_temp_but_can_use_dedicated_roo
     finally:
         subprocess.run([sudo, '-n', 'pkill', '-KILL', '-u', user], check=False)
         subprocess.run([sudo, '-n', userdel, user], check=True)
+
+
+def test_kill_precedes_mutated_workspace_validation_for_detached_execution_uid() -> None:
+    sudo = shutil.which('sudo')
+    useradd = shutil.which('useradd')
+    userdel = shutil.which('userdel')
+    assert sudo is not None and useradd is not None and userdel is not None
+    subprocess.run([sudo, '-n', 'true'], check=True)
+
+    user = f'pmbridgekill{os.getpid()}'
+    subprocess.run(
+        [
+            sudo,
+            '-n',
+            useradd,
+            '--system',
+            '--user-group',
+            '--home-dir',
+            '/nonexistent',
+            '--no-create-home',
+            '--shell',
+            '/usr/sbin/nologin',
+            user,
+        ],
+        check=True,
+    )
+    execution_root = Path(
+        subprocess.check_output(
+            ['mktemp', '-d', '/tmp/planning-model-reviewer-bridge-execution.XXXXXXXX'],
+            text=True,
+        ).strip()
+    )
+    attacker: subprocess.Popen[str] | None = None
+    try:
+        uid = int(subprocess.check_output(['id', '-u', user], text=True).strip())
+        gid = int(subprocess.check_output(['id', '-g', user], text=True).strip())
+        execution_root.chmod(0o711)
+        workspace = execution_root / 'run'
+        workspace.mkdir(mode=0o700)
+        subprocess.run([sudo, '-n', 'chown', f'{uid}:{gid}', str(workspace)], check=True)
+
+        attacker = subprocess.Popen(
+            [
+                sudo,
+                '-n',
+                '-u',
+                user,
+                '--',
+                'sh',
+                '-c',
+                'chmod 755 "$1"; while :; do sleep 60; done',
+                'sh',
+                str(workspace),
+            ]
+        )
+        for _ in range(100):
+            mode = workspace.stat().st_mode & 0o777
+            alive = subprocess.run(
+                ['pgrep', '-u', str(uid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).returncode == 0
+            if mode == 0o755 and alive:
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError('attacker did not mutate workspace and remain detached')
+
+        subprocess.run([sudo, '-n', 'pkill', '-KILL', '-u', str(uid)], check=False)
+        for _ in range(50):
+            alive = subprocess.run(
+                ['pgrep', '-u', str(uid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).returncode == 0
+            if not alive:
+                break
+            time.sleep(0.05)
+        assert subprocess.run(
+            ['pgrep', '-u', str(uid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode != 0
+        attacker.wait(timeout=5)
+
+        observed = (
+            f'{workspace.stat().st_uid}:{workspace.stat().st_gid}:'
+            f'{workspace.stat().st_mode & 0o777:o}'
+        )
+        assert observed == f'{uid}:{gid}:755'
+        assert observed != f'{uid}:{gid}:700'
+    finally:
+        subprocess.run([sudo, '-n', 'pkill', '-KILL', '-u', user], check=False)
+        if attacker is not None:
+            try:
+                attacker.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                attacker.kill()
+                attacker.wait(timeout=5)
+        subprocess.run([sudo, '-n', userdel, user], check=True)
+        shutil.rmtree(execution_root, ignore_errors=True)
 
 
 def test_workflow_binds_launcher_to_real_sys_executable_not_path_wrapper(tmp_path: Path) -> None:
