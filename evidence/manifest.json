@@ -1,0 +1,35 @@
+{
+  "bridge_source": {
+    "source_files": [
+      {
+        "path": ".github/workflows/reviewer-execution-bridge.yml",
+        "sha256": "sha256:9148fa05a60d79e962c20e78ab92cb9d82befc5ce99298ff3210f07a9ba38940"
+      },
+      {
+        "path": "scripts/run_reviewer_execution_bridge.py",
+        "sha256": "sha256:c1c5b874c2349c9e2b1274fbc10b10c55fcbe4a83ef91cb7acd7816b03c08217"
+      }
+    ],
+    "source_identity": "sha256:69f1f59bddb1d256fd22add28fba7cf97c807bc139515a8442c23df40f08b683",
+    "workflow_sha": "09f2a2630ba84a284f46ed8cf50a25b8ed475f49"
+  },
+  "files": {
+    "bridge-source.json": "sha256:8b6be053a501df87228e0b031f48c4d4aa548f73b12d247dbc08004f2e25b075",
+    "github-execution.json": "sha256:ba7c8dae4058ab0e797733fbc211ea679ea1b3b450e2f96d8259c9ac248a8f9d",
+    "request.json": "sha256:714fffda8c33bb8b1132f1069c527b14acc6b1cf323ebb88d07ff65286e5baf0",
+    "runner-identity.json": "sha256:5a76f8015bff652927027c25d917ebf89e3bcafcfd29e299f6929660ad5e3482",
+    "status.json": "sha256:f8b8a2e27d6957d147d1816f4b22f3fec1ca384cbad50b03e8618b940e7dc5cf",
+    "task-failure.json": "sha256:1f5ac38f3bccdcdf647beeb6668fbc8a4810d41f2602de4e6974d2f2a059c854"
+  },
+  "implementation_sha": "09f2a2630ba84a284f46ed8cf50a25b8ed475f49",
+  "manifest_sha256": "sha256:b35a2d70f9535cb1228923d8946df1e60d8fdb7b28efc13dc0ed84c795b03acd",
+  "request_id": "status-rollout-20260818-1857",
+  "runner_identity": {
+    "fixed_target_runner_image": "planning-model-canonical-cpu-v1|provider=aws-ec2|instance=i-0ef4e446bfb12ce21|ami=ami-05bfa4a7765f38076|type=m7i-flex.large|runtime=1.1|torch=2.12.0+cpu",
+    "runner_image_id": "planning-model-canonical-cpu-v1|provider=aws-ec2|instance=i-0ef4e446bfb12ce21|ami=ami-05bfa4a7765f38076|type=m7i-flex.large|runtime=1.1|torch=2.12.0+cpu",
+    "runner_image_id_path": "/etc/planning-model-runner-image-id",
+    "runner_name": "planning-model-canonical-cpu-v1"
+  },
+  "task": "status-v1",
+  "version": "reviewer-execution-bridge/1.0"
+}

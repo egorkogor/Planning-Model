@@ -1,0 +1,7 @@
+{
+  "failed_task": "execution-boundary",
+  "return_code": 2,
+  "stderr": "/opt/planning-model/venv/bin/python: can't open file '/home/ubuntu/actions-runner/_work/_temp/planning-model-reviewer-bridge-execution/32158200981-1/run_reviewer_execution_bridge.py': [Errno 13] Permission denied\n\nValueError: REVIEWER_BRIDGE_EXECUTION_PYTHON_MISMATCH",
+  "stdout": "",
+  "terminal_status": "FAILED"
+}

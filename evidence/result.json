@@ -1,0 +1,12 @@
+{
+  "archive_sha256": "sha256:f06f43d91ffa431fd467c2bc91dbd7e079556a4b60b8cbef8a920f7ea3bb73e5",
+  "failed_task": "execution-boundary",
+  "implementation_sha": "09f2a2630ba84a284f46ed8cf50a25b8ed475f49",
+  "manifest_sha256": "sha256:b35a2d70f9535cb1228923d8946df1e60d8fdb7b28efc13dc0ed84c795b03acd",
+  "request_id": "status-rollout-20260818-1857",
+  "return_code": 2,
+  "task": "status-v1",
+  "terminal_status": "FAILED",
+  "transport_ref": "refs/heads/evidence/reviewer-bridge/status-rollout-20260818-1857",
+  "valid": false
+}
