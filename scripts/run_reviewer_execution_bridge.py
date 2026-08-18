@@ -835,7 +835,10 @@ def validate_publishable_evidence(
     status = _load_json_object(
         evidence_root / "status.json", "REVIEWER_BRIDGE_EVIDENCE_STATUS_INVALID"
     )
-    if status.get("task") != request.task or status.get("implementation_sha") != request.implementation_sha:
+    if (
+        status.get("task") != request.task
+        or status.get("implementation_sha") != request.implementation_sha
+    ):
         raise ValueError("REVIEWER_BRIDGE_EVIDENCE_STATUS_PROVENANCE_MISMATCH")
     if status.get("terminal_status") != result.get("terminal_status"):
         raise ValueError("REVIEWER_BRIDGE_EVIDENCE_STATUS_RESULT_MISMATCH")

@@ -654,11 +654,17 @@ def test_real_repository_child_process_cannot_observe_transport_or_control_crede
     monkeypatch.setenv("SAFE_ENV", "kept")
 
     probe = tmp_path / "credential_env_probe.py"
+    forbidden_keys = sorted(
+        bridge.REPOSITORY_CREDENTIAL_ENV_KEYS | bridge.REPOSITORY_CONTROL_ENV_KEYS
+    )
     probe.write_text(
         "import os\n"
         "import sys\n"
-        f"forbidden = {sorted(bridge.REPOSITORY_CREDENTIAL_ENV_KEYS | bridge.REPOSITORY_CONTROL_ENV_KEYS)!r}\n"
-        "leaked = sorted(key for key in os.environ if key in forbidden or key.startswith('GIT_CONFIG_'))\n"
+        f"forbidden = {forbidden_keys!r}\n"
+        "leaked = sorted(\n"
+        "    key for key in os.environ\n"
+        "    if key in forbidden or key.startswith('GIT_CONFIG_')\n"
+        ")\n"
         "if leaked:\n"
         "    print('credential/control env leaked: ' + ','.join(leaked), file=sys.stderr)\n"
         "    raise SystemExit(91)\n"
@@ -718,8 +724,13 @@ def test_adversarial_control_poison_and_background_mutation_cannot_select_publis
         "target = os.environ['ATTACK_TARGET']\n"
         "Path(target).write_text('BACKGROUND_MUTATED')\n"
         "subprocess.Popen(\n"
-        "    [sys.executable, '-c',\n"
-        "     \"import time; from pathlib import Path; time.sleep(0.05); Path(r'%s').write_text('BACKGROUND_MUTATED')\" % target],\n"
+        "    [\n"
+        "        sys.executable,\n"
+        "        '-c',\n"
+        "        \"import time; from pathlib import Path; \"\n"
+        "        \"time.sleep(0.05); \"\n"
+        "        \"Path(r'%s').write_text('BACKGROUND_MUTATED')\" % target,\n"
+        "    ],\n"
         "    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,\n"
         ")\n"
         "Path(os.environ['ATTACK_REPORT']).write_text(json.dumps(seen, sort_keys=True))\n"
