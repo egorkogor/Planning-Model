@@ -188,14 +188,29 @@ jobs:
             echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_NOT_CLEAN"; exit 1;
           }
 
-          execution_root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-execution"
+          execution_root="$(mktemp -d /tmp/planning-model-reviewer-bridge-execution.XXXXXXXX)"
+          case "$execution_root" in
+            /tmp/planning-model-reviewer-bridge-execution.*) ;;
+            *) echo "::error::REVIEWER_BRIDGE_EXECUTION_ROOT_INVALID"; exit 1 ;;
+          esac
+          test -d "$execution_root" && test ! -L "$execution_root" || {
+            echo "::error::REVIEWER_BRIDGE_EXECUTION_ROOT_INVALID"; exit 1;
+          }
+          test "$(stat -c '%u:%g:%a' "$execution_root")" = "$runner_uid:$runner_gid:700" || {
+            echo "::error::REVIEWER_BRIDGE_EXECUTION_ROOT_INITIAL_OWNERSHIP_MISMATCH"; exit 1;
+          }
+          chmod 711 "$execution_root"
+          test "$(stat -c '%u:%g:%a' "$execution_root")" = "$runner_uid:$runner_gid:711" || {
+            echo "::error::REVIEWER_BRIDGE_EXECUTION_ROOT_OWNERSHIP_MISMATCH"; exit 1;
+          }
+          printf 'execution_root=%s\n' "$execution_root" >> "$GITHUB_OUTPUT"
           workspace="$execution_root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           repo="$workspace/repository"; home="$workspace/home"
           driver="$workspace/run_reviewer_execution_bridge.py"; event="$workspace/event.json"
           control_root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-control"
           test ! -e "$workspace"
           mkdir -p "$workspace" "$home" "$control_root"
-          chmod 711 "$execution_root"; chmod 700 "$workspace" "$home" "$control_root"
+          chmod 700 "$workspace" "$home" "$control_root"
           if test "$bootstrap_pending" = 1; then
             marker_candidate="$control_root/principal-marker-candidate.json"
             python - "$marker_candidate" "$PRINCIPAL_CONTRACT_VERSION" "$user" "$exec_uid" "$exec_gid" \
@@ -250,7 +265,12 @@ jobs:
           aten_cpu_capability="${target_env[0]}"; mkl_cbwr="${target_env[1]}"
           omp_num_threads="${target_env[2]}"; mkl_num_threads="${target_env[3]}"
           openblas_num_threads="${target_env[4]}"; numexpr_num_threads="${target_env[5]}"
-          python_executable="$(command -v python)"; test -n "$python_executable"; test -x "$python_executable"
+          python_executable="$(python -c 'import os,sys; print(os.path.realpath(sys.executable))')"
+          test -n "$python_executable"; test -x "$python_executable"
+          case "$python_executable" in
+            /*) ;;
+            *) echo "::error::REVIEWER_BRIDGE_EXECUTION_PYTHON_NOT_ABSOLUTE"; exit 1 ;;
+          esac
           sudo -n -u "$user" -- test -x "$python_executable" || {
             echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_PYTHON_NOT_EXECUTABLE"; exit 1;
           }
@@ -309,24 +329,51 @@ jobs:
           EXEC_GID: ${{ steps.execute.outputs.exec_gid }}
           EXEC_HOME: ${{ steps.execute.outputs.exec_home }}
           EXEC_PYTHON: ${{ steps.execute.outputs.python_executable }}
+          EXECUTION_ROOT: ${{ steps.execute.outputs.execution_root }}
           BRIDGE_RC: ${{ steps.execute.outputs.bridge_rc }}
           RUNNER_NAME_VALUE: ${{ runner.name }}
         run: |
           set -euo pipefail
           control_root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-control"
-          execution_root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-execution"
-          workspace="$execution_root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          control_uid="$(id -u)"; control_gid="$(id -g)"
+          execution_root="${EXECUTION_ROOT:-}"
+          if test -n "$execution_root"; then
+            case "$execution_root" in
+              /tmp/planning-model-reviewer-bridge-execution.*) ;;
+              *) echo "::error::REVIEWER_BRIDGE_EXECUTION_ROOT_INVALID"; exit 1 ;;
+            esac
+            test -d "$execution_root" && test ! -L "$execution_root" || {
+              echo "::error::REVIEWER_BRIDGE_EXECUTION_ROOT_INVALID"; exit 1;
+            }
+            test "$(stat -c '%u:%g:%a' "$execution_root")" = "$control_uid:$control_gid:711" || {
+              echo "::error::REVIEWER_BRIDGE_EXECUTION_ROOT_OWNERSHIP_MISMATCH"; exit 1;
+            }
+            workspace="$execution_root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            test ! -L "$workspace" || {
+              echo "::error::REVIEWER_BRIDGE_EXECUTION_WORKSPACE_SYMLINK_FORBIDDEN"; exit 1;
+            }
+          else
+            test "${REPO_STARTED:-}" != 1 || {
+              echo "::error::REVIEWER_BRIDGE_EXECUTION_ROOT_MISSING"; exit 1;
+            }
+            workspace="/nonexistent/planning-model-reviewer-bridge-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
           mkdir -p "$control_root"; chmod 700 "$control_root"
           rc="${BRIDGE_RC:-125}"
           if test "${REPO_STARTED:-}" = 1; then
             [[ "${EXEC_UID:-}" =~ ^[0-9]+$ ]] || { echo "::error::REVIEWER_BRIDGE_EXEC_UID_MISSING"; exit 1; }
+            [[ "${EXEC_GID:-}" =~ ^[0-9]+$ ]] || { echo "::error::REVIEWER_BRIDGE_EXEC_GID_MISSING"; exit 1; }
+            test -d "$workspace" || { echo "::error::REVIEWER_BRIDGE_EXECUTION_WORKSPACE_MISSING"; exit 1; }
+            test "$(stat -c '%u:%g:%a' "$workspace")" = "$EXEC_UID:$EXEC_GID:700" || {
+              echo "::error::REVIEWER_BRIDGE_EXECUTION_WORKSPACE_OWNERSHIP_MISMATCH"; exit 1;
+            }
             sudo -n pkill -KILL -u "$EXEC_UID" 2>/dev/null || true
             for _ in $(seq 1 50); do pgrep -u "$EXEC_UID" >/dev/null 2>&1 || break; sleep 0.1; done
             pgrep -u "$EXEC_UID" >/dev/null 2>&1 && {
               echo "::error::REVIEWER_BRIDGE_DETACHED_EXECUTION_PROCESS_SURVIVED"; exit 1;
             }
-            test -d "$workspace" && sudo -n chown -R "$(id -u):$(id -g)" "$workspace"
-            test -d "$workspace" && chmod -R u=rwX,go-rwx "$workspace"
+            sudo -n chown -R "$control_uid:$control_gid" "$workspace"
+            chmod -R u=rwX,go-rwx "$workspace"
           fi
 
           bootstrap="$control_root/bootstrap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
@@ -431,7 +478,9 @@ jobs:
               raise SystemExit("REVIEWER_BRIDGE_SEALED_SOURCE_IDENTITY_MISMATCH")
           print(json.dumps({"sealed":True,"result":final},sort_keys=True))
           PY
-          test ! -d "$workspace" || rm -rf -- "$workspace"
+          if test -n "$execution_root"; then
+            rm -rf -- "$execution_root"
+          fi
 
       - id: publish
         name: Publish sealed evidence only after execution principal is dead
@@ -510,6 +559,6 @@ jobs:
             "$root/bootstrap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             "$root/publisher-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           rm -f -- "$root/execution-driver.stdout" "$root/execution-driver.stderr" \
-            "$root/execution-context.json" "$root/control-principal-only"
+            "$root/execution-context.json" "$root/control-principal-only" \
+            "$root/principal-marker-candidate.json"
           rmdir "$root" 2>/dev/null || true
-          rmdir "${RUNNER_TEMP%/}/planning-model-reviewer-bridge-execution" 2>/dev/null || true
