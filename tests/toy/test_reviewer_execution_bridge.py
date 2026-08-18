@@ -526,3 +526,59 @@ def test_allowlisted_repository_tasks_also_receive_scrubbed_environment(
     assert captured["SAFE_ENV"] == "kept"
     assert not bridge.REPOSITORY_CREDENTIAL_ENV_KEYS.intersection(captured)
     assert not any(key.startswith("GIT_CONFIG_") for key in captured)
+
+
+def test_real_repository_child_process_cannot_observe_transport_credentials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import sys
+
+    sentinels = {
+        "GITHUB_TOKEN": "SENTINEL_GITHUB_TOKEN_DO_NOT_LEAK",
+        "GH_TOKEN": "SENTINEL_GH_TOKEN_DO_NOT_LEAK",
+        "GITHUB_PAT": "SENTINEL_PAT_DO_NOT_LEAK",
+        "GIT_ASKPASS": "/tmp/SENTINEL_GIT_ASKPASS_DO_NOT_LEAK",
+        "SSH_ASKPASS": "/tmp/SENTINEL_SSH_ASKPASS_DO_NOT_LEAK",
+        "GIT_SSH": "/tmp/SENTINEL_GIT_SSH_DO_NOT_LEAK",
+        "GIT_SSH_COMMAND": "SENTINEL_GIT_SSH_COMMAND_DO_NOT_LEAK",
+        "GIT_CONFIG_COUNT": "3",
+        "GIT_CONFIG_KEY_0": "http.https://sentinel.invalid/.extraheader",
+        "GIT_CONFIG_VALUE_0": "AUTHORIZATION: SENTINEL_EXTRAHEADER_DO_NOT_LEAK",
+    }
+    for key, value in sentinels.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("SAFE_ENV", "kept")
+
+    probe = tmp_path / "credential_env_probe.py"
+    probe.write_text(
+        "import os\n"
+        "import sys\n"
+        "forbidden = {\n"
+        "    'GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_PAT', 'GIT_ASKPASS',\n"
+        "    'SSH_ASKPASS', 'GIT_SSH', 'GIT_SSH_COMMAND',\n"
+        "}\n"
+        "leaked = sorted(\n"
+        "    key for key in os.environ\n"
+        "    if key in forbidden or key.startswith('GIT_CONFIG_')\n"
+        ")\n"
+        "if leaked:\n"
+        "    print('credential env leaked: ' + ','.join(leaked), file=sys.stderr)\n"
+        "    raise SystemExit(91)\n"
+        "if os.environ.get('SAFE_ENV') != 'kept':\n"
+        "    print('safe runtime env missing', file=sys.stderr)\n"
+        "    raise SystemExit(92)\n"
+        "print('repository-child-env-sanitized')\n",
+        encoding="utf-8",
+    )
+
+    failure = bridge._execute_plan(
+        tmp_path,
+        tmp_path,
+        [("producer", [sys.executable, str(probe)])],
+    )
+
+    assert failure is None
+    assert (tmp_path / "producer.log").read_text(encoding="utf-8") == (
+        "repository-child-env-sanitized\n"
+    )
