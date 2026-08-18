@@ -1,0 +1,515 @@
+name: Guarded reviewer execution bridge
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  group: planning-model-reviewer-bridge-${{ github.event.comment.id }}
+  cancel-in-progress: false
+
+jobs:
+  reviewer-bridge-reservation:
+    if: >-
+      github.repository == 'egorkogor/Planning-Model' &&
+      github.event.issue.number == 36 &&
+      github.actor == 'egorkogor' &&
+      startsWith(github.event.comment.body, '/reviewer-bridge/v1 ')
+    permissions:
+      contents: write
+      issues: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      task: ${{ steps.parse.outputs.task }}
+      implementation_sha: ${{ steps.parse.outputs.implementation_sha }}
+    steps:
+      - id: parse
+        name: Parse guarded request in off-host control plane
+        shell: bash
+        env:
+          BODY: ${{ github.event.comment.body }}
+          COMMENT_ACTOR: ${{ github.event.comment.user.login }}
+          EVENT_ACTOR: ${{ github.actor }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
+          ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, re
+          pattern = re.compile(
+              r"^/reviewer-bridge/v1 "
+              r"task=(status-v1|preflight-v1|a2-sufficient-budget-task-order-v1) "
+              r"request=([a-z0-9][a-z0-9-]{6,62}[a-z0-9]) "
+              r"sha=([0-9a-f]{40})$"
+          )
+          if os.environ["REPOSITORY"] != "egorkogor/Planning-Model":
+              raise SystemExit("REVIEWER_BRIDGE_REPOSITORY_FORBIDDEN")
+          if os.environ["ISSUE"] != "36":
+              raise SystemExit("REVIEWER_BRIDGE_CONTROL_ISSUE_MISMATCH")
+          if os.environ["EVENT_ACTOR"] != "egorkogor" or os.environ["COMMENT_ACTOR"] != "egorkogor":
+              raise SystemExit("REVIEWER_BRIDGE_ACTOR_FORBIDDEN")
+          if os.environ["ATTEMPT"] != "1":
+              raise SystemExit("REVIEWER_BRIDGE_WORKFLOW_RERUN_FORBIDDEN")
+          match = pattern.fullmatch(os.environ["BODY"])
+          if match is None:
+              raise SystemExit("REVIEWER_BRIDGE_COMMAND_INVALID")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
+              stream.write(f"task={match.group(1)}\n")
+              stream.write(f"implementation_sha={match.group(3)}\n")
+          PY
+
+      - name: Reserve request with scoped write credential
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          IMPLEMENTATION_SHA: ${{ steps.parse.outputs.implementation_sha }}
+        run: |
+          set -euo pipefail
+          root="${RUNNER_TEMP%/}/reviewer-bridge-reservation"
+          work="$root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          repo="$work/control-repository"
+          driver="$work/run_reviewer_execution_bridge.py"
+          test ! -e "$work"
+          mkdir -p "$work"
+          chmod 700 "$root" "$work"
+          git init "$repo"
+          git -C "$repo" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$repo" fetch --no-tags --prune origin +refs/heads/main:refs/remotes/origin/main
+          git -C "$repo" cat-file -e "${IMPLEMENTATION_SHA}^{commit}"
+          git -C "$repo" merge-base --is-ancestor "$IMPLEMENTATION_SHA" origin/main
+          git -C "$repo" cat-file -e "${WORKFLOW_SHA}^{commit}"
+          git -C "$repo" merge-base --is-ancestor "$WORKFLOW_SHA" origin/main
+          git -C "$repo" show "${WORKFLOW_SHA}:scripts/run_reviewer_execution_bridge.py" > "$driver"
+          test -s "$driver"
+          chmod 500 "$driver"
+          python "$driver" reserve \
+            --event "$GITHUB_EVENT_PATH" --repo-root "$repo" \
+            --bridge-root "$root" --workspace "$work" \
+            --workflow-sha "$WORKFLOW_SHA" --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
+          rm -rf -- "$work"
+
+  reviewer-bridge-canonical:
+    needs: reviewer-bridge-reservation
+    if: needs.reviewer-bridge-reservation.result == 'success'
+    permissions:
+      contents: write
+      issues: read
+    runs-on: [self-hosted, linux, x64, planning-model-canonical-cpu-v1]
+    timeout-minutes: 360
+    env:
+      BRIDGE_EXECUTION_USER: planning-model-bridge-exec
+      PRINCIPAL_CONTRACT_VERSION: reviewer-bridge-execution-principal/1.0
+      PRINCIPAL_MARKER: /etc/planning-model-reviewer-bridge-exec-v1.json
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONHASHSEED: "0"
+    steps:
+      - id: execute
+        name: Execute requested code under isolated OS principal
+        shell: bash
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          IMPLEMENTATION_SHA: ${{ needs.reviewer-bridge-reservation.outputs.implementation_sha }}
+          REQUESTED_TASK: ${{ needs.reviewer-bridge-reservation.outputs.task }}
+          RUNNER_NAME_VALUE: ${{ runner.name }}
+        run: |
+          set -euo pipefail
+          user="$BRIDGE_EXECUTION_USER"; task="$REQUESTED_TASK"
+          case "$task" in
+            status-v1|preflight-v1|a2-sufficient-budget-task-order-v1) ;;
+            *) echo "::error::REVIEWER_BRIDGE_TASK_NOT_ALLOWLISTED"; exit 1 ;;
+          esac
+          sudo -n true || { echo "::error::REVIEWER_BRIDGE_CONTROL_SUDO_REQUIRED"; exit 1; }
+          if ! getent passwd "$user" >/dev/null; then
+            test "$task" = status-v1 || {
+              echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_NOT_PROVISIONED"; exit 1;
+            }
+            test -x /usr/sbin/useradd || {
+              echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_BOOTSTRAP_TOOL_MISSING"; exit 1;
+            }
+            sudo -n /usr/sbin/useradd --system --user-group --home-dir /nonexistent \
+              --no-create-home --shell /usr/sbin/nologin "$user"
+          fi
+          passwd_entry="$(getent passwd "$user")"
+          exec_uid="$(id -u "$user")"; exec_gid="$(id -g "$user")"; exec_group="$(id -gn "$user")"
+          declared_home="$(printf '%s' "$passwd_entry" | cut -d: -f6)"
+          declared_shell="$(printf '%s' "$passwd_entry" | cut -d: -f7)"
+          runner_uid="$(id -u)"; runner_gid="$(id -g)"
+          test "$exec_uid" != "$runner_uid" || {
+            echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_NOT_ISOLATED"; exit 1;
+          }
+          test "$declared_home" = /nonexistent || {
+            echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_HOME_PROFILE_MISMATCH"; exit 1;
+          }
+          case "$declared_shell" in
+            /usr/sbin/nologin|/sbin/nologin|/bin/false) ;;
+            *) echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_LOGIN_SHELL_FORBIDDEN"; exit 1 ;;
+          esac
+          test "$(id -Gn "$user")" = "$exec_group" || {
+            echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_EXTRA_GROUPS"; exit 1;
+          }
+          if comm -12 <(id -G | tr ' ' '\n' | sort -u) <(id -G "$user" | tr ' ' '\n' | sort -u) | grep -q .; then
+            echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_SHARES_CONTROL_GROUP"; exit 1
+          fi
+          sudo -n -u "$user" -- /usr/bin/true || {
+            echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_SUDO_BOUNDARY_MISSING"; exit 1;
+          }
+          if sudo -n -u "$user" -- /usr/bin/sudo -n -l >/dev/null 2>&1; then
+            echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_CAN_ESCALATE"; exit 1
+          fi
+
+          bootstrap_pending=0
+          if test -s "$PRINCIPAL_MARKER"; then
+            python - "$PRINCIPAL_MARKER" "$PRINCIPAL_CONTRACT_VERSION" "$user" "$exec_uid" "$exec_gid" \
+              "$exec_group" "$declared_home" "$declared_shell" <<'PY'
+          import json,sys
+          from pathlib import Path
+          path,version,user,uid,gid,group,home,shell=sys.argv[1:]
+          actual=json.loads(Path(path).read_text(encoding="utf-8"))
+          expected={"version":version,"principal":user,"uid":int(uid),"gid":int(gid),
+                    "primary_group":group,"declared_home":home,"declared_shell":shell}
+          if actual != expected: raise SystemExit("REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_MARKER_MISMATCH")
+          PY
+          else
+            test "$task" = status-v1 || {
+              echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_STATUS_BOOTSTRAP_REQUIRED"; exit 1;
+            }
+            bootstrap_pending=1
+          fi
+
+          sudo -n pkill -KILL -u "$exec_uid" 2>/dev/null || true
+          for _ in $(seq 1 50); do pgrep -u "$exec_uid" >/dev/null 2>&1 || break; sleep 0.1; done
+          pgrep -u "$exec_uid" >/dev/null 2>&1 && {
+            echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_NOT_CLEAN"; exit 1;
+          }
+
+          execution_root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-execution"
+          workspace="$execution_root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          repo="$workspace/repository"; home="$workspace/home"
+          driver="$workspace/run_reviewer_execution_bridge.py"; event="$workspace/event.json"
+          control_root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-control"
+          test ! -e "$workspace"
+          mkdir -p "$workspace" "$home" "$control_root"
+          chmod 711 "$execution_root"; chmod 700 "$workspace" "$home" "$control_root"
+          if test "$bootstrap_pending" = 1; then
+            marker_candidate="$control_root/principal-marker-candidate.json"
+            python - "$marker_candidate" "$PRINCIPAL_CONTRACT_VERSION" "$user" "$exec_uid" "$exec_gid" \
+              "$exec_group" "$declared_home" "$declared_shell" <<'PY'
+          import json,sys
+          from pathlib import Path
+          path,version,user,uid,gid,group,home,shell=sys.argv[1:]
+          value={"version":version,"principal":user,"uid":int(uid),"gid":int(gid),
+                 "primary_group":group,"declared_home":home,"declared_shell":shell}
+          Path(path).write_text(json.dumps(value,sort_keys=True,separators=(",",":"))+"\n",encoding="utf-8")
+          PY
+            chmod 600 "$marker_candidate"
+          fi
+          printf '%s\n' "$runner_uid" > "$control_root/control-principal-only"; chmod 600 "$control_root/control-principal-only"
+          sudo -n -u "$user" -- cat "$control_root/control-principal-only" >/dev/null 2>&1 && {
+            echo "::error::REVIEWER_BRIDGE_CONTROL_PATH_READABLE_BY_EXECUTION_PRINCIPAL"; exit 1;
+          }
+          cp "$GITHUB_EVENT_PATH" "$event"
+          git init "$repo"; git -C "$repo" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$repo" fetch --no-tags --prune origin +refs/heads/main:refs/remotes/origin/main
+          git -C "$repo" cat-file -e "${IMPLEMENTATION_SHA}^{commit}"
+          git -C "$repo" merge-base --is-ancestor "$IMPLEMENTATION_SHA" origin/main
+          git -C "$repo" cat-file -e "${WORKFLOW_SHA}^{commit}"
+          git -C "$repo" merge-base --is-ancestor "$WORKFLOW_SHA" origin/main
+          git -C "$repo" show "${WORKFLOW_SHA}:scripts/run_reviewer_execution_bridge.py" > "$driver"
+          git -C "$repo" checkout --detach "$IMPLEMENTATION_SHA"
+          git -C "$repo" reset --hard "$IMPLEMENTATION_SHA"; git -C "$repo" clean -ffdqx
+          test "$(git -C "$repo" rev-parse HEAD)" = "$IMPLEMENTATION_SHA"
+          test -z "$(git -C "$repo" status --porcelain=v1 --untracked-files=all)"
+
+          image_file=/etc/planning-model-runner-image-id; test -s "$image_file"
+          runner_image="$(cat "$image_file")"; test -n "$runner_image"
+          test -z "${FIXED_TARGET_RUNNER_IMAGE:-}" || test "$FIXED_TARGET_RUNNER_IMAGE" = "$runner_image" || {
+            echo "::error::REVIEWER_BRIDGE_FIXED_TARGET_RUNNER_IMAGE_DRIFT"; exit 1;
+          }
+          target_contract="$repo/configs/fixed-cpu-target-1.0.json"; test -s "$target_contract"
+          mapfile -t target_env < <(python - "$target_contract" <<'PY'
+          import json,sys
+          from pathlib import Path
+          value=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if value.get("target_contract_version") != "toy-quality-fixed-cpu-target/1.0":
+              raise SystemExit("REVIEWER_BRIDGE_FIXED_TARGET_CONTRACT_VERSION_MISMATCH")
+          for key in ("ATEN_CPU_CAPABILITY","MKL_CBWR","OMP_NUM_THREADS","MKL_NUM_THREADS",
+                      "OPENBLAS_NUM_THREADS","NUMEXPR_NUM_THREADS"):
+              item=value.get(key)
+              if not isinstance(item,str) or not item:
+                  raise SystemExit(f"REVIEWER_BRIDGE_FIXED_TARGET_PROCESS_ENV_INVALID:{key}")
+              print(item)
+          PY
+          )
+          test "${#target_env[@]}" -eq 6
+          aten_cpu_capability="${target_env[0]}"; mkl_cbwr="${target_env[1]}"
+          omp_num_threads="${target_env[2]}"; mkl_num_threads="${target_env[3]}"
+          openblas_num_threads="${target_env[4]}"; numexpr_num_threads="${target_env[5]}"
+          python_executable="$(command -v python)"; test -n "$python_executable"; test -x "$python_executable"
+          sudo -n -u "$user" -- test -x "$python_executable" || {
+            echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_PYTHON_NOT_EXECUTABLE"; exit 1;
+          }
+
+          sudo -n chown -R "$exec_uid:$exec_gid" "$workspace"
+          printf 'exec_uid=%s\nexec_gid=%s\nexec_home=%s\npython_executable=%s\nbootstrap_pending=%s\nrepo_started=1\n' \
+            "$exec_uid" "$exec_gid" "$home" "$python_executable" "$bootstrap_pending" >> "$GITHUB_OUTPUT"
+          stdout="$control_root/execution-driver.stdout"; stderr="$control_root/execution-driver.stderr"
+          context="$control_root/execution-context.json"
+          : > "$stdout"; : > "$stderr"; : > "$context"; chmod 600 "$stdout" "$stderr" "$context"
+          sudo -n -u "$user" -- /usr/bin/env -i \
+            HOME="$home" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 \
+            OMP_NUM_THREADS="$omp_num_threads" MKL_NUM_THREADS="$mkl_num_threads" \
+            OPENBLAS_NUM_THREADS="$openblas_num_threads" NUMEXPR_NUM_THREADS="$numexpr_num_threads" \
+            ATEN_CPU_CAPABILITY="$aten_cpu_capability" MKL_CBWR="$mkl_cbwr" \
+            FIXED_TARGET_RUNNER_IMAGE="$runner_image" \
+            "$python_executable" - "$PRINCIPAL_CONTRACT_VERSION" <<'PY' >"$context"
+          import json,os,platform,pwd,sys
+          value={
+              "principal_contract_version":sys.argv[1],
+              "execution_principal":pwd.getpwuid(os.getuid()).pw_name,
+              "execution_uid":os.getuid(),"execution_gid":os.getgid(),
+              "execution_home":os.environ["HOME"],"python_executable":sys.executable,
+              "python_implementation":platform.python_implementation(),
+              "python_version":platform.python_version(),
+              "process_start_env":{key:os.environ[key] for key in (
+                  "ATEN_CPU_CAPABILITY","MKL_CBWR","OMP_NUM_THREADS","MKL_NUM_THREADS",
+                  "OPENBLAS_NUM_THREADS","NUMEXPR_NUM_THREADS","FIXED_TARGET_RUNNER_IMAGE")},
+          }
+          print(json.dumps(value,sort_keys=True,separators=(",",":")))
+          PY
+          set +e
+          sudo -n -u "$user" -- /usr/bin/env -i \
+            HOME="$home" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 \
+            OMP_NUM_THREADS="$omp_num_threads" MKL_NUM_THREADS="$mkl_num_threads" \
+            OPENBLAS_NUM_THREADS="$openblas_num_threads" NUMEXPR_NUM_THREADS="$numexpr_num_threads" \
+            ATEN_CPU_CAPABILITY="$aten_cpu_capability" MKL_CBWR="$mkl_cbwr" \
+            FIXED_TARGET_RUNNER_IMAGE="$runner_image" \
+            "$python_executable" "$driver" execute --event "$event" --repo-root "$repo" \
+            --bridge-root "$execution_root" --workspace "$workspace" \
+            --workflow-sha "$WORKFLOW_SHA" --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" --job-name "$GITHUB_JOB" \
+            --runner-name "$RUNNER_NAME_VALUE" >"$stdout" 2>"$stderr"
+          rc=$?
+          set -e
+          printf 'bridge_rc=%s\n' "$rc" >> "$GITHUB_OUTPUT"
+
+      - id: seal
+        name: Kill execution principal and seal terminal evidence
+        if: always()
+        shell: bash
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          REPO_STARTED: ${{ steps.execute.outputs.repo_started }}
+          EXEC_UID: ${{ steps.execute.outputs.exec_uid }}
+          EXEC_GID: ${{ steps.execute.outputs.exec_gid }}
+          EXEC_HOME: ${{ steps.execute.outputs.exec_home }}
+          EXEC_PYTHON: ${{ steps.execute.outputs.python_executable }}
+          BRIDGE_RC: ${{ steps.execute.outputs.bridge_rc }}
+          RUNNER_NAME_VALUE: ${{ runner.name }}
+        run: |
+          set -euo pipefail
+          control_root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-control"
+          execution_root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-execution"
+          workspace="$execution_root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$control_root"; chmod 700 "$control_root"
+          rc="${BRIDGE_RC:-125}"
+          if test "${REPO_STARTED:-}" = 1; then
+            [[ "${EXEC_UID:-}" =~ ^[0-9]+$ ]] || { echo "::error::REVIEWER_BRIDGE_EXEC_UID_MISSING"; exit 1; }
+            sudo -n pkill -KILL -u "$EXEC_UID" 2>/dev/null || true
+            for _ in $(seq 1 50); do pgrep -u "$EXEC_UID" >/dev/null 2>&1 || break; sleep 0.1; done
+            pgrep -u "$EXEC_UID" >/dev/null 2>&1 && {
+              echo "::error::REVIEWER_BRIDGE_DETACHED_EXECUTION_PROCESS_SURVIVED"; exit 1;
+            }
+            test -d "$workspace" && sudo -n chown -R "$(id -u):$(id -g)" "$workspace"
+            test -d "$workspace" && chmod -R u=rwX,go-rwx "$workspace"
+          fi
+
+          bootstrap="$control_root/bootstrap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          sealed="$control_root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          repo="$bootstrap/control-repository"; driver="$bootstrap/run_reviewer_execution_bridge.py"
+          test ! -e "$bootstrap"; test ! -e "$sealed"
+          mkdir -p "$bootstrap" "$sealed"; chmod 700 "$bootstrap" "$sealed"
+          git init "$repo"; git -C "$repo" remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C "$repo" fetch --no-tags --prune origin +refs/heads/main:refs/remotes/origin/main
+          git -C "$repo" cat-file -e "${WORKFLOW_SHA}^{commit}"
+          git -C "$repo" merge-base --is-ancestor "$WORKFLOW_SHA" origin/main
+          git -C "$repo" show "${WORKFLOW_SHA}:scripts/run_reviewer_execution_bridge.py" > "$driver"
+          chmod 500 "$driver"
+          image_file=/etc/planning-model-runner-image-id; test -s "$image_file"
+          runner_image="$(cat "$image_file")"; test -n "$runner_image"
+          stdout="$control_root/execution-driver.stdout"; stderr="$control_root/execution-driver.stderr"
+          context="$control_root/execution-context.json"
+          touch "$stdout" "$stderr" "$context"; chmod 600 "$stdout" "$stderr" "$context"
+          FIXED_TARGET_RUNNER_IMAGE="$runner_image" python - \
+            "$driver" "$GITHUB_EVENT_PATH" "$repo" "$workspace" "$sealed" \
+            "$WORKFLOW_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_JOB" \
+            "$RUNNER_NAME_VALUE" "$rc" "$stdout" "$stderr" "$context" \
+            "${EXEC_UID:-}" "${EXEC_GID:-}" "${EXEC_HOME:-}" "${EXEC_PYTHON:-}" \
+            "$PRINCIPAL_CONTRACT_VERSION" <<'PY'
+          import importlib.util,json,os,pwd,shutil,sys
+          from pathlib import Path
+          (driver_path,event_path,repo_root,workspace,sealed,workflow_sha,run_id,run_attempt,
+           job_name,runner_name,bridge_rc,stdout_path,stderr_path,context_path,expected_uid,
+           expected_gid,expected_home,expected_python,principal_contract_version)=sys.argv[1:]
+          spec=importlib.util.spec_from_file_location("reviewer_bridge_control",driver_path)
+          if spec is None or spec.loader is None: raise SystemExit("REVIEWER_BRIDGE_CONTROL_DRIVER_IMPORT_FAILED")
+          bridge=importlib.util.module_from_spec(spec); sys.modules[spec.name]=bridge; spec.loader.exec_module(bridge)
+          event=Path(event_path); repo=Path(repo_root); source=Path(workspace)/"evidence"; dest=Path(sealed)/"evidence"
+          request=bridge.parse_event_file(event); expected=bridge.bridge_source_identity(repo,workflow_sha)
+          error=None
+          try:
+              context=json.loads(Path(context_path).read_text(encoding="utf-8"))
+              if context.get("principal_contract_version") != principal_contract_version:
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_CONTRACT_MISMATCH")
+              principal=context.get("execution_principal")
+              if principal != "planning-model-bridge-exec":
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_NAME_MISMATCH")
+              account=pwd.getpwnam(principal)
+              if context.get("execution_uid") != account.pw_uid or str(account.pw_uid) != expected_uid:
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_UID_MISMATCH")
+              if context.get("execution_gid") != account.pw_gid or str(account.pw_gid) != expected_gid:
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_GID_MISMATCH")
+              if context.get("execution_home") != expected_home:
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_HOME_MISMATCH")
+              if Path(str(context.get("python_executable"))).resolve() != Path(expected_python).resolve():
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_PYTHON_MISMATCH")
+              contract=json.loads((Path(workspace)/"repository"/"configs"/"fixed-cpu-target-1.0.json").read_text(encoding="utf-8"))
+              if context.get("python_implementation") != contract.get("python_implementation"):
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_PYTHON_IMPLEMENTATION_MISMATCH")
+              if context.get("python_version") != contract.get("python_version"):
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_PYTHON_VERSION_MISMATCH")
+              process_env=context.get("process_start_env")
+              if not isinstance(process_env,dict): raise ValueError("REVIEWER_BRIDGE_EXECUTION_PROCESS_ENV_INVALID")
+              for key in ("ATEN_CPU_CAPABILITY","MKL_CBWR","OMP_NUM_THREADS","MKL_NUM_THREADS","OPENBLAS_NUM_THREADS","NUMEXPR_NUM_THREADS"):
+                  if process_env.get(key) != contract.get(key):
+                      raise ValueError(f"REVIEWER_BRIDGE_EXECUTION_PROCESS_ENV_MISMATCH:{key}")
+              if process_env.get("FIXED_TARGET_RUNNER_IMAGE") != os.environ.get("FIXED_TARGET_RUNNER_IMAGE"):
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_RUNNER_IMAGE_ENV_MISMATCH")
+              execution=json.loads((source/"github-execution.json").read_text(encoding="utf-8"))
+              execution.update(context); bridge._json_dump(source/"github-execution.json",execution)
+              old_result=json.loads((source/"result.json").read_text(encoding="utf-8"))
+              runner_identity=json.loads((source/"runner-identity.json").read_text(encoding="utf-8"))
+              source_identity=json.loads((source/"bridge-source.json").read_text(encoding="utf-8"))
+              for name in ("manifest.json","evidence.tar.gz","archive.sha256","result.json"):
+                  (source/name).unlink(missing_ok=True)
+              manifest=bridge.build_evidence_manifest(source,request=request,runner_identity=runner_identity,source_identity=source_identity)
+              bridge._json_dump(source/"manifest.json",manifest); archive=bridge._write_deterministic_archive(source)
+              old_result["manifest_sha256"]=manifest["manifest_sha256"]; old_result["archive_sha256"]=archive
+              bridge._json_dump(source/"result.json",old_result)
+              result=bridge.validate_publishable_evidence(source,request=request,run_id=int(run_id),workflow_sha=workflow_sha)
+              manifest=json.loads((source/"manifest.json").read_text(encoding="utf-8"))
+              if manifest.get("bridge_source") != expected: raise ValueError("REVIEWER_BRIDGE_EVIDENCE_SOURCE_IDENTITY_MISMATCH")
+              shutil.copytree(source,dest)
+              if bridge.validate_publishable_evidence(dest,request=request,run_id=int(run_id),workflow_sha=workflow_sha) != result:
+                  raise ValueError("REVIEWER_BRIDGE_SEALED_EVIDENCE_RESULT_MISMATCH")
+          except Exception as exc:
+              error=f"{type(exc).__name__}: {exc}"; shutil.rmtree(dest,ignore_errors=True); dest.mkdir(parents=True,mode=0o700)
+              identity=bridge._runner_identity(runner_name)
+              bridge._json_dump(dest/"request.json",bridge.asdict(request))
+              fallback_context={"principal_contract_version":principal_contract_version,"execution_principal":"planning-model-bridge-exec"}
+              try:
+                  loaded=json.loads(Path(context_path).read_text(encoding="utf-8")); fallback_context.update(loaded)
+              except Exception:
+                  pass
+              bridge._json_dump(dest/"github-execution.json",{"event_name":"issue_comment","run_id":int(run_id),"run_attempt":int(run_attempt),"job_name":job_name,"workflow_sha":workflow_sha,"comment_id":request.comment_id,"control_issue":request.issue_number,**fallback_context})
+              bridge._json_dump(dest/"runner-identity.json",identity); bridge._json_dump(dest/"bridge-source.json",expected)
+              out=Path(stdout_path).read_text(encoding="utf-8",errors="replace"); err=Path(stderr_path).read_text(encoding="utf-8",errors="replace")
+              failure={"terminal_status":"FAILED","failed_task":"execution-boundary","return_code":int(bridge_rc),"stdout":out,"stderr":err+"\n"+error}
+              bridge._json_dump(dest/"task-failure.json",failure)
+              bridge._json_dump(dest/"status.json",bridge._terminal_status_payload(request=request,terminal_status="FAILED",failure=failure))
+              manifest=bridge.build_evidence_manifest(dest,request=request,runner_identity=identity,source_identity=expected)
+              bridge._json_dump(dest/"manifest.json",manifest); archive=bridge._write_deterministic_archive(dest)
+              result={"valid":False,"terminal_status":"FAILED","task":request.task,"request_id":request.request_id,"implementation_sha":request.implementation_sha,"manifest_sha256":manifest["manifest_sha256"],"archive_sha256":archive,"transport_ref":bridge.transport_ref(request.request_id),"failed_task":"execution-boundary","return_code":int(bridge_rc)}
+              bridge._json_dump(dest/"result.json",result)
+          final=bridge.validate_publishable_evidence(dest,request=request,run_id=int(run_id),workflow_sha=workflow_sha)
+          if json.loads((dest/"manifest.json").read_text(encoding="utf-8")).get("bridge_source") != expected:
+              raise SystemExit("REVIEWER_BRIDGE_SEALED_SOURCE_IDENTITY_MISMATCH")
+          print(json.dumps({"sealed":True,"result":final},sort_keys=True))
+          PY
+          test ! -d "$workspace" || rm -rf -- "$workspace"
+
+      - id: publish
+        name: Publish sealed evidence only after execution principal is dead
+        if: always() && steps.seal.outcome == 'success'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-control"
+          sealed="$root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          bootstrap="$root/bootstrap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          repo="$bootstrap/control-repository"; driver="$bootstrap/run_reviewer_execution_bridge.py"
+          publisher="$root/publisher-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir "$publisher"; chmod 700 "$publisher"
+          python "$driver" validate-publishable --event "$GITHUB_EVENT_PATH" --workspace "$sealed" \
+            --workflow-sha "$WORKFLOW_SHA" --run-id "$GITHUB_RUN_ID"
+          python "$driver" publish --event "$GITHUB_EVENT_PATH" --repo-root "$repo" \
+            --bridge-root "$root" --workspace "$sealed" --publisher-root "$publisher" \
+            --workflow-sha "$WORKFLOW_SHA" --run-id "$GITHUB_RUN_ID"
+
+      - id: principal_bootstrap
+        name: Finalize versioned execution-principal bootstrap after published status evidence
+        if: always() && steps.publish.outcome == 'success'
+        shell: bash
+        env:
+          REQUESTED_TASK: ${{ needs.reviewer-bridge-reservation.outputs.task }}
+          BOOTSTRAP_PENDING: ${{ steps.execute.outputs.bootstrap_pending }}
+        run: |
+          set -euo pipefail
+          test "$REQUESTED_TASK" = status-v1 || exit 0
+          test "${BOOTSTRAP_PENDING:-0}" = 1 || exit 0
+          root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-control"
+          result="$root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/evidence/result.json"
+          candidate="$root/principal-marker-candidate.json"
+          test -s "$candidate"
+          python - "$result" "$candidate" "$PRINCIPAL_CONTRACT_VERSION" "$BRIDGE_EXECUTION_USER" <<'PY'
+          import json,sys
+          from pathlib import Path
+          result=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          candidate=json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          if result.get("valid") is not True or result.get("terminal_status") != "SUCCEEDED":
+              raise SystemExit("REVIEWER_BRIDGE_STATUS_BOOTSTRAP_EVIDENCE_NOT_ACCEPTABLE")
+          if candidate.get("version") != sys.argv[3] or candidate.get("principal") != sys.argv[4]:
+              raise SystemExit("REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_CANDIDATE_INVALID")
+          PY
+          if test -e "$PRINCIPAL_MARKER"; then
+            cmp -s "$candidate" "$PRINCIPAL_MARKER" || {
+              echo "::error::REVIEWER_BRIDGE_EXECUTION_PRINCIPAL_MARKER_RACE"; exit 1;
+            }
+          else
+            sudo -n /usr/bin/install -o root -g root -m 0444 "$candidate" "$PRINCIPAL_MARKER"
+          fi
+
+      - name: Propagate terminal result after publication
+        if: always() && steps.publish.outcome == 'success' && steps.principal_bootstrap.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-control/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/evidence/result.json"
+          python - "$result" <<'PY'
+          import json,sys
+          from pathlib import Path
+          value=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          raise SystemExit(0 if value.get("valid") is True and value.get("terminal_status") == "SUCCEEDED" else 1)
+          PY
+
+      - name: Cleanup sealed control state after successful publication
+        if: always() && steps.publish.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-control"
+          rm -rf -- "$root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            "$root/bootstrap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            "$root/publisher-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          rm -f -- "$root/execution-driver.stdout" "$root/execution-driver.stderr" \
+            "$root/execution-context.json" "$root/control-principal-only"
+          rmdir "$root" 2>/dev/null || true
+          rmdir "${RUNNER_TEMP%/}/planning-model-reviewer-bridge-execution" 2>/dev/null || true
