@@ -123,3 +123,133 @@ def test_workflow_seals_execution_principal_and_python_runtime_provenance() -> N
     assert provenance_patch in text
     assert 'old_result["manifest_sha256"]' in text
     assert 'old_result["archive_sha256"]' in text
+
+
+def test_workflow_hands_off_unique_traversable_execution_root_to_seal() -> None:
+    text = WORKFLOW.read_text(encoding='utf-8')
+    assert 'mktemp -d /tmp/planning-model-reviewer-bridge-execution.XXXXXXXX' in text
+    assert '${RUNNER_TEMP%/}/planning-model-reviewer-bridge-execution' not in text
+    assert "printf 'execution_root=%s\\n' \"$execution_root\" >> \"$GITHUB_OUTPUT\"" in text
+    assert 'EXECUTION_ROOT: ${{ steps.execute.outputs.execution_root }}' in text
+    assert 'REVIEWER_BRIDGE_EXECUTION_ROOT_INVALID' in text
+    assert 'REVIEWER_BRIDGE_EXECUTION_ROOT_OWNERSHIP_MISMATCH' in text
+    assert 'REVIEWER_BRIDGE_EXECUTION_WORKSPACE_OWNERSHIP_MISMATCH' in text
+    seal = text[text.index('- id: seal'):text.index('- id: publish')]
+    assert 'rm -rf -- "$execution_root"' in seal
+    assert 'chmod 711 "$execution_root"' not in seal
+
+
+def test_real_os_principal_cannot_traverse_runner_temp_but_can_use_dedicated_root(
+    tmp_path: Path,
+) -> None:
+    sudo = shutil.which('sudo')
+    useradd = shutil.which('useradd')
+    userdel = shutil.which('userdel')
+    assert sudo is not None and useradd is not None and userdel is not None
+    subprocess.run([sudo, '-n', 'true'], check=True)
+
+    user = f'pmbridge{os.getpid()}'
+    subprocess.run(
+        [
+            sudo,
+            '-n',
+            useradd,
+            '--system',
+            '--user-group',
+            '--home-dir',
+            '/nonexistent',
+            '--no-create-home',
+            '--shell',
+            '/usr/sbin/nologin',
+            user,
+        ],
+        check=True,
+    )
+    try:
+        uid = int(subprocess.check_output(['id', '-u', user], text=True).strip())
+        gid = int(subprocess.check_output(['id', '-g', user], text=True).strip())
+        python_executable = os.path.realpath(sys.executable)
+        subprocess.run([sudo, '-n', '-u', user, '--', 'test', '-x', python_executable], check=True)
+
+        blocked_parent = tmp_path / 'runner-temp-parent'
+        blocked_workspace = blocked_parent / 'execution'
+        blocked_parent.mkdir(mode=0o700)
+        blocked_workspace.mkdir(mode=0o700)
+        blocked_driver = blocked_workspace / 'driver.py'
+        blocked_driver.write_text("print('blocked-path-ran')\n", encoding='utf-8')
+        os.chown(blocked_workspace, uid, gid)
+        os.chown(blocked_driver, uid, gid)
+        blocked = subprocess.run(
+            [sudo, '-n', '-u', user, '--', python_executable, str(blocked_driver)],
+            capture_output=True,
+            text=True,
+        )
+        assert blocked.returncode != 0
+        assert 'blocked-path-ran' not in blocked.stdout
+
+        dedicated_root = Path(
+            subprocess.check_output(
+                ['mktemp', '-d', '/tmp/planning-model-reviewer-bridge-execution.XXXXXXXX'],
+                text=True,
+            ).strip()
+        )
+        try:
+            dedicated_root.chmod(0o711)
+            workspace = dedicated_root / 'run'
+            workspace.mkdir(mode=0o700)
+            driver = workspace / 'driver.py'
+            driver.write_text("print('dedicated-path-ran')\n", encoding='utf-8')
+            os.chown(workspace, uid, gid)
+            os.chown(driver, uid, gid)
+            allowed = subprocess.run(
+                [sudo, '-n', '-u', user, '--', python_executable, str(driver)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            assert allowed.stdout.strip() == 'dedicated-path-ran'
+
+            control = tmp_path / 'control'
+            control.mkdir(mode=0o700)
+            secret = control / 'secret'
+            secret.write_text('control-only\n', encoding='utf-8')
+            unreadable = subprocess.run(
+                [sudo, '-n', '-u', user, '--', 'cat', str(secret)],
+                capture_output=True,
+                text=True,
+            )
+            assert unreadable.returncode != 0
+        finally:
+            shutil.rmtree(dedicated_root, ignore_errors=True)
+    finally:
+        subprocess.run([sudo, '-n', 'pkill', '-KILL', '-u', user], check=False)
+        subprocess.run([sudo, '-n', userdel, user], check=True)
+
+
+def test_workflow_binds_launcher_to_real_sys_executable_not_path_wrapper(tmp_path: Path) -> None:
+    text = WORKFLOW.read_text(encoding='utf-8')
+    launcher = (
+        "python_executable=\"$(python -c 'import os,sys; "
+        "print(os.path.realpath(sys.executable))')\""
+    )
+    assert launcher in text
+    assert 'python_executable="$(command -v python)"' not in text
+
+    wrapper = tmp_path / 'python'
+    wrapper.write_text(
+        f"#!/bin/sh\nexec {sys.executable!s} \"$@\"\n",
+        encoding='utf-8',
+    )
+    wrapper.chmod(0o755)
+    assert os.path.realpath(wrapper) != os.path.realpath(sys.executable)
+    observed = subprocess.check_output(
+        [str(wrapper), '-c', 'import os,sys; print(os.path.realpath(sys.executable))'],
+        text=True,
+    ).strip()
+    assert observed == os.path.realpath(sys.executable)
+
+
+def test_cleanup_removes_failed_bootstrap_marker_candidate() -> None:
+    text = WORKFLOW.read_text(encoding='utf-8')
+    cleanup = text[text.index('Cleanup sealed control state after successful publication'):]
+    assert '"$root/principal-marker-candidate.json"' in cleanup
