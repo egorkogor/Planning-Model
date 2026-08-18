@@ -357,13 +357,16 @@ jobs:
           workspace_boundary_error=""
           if test "${REPO_STARTED:-}" = 1; then
             [[ "${EXEC_UID:-}" =~ ^[0-9]+$ ]] || { echo "::error::REVIEWER_BRIDGE_EXEC_UID_MISSING"; exit 1; }
+            if [[ ! "${EXEC_GID:-}" =~ ^[0-9]+$ ]]; then
+              workspace_boundary_error="REVIEWER_BRIDGE_EXEC_GID_MISSING"
+            fi
             sudo -n pkill -KILL -u "$EXEC_UID" 2>/dev/null || true
             for _ in $(seq 1 50); do pgrep -u "$EXEC_UID" >/dev/null 2>&1 || break; sleep 0.1; done
             pgrep -u "$EXEC_UID" >/dev/null 2>&1 && {
               echo "::error::REVIEWER_BRIDGE_DETACHED_EXECUTION_PROCESS_SURVIVED"; exit 1;
             }
-            if [[ ! "${EXEC_GID:-}" =~ ^[0-9]+$ ]]; then
-              workspace_boundary_error="REVIEWER_BRIDGE_EXEC_GID_MISSING"
+            if test -n "$workspace_boundary_error"; then
+              :
             elif test -z "$execution_root"; then
               workspace_boundary_error="REVIEWER_BRIDGE_EXECUTION_ROOT_MISSING"
             elif ! test -d "$workspace"; then
