@@ -177,8 +177,10 @@ def test_real_os_principal_cannot_traverse_runner_temp_but_can_use_dedicated_roo
         blocked_workspace.mkdir(mode=0o700)
         blocked_driver = blocked_workspace / 'driver.py'
         blocked_driver.write_text("print('blocked-path-ran')\n", encoding='utf-8')
-        os.chown(blocked_workspace, uid, gid)
-        os.chown(blocked_driver, uid, gid)
+        subprocess.run(
+            [sudo, '-n', 'chown', f'{uid}:{gid}', str(blocked_workspace), str(blocked_driver)],
+            check=True,
+        )
         blocked = subprocess.run(
             [sudo, '-n', '-u', user, '--', python_executable, str(blocked_driver)],
             capture_output=True,
@@ -199,8 +201,10 @@ def test_real_os_principal_cannot_traverse_runner_temp_but_can_use_dedicated_roo
             workspace.mkdir(mode=0o700)
             driver = workspace / 'driver.py'
             driver.write_text("print('dedicated-path-ran')\n", encoding='utf-8')
-            os.chown(workspace, uid, gid)
-            os.chown(driver, uid, gid)
+            subprocess.run(
+                [sudo, '-n', 'chown', f'{uid}:{gid}', str(workspace), str(driver)],
+                check=True,
+            )
             allowed = subprocess.run(
                 [sudo, '-n', '-u', user, '--', python_executable, str(driver)],
                 check=True,
