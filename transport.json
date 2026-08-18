@@ -1,0 +1,10 @@
+{
+  "merge_forbidden": true,
+  "orphan_history": true,
+  "request_id": "status-rollout-20260819-a6c46db5",
+  "run_id": 32192549653,
+  "source_branch": false,
+  "transport_ref": "refs/heads/evidence/reviewer-bridge/status-rollout-20260819-a6c46db5",
+  "version": "reviewer-execution-bridge/1.0",
+  "workflow_sha": "a6c46db51951b372f5740a638a3e15bdb38123b9"
+}

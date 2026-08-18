@@ -1,0 +1,16 @@
+{
+  "failure": {
+    "failed_task": "execution-boundary",
+    "return_code": 0,
+    "stderr": "\nValueError: REVIEWER_BRIDGE_EVIDENCE_SOURCE_IDENTITY_MISMATCH",
+    "stdout": "{\"archive_sha256\": \"sha256:96fb00b44b18802cd56511e7449fa13c020f9fe1d56b6ae299ffaf9d186b4428\", \"failed_task\": \"bridge-infrastructure\", \"implementation_sha\": \"a6c46db51951b372f5740a638a3e15bdb38123b9\", \"manifest_sha256\": \"sha256:e5b914a89761d8389f0a582534f3bf7668791dd553e7893fc26f1915c51271c9\", \"request_id\": \"status-rollout-20260819-a6c46db5\", \"return_code\": null, \"task\": \"status-v1\", \"terminal_status\": \"FAILED\", \"transport_ref\": \"refs/heads/evidence/reviewer-bridge/status-rollout-20260819-a6c46db5\", \"valid\": false}\n",
+    "terminal_status": "FAILED"
+  },
+  "go_latent": "NOT EVALUATED",
+  "implementation_sha": "a6c46db51951b372f5740a638a3e15bdb38123b9",
+  "science_policy": "NO_RERUN_PERMISSION_GRANTED",
+  "task": "status-v1",
+  "terminal_status": "FAILED",
+  "valid": false,
+  "version": "reviewer-execution-bridge/1.0"
+}
