@@ -366,7 +366,7 @@ def test_detached_attacker_cannot_cross_real_os_principal_boundary() -> None:
     control = root / "control"
     execution = root / "execution"
     control.mkdir(mode=0o700)
-    execution.mkdir(mode=0o700)
+    execution.mkdir(mode=0o711)
     attacker = execution / "attacker.py"
     report = execution / "report.jsonl"
     driver = control / "publisher-driver.py"
