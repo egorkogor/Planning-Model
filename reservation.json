@@ -1,0 +1,20 @@
+{
+  "merge_forbidden": true,
+  "orphan_history": true,
+  "request": {
+    "actor": "egorkogor",
+    "comment_id": 5334813555,
+    "implementation_sha": "a6c46db51951b372f5740a638a3e15bdb38123b9",
+    "issue_number": 36,
+    "repository": "egorkogor/Planning-Model",
+    "request_id": "status-rollout-20260819-a6c46db5",
+    "task": "status-v1"
+  },
+  "run_attempt": 1,
+  "run_id": 32192549653,
+  "source_branch": false,
+  "status": "RESERVED",
+  "transport_ref": "refs/heads/evidence/reviewer-bridge/status-rollout-20260819-a6c46db5",
+  "version": "reviewer-execution-bridge/1.0",
+  "workflow_sha": "a6c46db51951b372f5740a638a3e15bdb38123b9"
+}
