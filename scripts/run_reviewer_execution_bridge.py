@@ -54,6 +54,22 @@ REPOSITORY_CREDENTIAL_ENV_KEYS = frozenset(
         "SSH_ASKPASS",
         "GIT_SSH",
         "GIT_SSH_COMMAND",
+        "ACTIONS_RUNTIME_TOKEN",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+        "ACTIONS_ID_TOKEN_REQUEST_URL",
+    }
+)
+REPOSITORY_CONTROL_ENV_KEYS = frozenset(
+    {
+        "GITHUB_ENV",
+        "GITHUB_PATH",
+        "GITHUB_OUTPUT",
+        "GITHUB_STATE",
+        "GITHUB_STEP_SUMMARY",
+        "BRIDGE_DRIVER",
+        "BRIDGE_ROOT",
+        "BRIDGE_WORKSPACE",
+        "BRIDGE_REPO_ROOT",
     }
 )
 
@@ -90,7 +106,11 @@ def _repository_subprocess_env(
 ) -> dict[str, str]:
     env = dict(os.environ if source is None else source)
     for key in tuple(env):
-        if key in REPOSITORY_CREDENTIAL_ENV_KEYS or key.startswith("GIT_CONFIG_"):
+        if (
+            key in REPOSITORY_CREDENTIAL_ENV_KEYS
+            or key in REPOSITORY_CONTROL_ENV_KEYS
+            or key.startswith("GIT_CONFIG_")
+        ):
             env.pop(key, None)
     return env
 
@@ -197,6 +217,20 @@ def _validate_workflow_sha(repo_root: Path, workflow_sha: str) -> None:
     _git(repo_root, "merge-base", "--is-ancestor", workflow_sha, "origin/main")
     for path in (WORKFLOW_PATH, BRIDGE_SOURCE_PATH):
         _git(repo_root, "cat-file", "-e", f"{workflow_sha}:{path}")
+
+
+def validate_requested_commit_on_protected_main(
+    repo_root: Path,
+    request: BridgeRequest,
+) -> None:
+    _git(repo_root, "cat-file", "-e", f"{request.implementation_sha}^{{commit}}")
+    _git(
+        repo_root,
+        "merge-base",
+        "--is-ancestor",
+        request.implementation_sha,
+        "origin/main",
+    )
 
 
 def validate_trusted_checkout(
@@ -381,6 +415,8 @@ def _evidence_files(root: Path) -> list[Path]:
             raise ValueError("REVIEWER_BRIDGE_EVIDENCE_SYMLINK_FORBIDDEN")
         if path.is_file() and path.name not in {"evidence.tar.gz", "archive.sha256"}:
             result.append(path)
+        elif path.exists() and not path.is_dir() and not path.is_file():
+            raise ValueError("REVIEWER_BRIDGE_EVIDENCE_SPECIAL_FILE_FORBIDDEN")
     return result
 
 
@@ -630,7 +666,8 @@ def reserve_request(
     if run_attempt != 1:
         raise ValueError("REVIEWER_BRIDGE_WORKFLOW_RERUN_FORBIDDEN")
     request = parse_event_file(event_path)
-    validate_trusted_checkout(repo_root, request, workflow_sha=workflow_sha)
+    _validate_workflow_sha(repo_root, workflow_sha)
+    validate_requested_commit_on_protected_main(repo_root, request)
     ref = transport_ref(request.request_id)
     if _ref_exists(repo_root, ref):
         raise ValueError("REVIEWER_BRIDGE_REQUEST_ALREADY_CONSUMED")
@@ -660,6 +697,7 @@ def reserve_request(
             "workflow_sha": workflow_sha,
             "transport_ref": ref,
             "source_branch": False,
+            "orphan_history": True,
             "merge_forbidden": True,
         },
     )
@@ -682,24 +720,160 @@ def reserve_request(
     return ref
 
 
+def _load_json_object(path: Path, error: str) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(error)
+    return value
+
+
+def validate_publishable_evidence(
+    evidence_root: Path,
+    *,
+    request: BridgeRequest,
+    run_id: int,
+    workflow_sha: str,
+) -> dict[str, Any]:
+    if not evidence_root.is_dir():
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_MISSING")
+    for path in evidence_root.rglob("*"):
+        if path.is_symlink():
+            raise ValueError("REVIEWER_BRIDGE_EVIDENCE_SYMLINK_FORBIDDEN")
+        if path.exists() and not path.is_dir() and not path.is_file():
+            raise ValueError("REVIEWER_BRIDGE_EVIDENCE_SPECIAL_FILE_FORBIDDEN")
+
+    required = {
+        "request.json",
+        "github-execution.json",
+        "runner-identity.json",
+        "bridge-source.json",
+        "status.json",
+        "manifest.json",
+        "evidence.tar.gz",
+        "archive.sha256",
+        "result.json",
+    }
+    missing = sorted(name for name in required if not (evidence_root / name).is_file())
+    if missing:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_REQUIRED_FILE_MISSING:" + ",".join(missing))
+
+    request_json = _load_json_object(
+        evidence_root / "request.json", "REVIEWER_BRIDGE_EVIDENCE_REQUEST_INVALID"
+    )
+    if request_json != asdict(request):
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_REQUEST_MISMATCH")
+
+    execution = _load_json_object(
+        evidence_root / "github-execution.json",
+        "REVIEWER_BRIDGE_EVIDENCE_EXECUTION_INVALID",
+    )
+    if execution.get("run_id") != run_id:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_RUN_MISMATCH")
+    if execution.get("workflow_sha") != workflow_sha:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_WORKFLOW_SHA_MISMATCH")
+    if execution.get("comment_id") != request.comment_id:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_COMMENT_MISMATCH")
+    if execution.get("control_issue") != CONTROL_ISSUE:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_CONTROL_ISSUE_MISMATCH")
+
+    manifest = _load_json_object(
+        evidence_root / "manifest.json", "REVIEWER_BRIDGE_EVIDENCE_MANIFEST_INVALID"
+    )
+    if manifest.get("request_id") != request.request_id:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_MANIFEST_REQUEST_MISMATCH")
+    if manifest.get("task") != request.task:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_MANIFEST_TASK_MISMATCH")
+    if manifest.get("implementation_sha") != request.implementation_sha:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_MANIFEST_SHA_MISMATCH")
+    bridge_source = manifest.get("bridge_source")
+    if not isinstance(bridge_source, dict) or bridge_source.get("workflow_sha") != workflow_sha:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_MANIFEST_WORKFLOW_MISMATCH")
+    manifest_hash = manifest.get("manifest_sha256")
+    unsigned = dict(manifest)
+    unsigned.pop("manifest_sha256", None)
+    expected_manifest_hash = _sha256_bytes(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    )
+    if manifest_hash != expected_manifest_hash:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_MANIFEST_HASH_MISMATCH")
+
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_MANIFEST_FILES_INVALID")
+    for relative, expected_hash in files.items():
+        if not isinstance(relative, str) or not isinstance(expected_hash, str):
+            raise ValueError("REVIEWER_BRIDGE_EVIDENCE_MANIFEST_ENTRY_INVALID")
+        rel = Path(relative)
+        if rel.is_absolute() or ".." in rel.parts:
+            raise ValueError("REVIEWER_BRIDGE_EVIDENCE_MANIFEST_PATH_INVALID")
+        path = evidence_root / rel
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("REVIEWER_BRIDGE_EVIDENCE_MANIFEST_FILE_MISSING")
+        if _sha256_file(path) != expected_hash:
+            raise ValueError("REVIEWER_BRIDGE_EVIDENCE_FILE_HASH_MISMATCH")
+
+    archive_hash = (evidence_root / "archive.sha256").read_text(encoding="utf-8").strip()
+    if archive_hash != _sha256_file(evidence_root / "evidence.tar.gz"):
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_ARCHIVE_HASH_MISMATCH")
+
+    result = _load_json_object(
+        evidence_root / "result.json", "REVIEWER_BRIDGE_EVIDENCE_RESULT_INVALID"
+    )
+    if result.get("request_id") != request.request_id:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_RESULT_REQUEST_MISMATCH")
+    if result.get("task") != request.task:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_RESULT_TASK_MISMATCH")
+    if result.get("implementation_sha") != request.implementation_sha:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_RESULT_SHA_MISMATCH")
+    if result.get("manifest_sha256") != manifest_hash:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_RESULT_MANIFEST_MISMATCH")
+    if result.get("archive_sha256") != archive_hash:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_RESULT_ARCHIVE_MISMATCH")
+    if result.get("transport_ref") != transport_ref(request.request_id):
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_RESULT_REF_MISMATCH")
+
+    status = _load_json_object(
+        evidence_root / "status.json", "REVIEWER_BRIDGE_EVIDENCE_STATUS_INVALID"
+    )
+    if status.get("task") != request.task or status.get("implementation_sha") != request.implementation_sha:
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_STATUS_PROVENANCE_MISMATCH")
+    if status.get("terminal_status") != result.get("terminal_status"):
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_STATUS_RESULT_MISMATCH")
+    if status.get("valid") is not result.get("valid"):
+        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_VALIDITY_MISMATCH")
+    return result
+
+
 def publish_evidence(
     *,
     event_path: Path,
     repo_root: Path,
     bridge_root: Path,
     workspace: Path,
+    publisher_root: Path,
+    workflow_sha: str,
     run_id: int,
     token: str,
 ) -> str:
     _, work = assert_owned_workspace(bridge_root, workspace)
     request = parse_event_file(event_path)
+    _validate_workflow_sha(repo_root, workflow_sha)
     evidence = work / "evidence"
-    if not evidence.is_dir():
-        raise ValueError("REVIEWER_BRIDGE_EVIDENCE_MISSING")
+    validate_publishable_evidence(
+        evidence,
+        request=request,
+        run_id=run_id,
+        workflow_sha=workflow_sha,
+    )
     ref = transport_ref(request.request_id)
 
-    transport = work / "transport-publish"
-    if transport.exists():
+    publisher = publisher_root.resolve(strict=False)
+    if publisher == work or publisher.is_relative_to(work):
+        raise ValueError("REVIEWER_BRIDGE_PUBLISHER_ROOT_UNTRUSTED")
+    if not publisher.is_dir():
+        raise ValueError("REVIEWER_BRIDGE_PUBLISHER_ROOT_MISSING")
+    transport = publisher / "transport-publish"
+    if transport.exists() or transport.is_symlink():
         raise ValueError("REVIEWER_BRIDGE_TRANSPORT_REUSE_FORBIDDEN")
     transport.mkdir()
     _run(["git", "init"], cwd=transport)
@@ -711,16 +885,28 @@ def publish_evidence(
     _run(["git", "remote", "add", "origin", _remote_url(repo_root)], cwd=transport)
     _run(["git", "fetch", "--no-tags", "origin", ref], cwd=transport)
     _run(["git", "checkout", "-b", "transport", "FETCH_HEAD"], cwd=transport)
-    reservation = json.loads((transport / "reservation.json").read_text(encoding="utf-8"))
-    if reservation.get("request", {}).get("request_id") != request.request_id:
+    reservation = _load_json_object(
+        transport / "reservation.json", "REVIEWER_BRIDGE_RESERVATION_INVALID"
+    )
+    if reservation.get("request") != asdict(request):
         raise ValueError("REVIEWER_BRIDGE_RESERVATION_REQUEST_MISMATCH")
     if reservation.get("run_id") != run_id:
         raise ValueError("REVIEWER_BRIDGE_RESERVATION_RUN_MISMATCH")
+    if reservation.get("workflow_sha") != workflow_sha:
+        raise ValueError("REVIEWER_BRIDGE_RESERVATION_WORKFLOW_MISMATCH")
+    if reservation.get("transport_ref") != ref:
+        raise ValueError("REVIEWER_BRIDGE_RESERVATION_REF_MISMATCH")
     if reservation.get("merge_forbidden") is not True:
         raise ValueError("REVIEWER_BRIDGE_TRANSPORT_NOT_MARKED_NON_SOURCE")
 
     destination = transport / "evidence"
-    shutil.copytree(evidence, destination)
+    shutil.copytree(evidence, destination, symlinks=True)
+    validate_publishable_evidence(
+        destination,
+        request=request,
+        run_id=run_id,
+        workflow_sha=workflow_sha,
+    )
     _json_dump(
         transport / "transport.json",
         {
@@ -728,6 +914,7 @@ def publish_evidence(
             "transport_ref": ref,
             "request_id": request.request_id,
             "run_id": run_id,
+            "workflow_sha": workflow_sha,
             "source_branch": False,
             "orphan_history": True,
             "merge_forbidden": True,
@@ -774,8 +961,16 @@ def parser() -> argparse.ArgumentParser:
     execute.add_argument("--job-name", required=True)
     execute.add_argument("--runner-name", required=True)
 
+    validate_publish = sub.add_parser("validate-publishable")
+    validate_publish.add_argument("--event", type=Path, required=True)
+    validate_publish.add_argument("--workspace", type=Path, required=True)
+    validate_publish.add_argument("--workflow-sha", required=True)
+    validate_publish.add_argument("--run-id", type=int, required=True)
+
     publish = sub.add_parser("publish")
     _common_runtime_args(publish)
+    publish.add_argument("--publisher-root", type=Path, required=True)
+    publish.add_argument("--workflow-sha", required=True)
     publish.add_argument("--run-id", type=int, required=True)
 
     cleanup = sub.add_parser("cleanup")
@@ -790,6 +985,7 @@ def main() -> int:
         print(json.dumps(asdict(parse_event_file(args.event)), sort_keys=True))
         return 0
     if args.command == "reserve":
+        token = os.environ.pop("GITHUB_TOKEN", "")
         ref = reserve_request(
             event_path=args.event,
             repo_root=args.repo_root,
@@ -798,7 +994,7 @@ def main() -> int:
             workflow_sha=args.workflow_sha,
             run_id=args.run_id,
             run_attempt=args.run_attempt,
-            token=os.environ.get("GITHUB_TOKEN", ""),
+            token=token,
         )
         print(json.dumps({"reserved": True, "transport_ref": ref}, sort_keys=True))
         return 0
@@ -816,14 +1012,27 @@ def main() -> int:
         )
         print(json.dumps(value, sort_keys=True))
         return 0
+    if args.command == "validate-publishable":
+        request = parse_event_file(args.event)
+        value = validate_publishable_evidence(
+            args.workspace / "evidence",
+            request=request,
+            run_id=args.run_id,
+            workflow_sha=args.workflow_sha,
+        )
+        print(json.dumps({"publishable": True, "result": value}, sort_keys=True))
+        return 0
     if args.command == "publish":
+        token = os.environ.pop("GITHUB_TOKEN", "")
         ref = publish_evidence(
             event_path=args.event,
             repo_root=args.repo_root,
             bridge_root=args.bridge_root,
             workspace=args.workspace,
+            publisher_root=args.publisher_root,
+            workflow_sha=args.workflow_sha,
             run_id=args.run_id,
-            token=os.environ.get("GITHUB_TOKEN", ""),
+            token=token,
         )
         print(json.dumps({"published": True, "transport_ref": ref}, sort_keys=True))
         return 0
