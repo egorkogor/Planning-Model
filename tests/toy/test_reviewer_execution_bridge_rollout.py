@@ -339,27 +339,16 @@ def test_kill_precedes_mutated_workspace_validation_for_detached_execution_uid()
         shutil.rmtree(execution_root, ignore_errors=True)
 
 
-def test_workflow_binds_launcher_to_real_sys_executable_not_path_wrapper(tmp_path: Path) -> None:
+def test_workflow_keeps_environment_launcher_and_records_resolved_binary_separately() -> None:
     text = WORKFLOW.read_text(encoding='utf-8')
     launcher = (
         "python_executable=\"$(python -c 'import os,sys; "
-        "print(os.path.realpath(sys.executable))')\""
+        "print(os.path.abspath(sys.executable))')\""
     )
     assert launcher in text
+    assert "print(os.path.realpath(sys.executable))" not in text
+    assert '"python_resolved_executable":os.path.realpath(invoked)' in text
     assert 'python_executable="$(command -v python)"' not in text
-
-    wrapper = tmp_path / 'python'
-    wrapper.write_text(
-        f"#!/bin/sh\nexec {sys.executable!s} \"$@\"\n",
-        encoding='utf-8',
-    )
-    wrapper.chmod(0o755)
-    assert os.path.realpath(wrapper) != os.path.realpath(sys.executable)
-    observed = subprocess.check_output(
-        [str(wrapper), '-c', 'import os,sys; print(os.path.realpath(sys.executable))'],
-        text=True,
-    ).strip()
-    assert observed == os.path.realpath(sys.executable)
 
 
 def test_cleanup_removes_failed_bootstrap_marker_candidate() -> None:
