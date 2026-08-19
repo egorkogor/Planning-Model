@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import textwrap
@@ -30,6 +31,14 @@ def _event(*, task: str = "status-v1", request: str = "req-runtime-0001") -> dic
     }
 
 
+def _snapshot_python_fragment() -> str:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    marker = '          python - "$workspace" "$control_root" "$diagnostic_snapshot" <<\'PY\'\n'
+    start = text.index(marker) + len(marker)
+    end = text.index("\n          PY\n", start)
+    return textwrap.dedent(text[start:end])
+
+
 def _fallback_diagnostic_fragment() -> str:
     text = WORKFLOW.read_text(encoding="utf-8")
     start = text.index('              diagnostics=dest/"untrusted-execution-diagnostics"')
@@ -39,13 +48,27 @@ def _fallback_diagnostic_fragment() -> str:
     return textwrap.dedent(text[start:end])
 
 
+def _run_snapshot_fragment(
+    *, workspace: Path, control_root: Path, diagnostic_snapshot: Path, tmp_path: Path
+) -> None:
+    script = tmp_path / "snapshot-fragment.py"
+    script.write_text(_snapshot_python_fragment(), encoding="utf-8")
+    subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            str(workspace),
+            str(control_root),
+            str(diagnostic_snapshot),
+        ],
+        check=True,
+    )
+
+
 def _run_fallback_diagnostic_fragment(
     *,
-    source: Path,
+    diagnostic_snapshot: Path,
     dest: Path,
-    stdout_path: Path,
-    stderr_path: Path,
-    context_path: Path,
     secondary_error: str,
     bridge_rc: int = 0,
 ) -> dict:
@@ -53,11 +76,8 @@ def _run_fallback_diagnostic_fragment(
         "json": json,
         "Path": Path,
         "bridge": bridge,
-        "source": source,
+        "diagnostic_snapshot": str(diagnostic_snapshot),
         "dest": dest,
-        "stdout_path": str(stdout_path),
-        "stderr_path": str(stderr_path),
-        "context_path": str(context_path),
         "error": secondary_error,
         "bridge_rc": bridge_rc,
     }
@@ -65,10 +85,11 @@ def _run_fallback_diagnostic_fragment(
     return namespace
 
 
-def _diagnostic_control_files(tmp_path: Path) -> tuple[Path, Path, Path]:
-    stdout = tmp_path / "execution-driver.stdout"
-    stderr = tmp_path / "execution-driver.stderr"
-    context = tmp_path / "execution-context.json"
+def _diagnostic_control_files(control_root: Path) -> tuple[Path, Path, Path]:
+    control_root.mkdir(parents=True, exist_ok=True)
+    stdout = control_root / "execution-driver.stdout"
+    stderr = control_root / "execution-driver.stderr"
+    context = control_root / "execution-context.json"
     stdout.write_bytes(b'{"terminal_status":"FAILED"}\n')
     stderr.write_bytes(b"driver stderr\n")
     context.write_bytes(b'{"execution_principal":"planning-model-bridge-exec"}\n')
@@ -131,12 +152,38 @@ def test_driver_children_keep_the_invoked_python_executable(tmp_path: Path) -> N
     assert all(argv[0] == sys.executable for _, argv in science)
 
 
-def test_early_infrastructure_failure_is_snapshotted_but_boundary_stays_authoritative(
+def test_snapshot_precedes_any_reseal_mutation_and_fallback_reads_snapshot_only() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    seal = text.index("      - id: seal")
+    kill = text.index("REVIEWER_BRIDGE_DETACHED_EXECUTION_PROCESS_SURVIVED", seal)
+    reclaim = text.index('sudo -n chown -R "$control_uid:$control_gid" "$workspace"', kill)
+    snapshot = text.index('diagnostic_snapshot="$control_root/diagnostic-snapshot-', reclaim)
+    snapshot_run = text.index(
+        'python - "$workspace" "$control_root" "$diagnostic_snapshot"', snapshot
+    )
+    first_source_mutation = text.index(
+        'bridge._json_dump(source/"github-execution.json",execution)', snapshot_run
+    )
+    destructive_rebuild = text.index(
+        'for name in ("manifest.json","evidence.tar.gz","archive.sha256","result.json")',
+        first_source_mutation,
+    )
+    assert kill < reclaim < snapshot < snapshot_run < first_source_mutation < destructive_rebuild
+
+    fallback = _fallback_diagnostic_fragment()
+    assert "candidate=snapshot/name" in fallback
+    assert "candidate=source/name" not in fallback
+    assert "stdout_path" not in fallback
+    assert "stderr_path" not in fallback
+    assert "context_path" not in fallback
+
+
+def test_destructive_reseal_window_preserves_original_diagnostics_byte_for_byte(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = tmp_path / "bridge"
-    work = root / "100-1"
-    work.mkdir(parents=True)
+    workspace = root / "100-1"
+    workspace.mkdir(parents=True)
     event = tmp_path / "event.json"
     event.write_text(json.dumps(_event()), encoding="utf-8")
 
@@ -148,14 +195,20 @@ def test_early_infrastructure_failure_is_snapshotted_but_boundary_stays_authorit
         event_path=event,
         repo_root=tmp_path,
         bridge_root=root,
-        workspace=work,
+        workspace=workspace,
         workflow_sha=WORKFLOW_SHA,
         run_id=100,
         run_attempt=1,
         job_name="reviewer-bridge-canonical",
         runner_name="canonical",
     )
-    source = work / "evidence"
+    source = workspace / "evidence"
+    assert result["failed_task"] == "bridge-infrastructure"
+    trusted = source / "trusted-commit-validator.jsonl"
+    trusted.write_bytes(b'{"trusted":false,"synthetic":true}\n')
+
+    control_root = tmp_path / "control"
+    stdout_path, stderr_path, context_path = _diagnostic_control_files(control_root)
     originals = {
         name: (source / name).read_bytes()
         for name in (
@@ -163,41 +216,61 @@ def test_early_infrastructure_failure_is_snapshotted_but_boundary_stays_authorit
             "result.json",
             "status.json",
             "bridge-source.json",
+            "trusted-commit-validator.jsonl",
         )
     }
-    assert result["failed_task"] == "bridge-infrastructure"
-    assert json.loads(originals["task-failure.json"])["stderr"] == (
-        "synthetic first production failure"
+    originals.update(
+        {
+            "execution-driver.stdout": stdout_path.read_bytes(),
+            "execution-driver.stderr": stderr_path.read_bytes(),
+            "execution-context.json": context_path.read_bytes(),
+        }
     )
-    assert json.loads(originals["bridge-source.json"])["available"] is False
-    trusted = source / "trusted-commit-validator.jsonl"
-    trusted.write_bytes(b'{"trusted":false,"synthetic":true}\n')
-    originals[trusted.name] = trusted.read_bytes()
+
+    diagnostic_snapshot = control_root / "diagnostic-snapshot-100-1"
+    _run_snapshot_fragment(
+        workspace=workspace,
+        control_root=control_root,
+        diagnostic_snapshot=diagnostic_snapshot,
+        tmp_path=tmp_path,
+    )
+    if os.name == "posix":
+        assert stat.S_IMODE(diagnostic_snapshot.stat().st_mode) == 0o500
+        for child in diagnostic_snapshot.iterdir():
+            assert stat.S_IMODE(child.stat().st_mode) == 0o400
+
+    # Reproduce the destructive window: source metadata is removed/mutated before
+    # a secondary seal failure occurs and before result.json can be restored.
+    (source / "result.json").unlink()
+    (source / "status.json").write_bytes(b"mutated-status\n")
+    (source / "task-failure.json").write_bytes(b"mutated-failure\n")
+    (source / "bridge-source.json").write_bytes(b"mutated-source\n")
+    trusted.write_bytes(b"mutated-validator\n")
+    stdout_path.write_bytes(b"mutated-stdout\n")
+    stderr_path.write_bytes(b"mutated-stderr\n")
+    context_path.write_bytes(b"mutated-context\n")
 
     dest = tmp_path / "sealed"
     dest.mkdir()
-    stdout_path, stderr_path, context_path = _diagnostic_control_files(tmp_path)
-    secondary = "ValueError: REVIEWER_BRIDGE_EVIDENCE_SOURCE_IDENTITY_MISMATCH"
+    secondary = "ValueError: REVIEWER_BRIDGE_EVIDENCE_SYMLINK_FORBIDDEN"
     namespace = _run_fallback_diagnostic_fragment(
-        source=source,
+        diagnostic_snapshot=diagnostic_snapshot,
         dest=dest,
-        stdout_path=stdout_path,
-        stderr_path=stderr_path,
-        context_path=context_path,
         secondary_error=secondary,
     )
 
     diagnostics = dest / "untrusted-execution-diagnostics"
     for name, original in originals.items():
         assert (diagnostics / name).read_bytes() == original
-    assert (diagnostics / "execution-driver.stdout").read_bytes() == stdout_path.read_bytes()
-    assert (diagnostics / "execution-driver.stderr").read_bytes() == stderr_path.read_bytes()
-    assert (diagnostics / "execution-context.json").read_bytes() == context_path.read_bytes()
 
     hashes = json.loads((diagnostics / "sha256.json").read_text(encoding="utf-8"))
     assert hashes["non_authoritative"] is True
-    for name in originals:
-        assert hashes["files"][name] == bridge._sha256_file(diagnostics / name)
+    for name, original in originals.items():
+        assert hashes["files"][name] == bridge._sha256_bytes(original)
+
+    preserved_failure = json.loads(originals["task-failure.json"])
+    assert preserved_failure["stderr"] == "synthetic first production failure"
+    assert json.loads(originals["bridge-source.json"])["available"] is False
 
     failure = namespace["failure"]
     assert failure["failed_task"] == "execution-boundary"
@@ -212,8 +285,9 @@ def test_early_infrastructure_failure_is_snapshotted_but_boundary_stays_authorit
 def test_task_failure_snapshot_survives_secondary_seal_failure_without_becoming_authoritative(
     tmp_path: Path, failed_task: str
 ) -> None:
-    source = tmp_path / "source"
-    source.mkdir()
+    workspace = tmp_path / "workspace"
+    source = workspace / "evidence"
+    source.mkdir(parents=True)
     failing = tmp_path / "fail.py"
     failing.write_text(
         "import sys\nprint('first stdout')\nprint('first stderr', file=sys.stderr)\nsys.exit(17)\n",
@@ -227,16 +301,24 @@ def test_task_failure_snapshot_survives_secondary_seal_failure_without_becoming_
     assert original_failure is not None
     original = (source / "task-failure.json").read_bytes()
 
+    control_root = tmp_path / "control"
+    _diagnostic_control_files(control_root)
+    diagnostic_snapshot = control_root / "diagnostic-snapshot-200-1"
+    _run_snapshot_fragment(
+        workspace=workspace,
+        control_root=control_root,
+        diagnostic_snapshot=diagnostic_snapshot,
+        tmp_path=tmp_path,
+    )
+
+    # The execution-owned source can now be destroyed without affecting the first failure.
+    (source / "task-failure.json").unlink()
     dest = tmp_path / "sealed"
     dest.mkdir()
-    stdout_path, stderr_path, context_path = _diagnostic_control_files(tmp_path)
     secondary = "ValueError: REVIEWER_BRIDGE_EVIDENCE_SOURCE_IDENTITY_MISMATCH"
     namespace = _run_fallback_diagnostic_fragment(
-        source=source,
+        diagnostic_snapshot=diagnostic_snapshot,
         dest=dest,
-        stdout_path=stdout_path,
-        stderr_path=stderr_path,
-        context_path=context_path,
         secondary_error=secondary,
         bridge_rc=0,
     )
@@ -260,6 +342,7 @@ def test_task_failure_snapshot_survives_secondary_seal_failure_without_becoming_
 
 def test_workflow_fallback_keeps_expected_identity_authoritative_and_hashes_diagnostics() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
+    assert 'diagnostic_snapshot="$control_root/diagnostic-snapshot-' in text
     assert 'diagnostics=dest/"untrusted-execution-diagnostics"' in text
     for name in (
         "task-failure.json",
@@ -269,6 +352,7 @@ def test_workflow_fallback_keeps_expected_identity_authoritative_and_hashes_diag
         "trusted-commit-validator.jsonl",
         "execution-driver.stdout",
         "execution-driver.stderr",
+        "execution-context.json",
     ):
         assert name in text
     assert '"non_authoritative":True' in text
