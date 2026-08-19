@@ -291,8 +291,8 @@ def test_real_os_principal_enters_private_repo_with_env_c(tmp_path: Path) -> Non
         home.mkdir(mode=0o700)
         local_module = repo / 'private_repo_probe.py'
         local_module.write_text("VALUE='private-repo-imported'\n", encoding='utf-8')
-        subprocess.run([sudo, '-n', 'chown', '-R', f'{uid}:{gid}', str(workspace)], check=True)
         workspace.chmod(0o700)
+        subprocess.run([sudo, '-n', 'chown', '-R', f'{uid}:{gid}', str(workspace)], check=True)
 
         blocked = subprocess.run(
             ['bash', '-c', 'cd "$1"', 'bash', str(repo)],
