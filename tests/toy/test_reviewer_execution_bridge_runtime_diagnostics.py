@@ -93,7 +93,9 @@ def _run_fallback_diagnostic_fragment(
     return namespace
 
 
-def _run_snapshot_cleanup_fragment(diagnostic_snapshot: Path, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+def _run_snapshot_cleanup_fragment(
+    diagnostic_snapshot: Path, tmp_path: Path
+) -> subprocess.CompletedProcess[str]:
     script = tmp_path / "snapshot-cleanup.sh"
     script.write_text(
         "set -euo pipefail\n"
