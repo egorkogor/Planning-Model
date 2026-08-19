@@ -33,7 +33,7 @@ def test_workflow_materializes_fixed_target_dispatch_before_requested_python() -
     launch = text.index('"$python_executable" "$driver" execute')
     assert text.rfind('ATEN_CPU_CAPABILITY="$aten_cpu_capability"', 0, launch) >= 0
     assert text.rfind('MKL_CBWR="$mkl_cbwr"', 0, launch) >= 0
-    isolated = text[text.rfind('/usr/bin/env -i', 0, launch):launch]
+    isolated = text[text.rfind('/usr/bin/env -C "$repo" -i', 0, launch):launch]
     assert 'GITHUB_TOKEN' not in isolated
     assert 'GITHUB_ENV' not in isolated
     assert 'GITHUB_PATH' not in isolated
