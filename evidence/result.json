@@ -1,0 +1,10 @@
+{
+  "archive_sha256": "sha256:9900af888d4f93820089c222300ec62a1b2b1f90858b84be096d16476555474c",
+  "implementation_sha": "0767fe9f66b9e50b7f51c1e9ad317c3b0ab2f7bf",
+  "manifest_sha256": "sha256:c8bd811329a8c1a2a2726ebe06131e5724f4623034bd114475ef3173e4247df2",
+  "request_id": "preflight-rollout-20260819-1950",
+  "task": "preflight-v1",
+  "terminal_status": "SUCCEEDED",
+  "transport_ref": "refs/heads/evidence/reviewer-bridge/preflight-rollout-20260819-1950",
+  "valid": true
+}

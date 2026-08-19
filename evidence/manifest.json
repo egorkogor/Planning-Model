@@ -1,0 +1,37 @@
+{
+  "bridge_source": {
+    "source_files": [
+      {
+        "path": ".github/workflows/reviewer-execution-bridge.yml",
+        "sha256": "sha256:5c116577ee69325760b95a55f1564594cd42bd3021fd800b2cfc13610e8e7bae"
+      },
+      {
+        "path": "scripts/run_reviewer_execution_bridge.py",
+        "sha256": "sha256:c1c5b874c2349c9e2b1274fbc10b10c55fcbe4a83ef91cb7acd7816b03c08217"
+      }
+    ],
+    "source_identity": "sha256:8a73614edb6eba502f073318f2c4c1b0ee5bb1bf82e41c52a0f6033ff3e619da",
+    "workflow_sha": "0767fe9f66b9e50b7f51c1e9ad317c3b0ab2f7bf"
+  },
+  "files": {
+    "bridge-source.json": "sha256:fbd29982b2ed8b81132350403f94b660fd327b74f36a3a9ede90e8721fe760ef",
+    "fixed-target-preflight.json": "sha256:fcbb44d0318efcec42e81bbeece8826dc2b2e6c700cdd9e295c83e4fec12a530",
+    "fixed-target-preflight.log": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "github-execution.json": "sha256:b83f660e410cae9e990e316a572876da7ada3b06fa4876f88faf35ae2c71303a",
+    "request.json": "sha256:a27af9b1eae94599187f8dac4ccc6c0d981009ceb4a1a0bdc9e42d66f4e79288",
+    "runner-identity.json": "sha256:5a76f8015bff652927027c25d917ebf89e3bcafcfd29e299f6929660ad5e3482",
+    "status.json": "sha256:2df4752ee4ce3b794cf7becdceba2b88d83ec25e4f1f70d948fa1db9f6d84da6",
+    "trusted-commit-validator.jsonl": "sha256:48c877837c19546bb0183dde168a8d7e83a6828ec7d4d380ac5012bc5cfb4968"
+  },
+  "implementation_sha": "0767fe9f66b9e50b7f51c1e9ad317c3b0ab2f7bf",
+  "manifest_sha256": "sha256:c8bd811329a8c1a2a2726ebe06131e5724f4623034bd114475ef3173e4247df2",
+  "request_id": "preflight-rollout-20260819-1950",
+  "runner_identity": {
+    "fixed_target_runner_image": "planning-model-canonical-cpu-v1|provider=aws-ec2|instance=i-0ef4e446bfb12ce21|ami=ami-05bfa4a7765f38076|type=m7i-flex.large|runtime=1.1|torch=2.12.0+cpu",
+    "runner_image_id": "planning-model-canonical-cpu-v1|provider=aws-ec2|instance=i-0ef4e446bfb12ce21|ami=ami-05bfa4a7765f38076|type=m7i-flex.large|runtime=1.1|torch=2.12.0+cpu",
+    "runner_image_id_path": "/etc/planning-model-runner-image-id",
+    "runner_name": "planning-model-canonical-cpu-v1"
+  },
+  "task": "preflight-v1",
+  "version": "reviewer-execution-bridge/1.0"
+}

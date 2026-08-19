@@ -1,0 +1,29 @@
+{
+  "comment_id": 5345301339,
+  "control_issue": 36,
+  "event_name": "issue_comment",
+  "execution_gid": 988,
+  "execution_home": "/tmp/planning-model-reviewer-bridge-execution.thTazWUo/32278455068-1/home",
+  "execution_principal": "planning-model-bridge-exec",
+  "execution_uid": 999,
+  "job_name": "reviewer-bridge-canonical",
+  "principal_contract_version": "reviewer-bridge-execution-principal/1.0",
+  "process_start_env": {
+    "ATEN_CPU_CAPABILITY": "avx2",
+    "FIXED_TARGET_RUNNER_IMAGE": "planning-model-canonical-cpu-v1|provider=aws-ec2|instance=i-0ef4e446bfb12ce21|ami=ami-05bfa4a7765f38076|type=m7i-flex.large|runtime=1.1|torch=2.12.0+cpu",
+    "MKL_CBWR": "COMPATIBLE",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "python_executable": "/opt/planning-model/venv/bin/python",
+  "python_implementation": "CPython",
+  "python_resolved_executable": "/usr/bin/python3.12",
+  "python_version": "3.12.3",
+  "run_attempt": 1,
+  "run_id": 32278455068,
+  "runtime_imports_verified": true,
+  "torch_version": "2.12.0+cpu",
+  "workflow_sha": "0767fe9f66b9e50b7f51c1e9ad317c3b0ab2f7bf"
+}
