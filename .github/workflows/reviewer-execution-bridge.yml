@@ -491,7 +491,7 @@ jobs:
               shutil.rmtree(dest,ignore_errors=True); dest.mkdir(parents=True,mode=0o700)
               identity=bridge._runner_identity(runner_name)
               bridge._json_dump(dest/"request.json",bridge.asdict(request))
-              bridge._json_dump(dest/"github-execution.json",{"event_name":"issue_comment","run_id":int(run_id),"run_attempt":int(run_attempt),"job_name":job_name,"workflow_sha":workflow_sha,"comment_id":request.comment_id,"control_issue":request.issue_number,"principal_contract_version":principal_contract_version,"expected_execution_uid":expected_uid,"expected_execution_gid":expected_gid,"expected_execution_home":expected_home,"expected_python_executable":expected_python})
+              bridge._json_dump(dest/"github-execution.json",{"event_name":"issue_comment","run_id":int(run_id),"run_attempt":int(run_attempt),"job_name":job_name,"workflow_sha":workflow_sha,"comment_id":request.comment_id,"control_issue":request.issue_number,"principal_contract_version":principal_contract_version,"execution_principal":"planning-model-bridge-exec","expected_execution_uid":expected_uid,"expected_execution_gid":expected_gid,"expected_execution_home":expected_home,"expected_python_executable":expected_python})
               bridge._json_dump(dest/"runner-identity.json",identity); bridge._json_dump(dest/"bridge-source.json",expected)
               diagnostics=dest/"untrusted-execution-diagnostics"; diagnostics.mkdir(mode=0o700)
               diagnostic_hashes={}
