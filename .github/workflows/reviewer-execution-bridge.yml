@@ -265,7 +265,7 @@ jobs:
           aten_cpu_capability="${target_env[0]}"; mkl_cbwr="${target_env[1]}"
           omp_num_threads="${target_env[2]}"; mkl_num_threads="${target_env[3]}"
           openblas_num_threads="${target_env[4]}"; numexpr_num_threads="${target_env[5]}"
-          python_executable="$(python -c 'import os,sys; print(os.path.realpath(sys.executable))')"
+          python_executable="$(python -c 'import os,sys; print(os.path.abspath(sys.executable))')"
           test -n "$python_executable"; test -x "$python_executable"
           case "$python_executable" in
             /*) ;;
@@ -281,27 +281,41 @@ jobs:
           stdout="$control_root/execution-driver.stdout"; stderr="$control_root/execution-driver.stderr"
           context="$control_root/execution-context.json"
           : > "$stdout"; : > "$stderr"; : > "$context"; chmod 600 "$stdout" "$stderr" "$context"
-          sudo -n -u "$user" -- /usr/bin/env -i \
-            HOME="$home" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 \
-            OMP_NUM_THREADS="$omp_num_threads" MKL_NUM_THREADS="$mkl_num_threads" \
-            OPENBLAS_NUM_THREADS="$openblas_num_threads" NUMEXPR_NUM_THREADS="$numexpr_num_threads" \
-            ATEN_CPU_CAPABILITY="$aten_cpu_capability" MKL_CBWR="$mkl_cbwr" \
-            FIXED_TARGET_RUNNER_IMAGE="$runner_image" \
-            "$python_executable" - "$PRINCIPAL_CONTRACT_VERSION" <<'PY' >"$context"
+          (
+            cd "$repo"
+            sudo -n -u "$user" -- /usr/bin/env -i \
+              HOME="$home" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 \
+              OMP_NUM_THREADS="$omp_num_threads" MKL_NUM_THREADS="$mkl_num_threads" \
+              OPENBLAS_NUM_THREADS="$openblas_num_threads" NUMEXPR_NUM_THREADS="$numexpr_num_threads" \
+              ATEN_CPU_CAPABILITY="$aten_cpu_capability" MKL_CBWR="$mkl_cbwr" \
+              FIXED_TARGET_RUNNER_IMAGE="$runner_image" \
+              "$python_executable" - "$PRINCIPAL_CONTRACT_VERSION" "$target_contract" <<'PY' >"$context"
           import json,os,platform,pwd,sys
+          from pathlib import Path
+          import torch
+          import scripts.run_fixed_target_acceptance
+          contract=json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          if platform.python_implementation() != contract.get("python_implementation"):
+              raise SystemExit("REVIEWER_BRIDGE_EXECUTION_PYTHON_IMPLEMENTATION_MISMATCH")
+          if platform.python_version() != contract.get("python_version"):
+              raise SystemExit("REVIEWER_BRIDGE_EXECUTION_PYTHON_VERSION_MISMATCH")
+          if torch.__version__ != contract.get("torch_version"):
+              raise SystemExit("REVIEWER_BRIDGE_EXECUTION_TORCH_VERSION_MISMATCH")
           value={
               "principal_contract_version":sys.argv[1],
               "execution_principal":pwd.getpwuid(os.getuid()).pw_name,
               "execution_uid":os.getuid(),"execution_gid":os.getgid(),
-              "execution_home":os.environ["HOME"],"python_executable":sys.executable,
+              "execution_home":os.environ["HOME"],"python_executable":os.path.abspath(sys.executable),
               "python_implementation":platform.python_implementation(),
-              "python_version":platform.python_version(),
+              "python_version":platform.python_version(),"torch_version":torch.__version__,
+              "runtime_imports_verified":True,
               "process_start_env":{key:os.environ[key] for key in (
                   "ATEN_CPU_CAPABILITY","MKL_CBWR","OMP_NUM_THREADS","MKL_NUM_THREADS",
                   "OPENBLAS_NUM_THREADS","NUMEXPR_NUM_THREADS","FIXED_TARGET_RUNNER_IMAGE")},
           }
           print(json.dumps(value,sort_keys=True,separators=(",",":")))
           PY
+          )
           set +e
           sudo -n -u "$user" -- /usr/bin/env -i \
             HOME="$home" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 \
@@ -432,13 +446,17 @@ jobs:
                   raise ValueError("REVIEWER_BRIDGE_EXECUTION_GID_MISMATCH")
               if context.get("execution_home") != expected_home:
                   raise ValueError("REVIEWER_BRIDGE_EXECUTION_HOME_MISMATCH")
-              if Path(str(context.get("python_executable"))).resolve() != Path(expected_python).resolve():
+              if os.path.abspath(str(context.get("python_executable"))) != os.path.abspath(expected_python):
                   raise ValueError("REVIEWER_BRIDGE_EXECUTION_PYTHON_MISMATCH")
               contract=json.loads((Path(workspace)/"repository"/"configs"/"fixed-cpu-target-1.0.json").read_text(encoding="utf-8"))
               if context.get("python_implementation") != contract.get("python_implementation"):
                   raise ValueError("REVIEWER_BRIDGE_EXECUTION_PYTHON_IMPLEMENTATION_MISMATCH")
               if context.get("python_version") != contract.get("python_version"):
                   raise ValueError("REVIEWER_BRIDGE_EXECUTION_PYTHON_VERSION_MISMATCH")
+              if context.get("torch_version") != contract.get("torch_version"):
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_TORCH_VERSION_MISMATCH")
+              if context.get("runtime_imports_verified") is not True:
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_RUNTIME_IMPORTS_NOT_VERIFIED")
               process_env=context.get("process_start_env")
               if not isinstance(process_env,dict): raise ValueError("REVIEWER_BRIDGE_EXECUTION_PROCESS_ENV_INVALID")
               for key in ("ATEN_CPU_CAPABILITY","MKL_CBWR","OMP_NUM_THREADS","MKL_NUM_THREADS","OPENBLAS_NUM_THREADS","NUMEXPR_NUM_THREADS"):
@@ -464,7 +482,17 @@ jobs:
               if bridge.validate_publishable_evidence(dest,request=request,run_id=int(run_id),workflow_sha=workflow_sha) != result:
                   raise ValueError("REVIEWER_BRIDGE_SEALED_EVIDENCE_RESULT_MISMATCH")
           except Exception as exc:
-              error=f"{type(exc).__name__}: {exc}"; shutil.rmtree(dest,ignore_errors=True); dest.mkdir(parents=True,mode=0o700)
+              error=f"{type(exc).__name__}: {exc}"
+              primary_failure_bytes=None; primary_failure=None
+              primary_failure_path=source/"task-failure.json"
+              if primary_failure_path.is_file():
+                  primary_failure_bytes=primary_failure_path.read_bytes()
+                  try:
+                      loaded=json.loads(primary_failure_bytes.decode("utf-8"))
+                      if isinstance(loaded,dict): primary_failure=loaded
+                  except Exception:
+                      primary_failure=None
+              shutil.rmtree(dest,ignore_errors=True); dest.mkdir(parents=True,mode=0o700)
               identity=bridge._runner_identity(runner_name)
               bridge._json_dump(dest/"request.json",bridge.asdict(request))
               fallback_context={"principal_contract_version":principal_contract_version,"execution_principal":"planning-model-bridge-exec"}
@@ -475,12 +503,25 @@ jobs:
               bridge._json_dump(dest/"github-execution.json",{"event_name":"issue_comment","run_id":int(run_id),"run_attempt":int(run_attempt),"job_name":job_name,"workflow_sha":workflow_sha,"comment_id":request.comment_id,"control_issue":request.issue_number,**fallback_context})
               bridge._json_dump(dest/"runner-identity.json",identity); bridge._json_dump(dest/"bridge-source.json",expected)
               out=Path(stdout_path).read_text(encoding="utf-8",errors="replace"); err=Path(stderr_path).read_text(encoding="utf-8",errors="replace")
-              failure={"terminal_status":"FAILED","failed_task":"execution-boundary","return_code":int(bridge_rc),"stdout":out,"stderr":err+"\n"+error}
+              if primary_failure_bytes is not None:
+                  (dest/"primary-task-failure.json").write_bytes(primary_failure_bytes)
+              if primary_failure is not None:
+                  failed_task=primary_failure.get("failed_task") or "execution-boundary"
+                  return_code=primary_failure.get("return_code")
+                  failure=dict(primary_failure)
+                  failure["primary_failure_sha256"]=bridge._sha256_file(dest/"primary-task-failure.json")
+                  failure["secondary_seal_error"]=error
+                  failure["secondary_failed_task"]="execution-boundary"
+                  failure["driver_stdout"]=out
+                  failure["driver_stderr"]=err
+              else:
+                  failed_task="execution-boundary"; return_code=int(bridge_rc)
+                  failure={"terminal_status":"FAILED","failed_task":failed_task,"return_code":return_code,"stdout":out,"stderr":err,"secondary_seal_error":error}
               bridge._json_dump(dest/"task-failure.json",failure)
               bridge._json_dump(dest/"status.json",bridge._terminal_status_payload(request=request,terminal_status="FAILED",failure=failure))
               manifest=bridge.build_evidence_manifest(dest,request=request,runner_identity=identity,source_identity=expected)
               bridge._json_dump(dest/"manifest.json",manifest); archive=bridge._write_deterministic_archive(dest)
-              result={"valid":False,"terminal_status":"FAILED","task":request.task,"request_id":request.request_id,"implementation_sha":request.implementation_sha,"manifest_sha256":manifest["manifest_sha256"],"archive_sha256":archive,"transport_ref":bridge.transport_ref(request.request_id),"failed_task":"execution-boundary","return_code":int(bridge_rc)}
+              result={"valid":False,"terminal_status":"FAILED","task":request.task,"request_id":request.request_id,"implementation_sha":request.implementation_sha,"manifest_sha256":manifest["manifest_sha256"],"archive_sha256":archive,"transport_ref":bridge.transport_ref(request.request_id),"failed_task":failed_task,"return_code":return_code}
               bridge._json_dump(dest/"result.json",result)
           final=bridge.validate_publishable_evidence(dest,request=request,run_id=int(run_id),workflow_sha=workflow_sha)
           if json.loads((dest/"manifest.json").read_text(encoding="utf-8")).get("bridge_source") != expected:
