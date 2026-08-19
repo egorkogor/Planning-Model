@@ -265,7 +265,7 @@ jobs:
           aten_cpu_capability="${target_env[0]}"; mkl_cbwr="${target_env[1]}"
           omp_num_threads="${target_env[2]}"; mkl_num_threads="${target_env[3]}"
           openblas_num_threads="${target_env[4]}"; numexpr_num_threads="${target_env[5]}"
-          python_executable="$(python -c 'import os,sys; print(os.path.realpath(sys.executable))')"
+          python_executable="$(python -c 'import os,sys; print(os.path.abspath(sys.executable))')"
           test -n "$python_executable"; test -x "$python_executable"
           case "$python_executable" in
             /*) ;;
@@ -281,27 +281,43 @@ jobs:
           stdout="$control_root/execution-driver.stdout"; stderr="$control_root/execution-driver.stderr"
           context="$control_root/execution-context.json"
           : > "$stdout"; : > "$stderr"; : > "$context"; chmod 600 "$stdout" "$stderr" "$context"
-          sudo -n -u "$user" -- /usr/bin/env -i \
-            HOME="$home" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 \
-            OMP_NUM_THREADS="$omp_num_threads" MKL_NUM_THREADS="$mkl_num_threads" \
-            OPENBLAS_NUM_THREADS="$openblas_num_threads" NUMEXPR_NUM_THREADS="$numexpr_num_threads" \
-            ATEN_CPU_CAPABILITY="$aten_cpu_capability" MKL_CBWR="$mkl_cbwr" \
-            FIXED_TARGET_RUNNER_IMAGE="$runner_image" \
-            "$python_executable" - "$PRINCIPAL_CONTRACT_VERSION" <<'PY' >"$context"
+          (
+            cd "$repo"
+            sudo -n -u "$user" -- /usr/bin/env -i \
+              HOME="$home" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 \
+              OMP_NUM_THREADS="$omp_num_threads" MKL_NUM_THREADS="$mkl_num_threads" \
+              OPENBLAS_NUM_THREADS="$openblas_num_threads" NUMEXPR_NUM_THREADS="$numexpr_num_threads" \
+              ATEN_CPU_CAPABILITY="$aten_cpu_capability" MKL_CBWR="$mkl_cbwr" \
+              FIXED_TARGET_RUNNER_IMAGE="$runner_image" \
+              "$python_executable" - "$PRINCIPAL_CONTRACT_VERSION" "$target_contract" <<'PY' >"$context"
           import json,os,platform,pwd,sys
+          from pathlib import Path
+          import torch
+          import scripts.run_fixed_target_acceptance
+          contract=json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          if platform.python_implementation() != contract.get("python_implementation"):
+              raise SystemExit("REVIEWER_BRIDGE_EXECUTION_PYTHON_IMPLEMENTATION_MISMATCH")
+          if platform.python_version() != contract.get("python_version"):
+              raise SystemExit("REVIEWER_BRIDGE_EXECUTION_PYTHON_VERSION_MISMATCH")
+          if torch.__version__ != contract.get("torch_version"):
+              raise SystemExit("REVIEWER_BRIDGE_EXECUTION_TORCH_VERSION_MISMATCH")
+          invoked=os.path.abspath(sys.executable)
           value={
               "principal_contract_version":sys.argv[1],
               "execution_principal":pwd.getpwuid(os.getuid()).pw_name,
               "execution_uid":os.getuid(),"execution_gid":os.getgid(),
-              "execution_home":os.environ["HOME"],"python_executable":sys.executable,
+              "execution_home":os.environ["HOME"],"python_executable":invoked,
+              "python_resolved_executable":os.path.realpath(invoked),
               "python_implementation":platform.python_implementation(),
-              "python_version":platform.python_version(),
+              "python_version":platform.python_version(),"torch_version":torch.__version__,
+              "runtime_imports_verified":True,
               "process_start_env":{key:os.environ[key] for key in (
                   "ATEN_CPU_CAPABILITY","MKL_CBWR","OMP_NUM_THREADS","MKL_NUM_THREADS",
                   "OPENBLAS_NUM_THREADS","NUMEXPR_NUM_THREADS","FIXED_TARGET_RUNNER_IMAGE")},
           }
           print(json.dumps(value,sort_keys=True,separators=(",",":")))
           PY
+          )
           set +e
           sudo -n -u "$user" -- /usr/bin/env -i \
             HOME="$home" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 \
@@ -382,6 +398,36 @@ jobs:
             fi
           fi
 
+          diagnostic_snapshot="$control_root/diagnostic-snapshot-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test ! -e "$diagnostic_snapshot"
+          python - "$workspace" "$control_root" "$diagnostic_snapshot" <<'PY'
+          import stat,sys
+          from pathlib import Path
+          workspace,control_root,snapshot=map(Path,sys.argv[1:])
+          snapshot.mkdir(mode=0o700)
+          def copy_regular(source: Path,target_name: str) -> None:
+              try:
+                  mode=source.lstat().st_mode
+              except FileNotFoundError:
+                  return
+              if stat.S_ISLNK(mode) or not stat.S_ISREG(mode):
+                  return
+              target=snapshot/target_name
+              target.write_bytes(source.read_bytes())
+              target.chmod(0o400)
+          evidence=workspace/"evidence"
+          try:
+              evidence_mode=evidence.lstat().st_mode
+          except FileNotFoundError:
+              evidence_mode=None
+          if evidence_mode is not None and stat.S_ISDIR(evidence_mode) and not stat.S_ISLNK(evidence_mode):
+              for name in ("task-failure.json","result.json","status.json","bridge-source.json","trusted-commit-validator.jsonl"):
+                  copy_regular(evidence/name,name)
+          for name in ("execution-driver.stdout","execution-driver.stderr","execution-context.json"):
+              copy_regular(control_root/name,name)
+          snapshot.chmod(0o500)
+          PY
+
           bootstrap="$control_root/bootstrap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           sealed="$control_root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           repo="$bootstrap/control-repository"; driver="$bootstrap/run_reviewer_execution_bridge.py"
@@ -403,13 +449,13 @@ jobs:
             "$WORKFLOW_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_JOB" \
             "$RUNNER_NAME_VALUE" "$rc" "$stdout" "$stderr" "$context" \
             "${EXEC_UID:-}" "${EXEC_GID:-}" "${EXEC_HOME:-}" "${EXEC_PYTHON:-}" \
-            "$PRINCIPAL_CONTRACT_VERSION" "$workspace_boundary_error" <<'PY'
+            "$PRINCIPAL_CONTRACT_VERSION" "$workspace_boundary_error" "$diagnostic_snapshot" <<'PY'
           import importlib.util,json,os,pwd,shutil,sys
           from pathlib import Path
           (driver_path,event_path,repo_root,workspace,sealed,workflow_sha,run_id,run_attempt,
            job_name,runner_name,bridge_rc,stdout_path,stderr_path,context_path,expected_uid,
            expected_gid,expected_home,expected_python,principal_contract_version,
-           workspace_boundary_error)=sys.argv[1:]
+           workspace_boundary_error,diagnostic_snapshot)=sys.argv[1:]
           spec=importlib.util.spec_from_file_location("reviewer_bridge_control",driver_path)
           if spec is None or spec.loader is None: raise SystemExit("REVIEWER_BRIDGE_CONTROL_DRIVER_IMPORT_FAILED")
           bridge=importlib.util.module_from_spec(spec); sys.modules[spec.name]=bridge; spec.loader.exec_module(bridge)
@@ -432,13 +478,20 @@ jobs:
                   raise ValueError("REVIEWER_BRIDGE_EXECUTION_GID_MISMATCH")
               if context.get("execution_home") != expected_home:
                   raise ValueError("REVIEWER_BRIDGE_EXECUTION_HOME_MISMATCH")
-              if Path(str(context.get("python_executable"))).resolve() != Path(expected_python).resolve():
+              invoked_python=os.path.abspath(str(context.get("python_executable")))
+              if invoked_python != os.path.abspath(expected_python):
                   raise ValueError("REVIEWER_BRIDGE_EXECUTION_PYTHON_MISMATCH")
+              if context.get("python_resolved_executable") != os.path.realpath(invoked_python):
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_PYTHON_RESOLVED_MISMATCH")
               contract=json.loads((Path(workspace)/"repository"/"configs"/"fixed-cpu-target-1.0.json").read_text(encoding="utf-8"))
               if context.get("python_implementation") != contract.get("python_implementation"):
                   raise ValueError("REVIEWER_BRIDGE_EXECUTION_PYTHON_IMPLEMENTATION_MISMATCH")
               if context.get("python_version") != contract.get("python_version"):
                   raise ValueError("REVIEWER_BRIDGE_EXECUTION_PYTHON_VERSION_MISMATCH")
+              if context.get("torch_version") != contract.get("torch_version"):
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_TORCH_VERSION_MISMATCH")
+              if context.get("runtime_imports_verified") is not True:
+                  raise ValueError("REVIEWER_BRIDGE_EXECUTION_RUNTIME_IMPORTS_NOT_VERIFIED")
               process_env=context.get("process_start_env")
               if not isinstance(process_env,dict): raise ValueError("REVIEWER_BRIDGE_EXECUTION_PROCESS_ENV_INVALID")
               for key in ("ATEN_CPU_CAPABILITY","MKL_CBWR","OMP_NUM_THREADS","MKL_NUM_THREADS","OPENBLAS_NUM_THREADS","NUMEXPR_NUM_THREADS"):
@@ -464,18 +517,36 @@ jobs:
               if bridge.validate_publishable_evidence(dest,request=request,run_id=int(run_id),workflow_sha=workflow_sha) != result:
                   raise ValueError("REVIEWER_BRIDGE_SEALED_EVIDENCE_RESULT_MISMATCH")
           except Exception as exc:
-              error=f"{type(exc).__name__}: {exc}"; shutil.rmtree(dest,ignore_errors=True); dest.mkdir(parents=True,mode=0o700)
+              error=f"{type(exc).__name__}: {exc}"
+              shutil.rmtree(dest,ignore_errors=True); dest.mkdir(parents=True,mode=0o700)
               identity=bridge._runner_identity(runner_name)
               bridge._json_dump(dest/"request.json",bridge.asdict(request))
-              fallback_context={"principal_contract_version":principal_contract_version,"execution_principal":"planning-model-bridge-exec"}
-              try:
-                  loaded=json.loads(Path(context_path).read_text(encoding="utf-8")); fallback_context.update(loaded)
-              except Exception:
-                  pass
-              bridge._json_dump(dest/"github-execution.json",{"event_name":"issue_comment","run_id":int(run_id),"run_attempt":int(run_attempt),"job_name":job_name,"workflow_sha":workflow_sha,"comment_id":request.comment_id,"control_issue":request.issue_number,**fallback_context})
+              bridge._json_dump(dest/"github-execution.json",{"event_name":"issue_comment","run_id":int(run_id),"run_attempt":int(run_attempt),"job_name":job_name,"workflow_sha":workflow_sha,"comment_id":request.comment_id,"control_issue":request.issue_number,"principal_contract_version":principal_contract_version,"execution_principal":"planning-model-bridge-exec","expected_execution_uid":expected_uid,"expected_execution_gid":expected_gid,"expected_execution_home":expected_home,"expected_python_executable":expected_python})
               bridge._json_dump(dest/"runner-identity.json",identity); bridge._json_dump(dest/"bridge-source.json",expected)
-              out=Path(stdout_path).read_text(encoding="utf-8",errors="replace"); err=Path(stderr_path).read_text(encoding="utf-8",errors="replace")
-              failure={"terminal_status":"FAILED","failed_task":"execution-boundary","return_code":int(bridge_rc),"stdout":out,"stderr":err+"\n"+error}
+              diagnostics=dest/"untrusted-execution-diagnostics"; diagnostics.mkdir(mode=0o700); snapshot=Path(diagnostic_snapshot)
+              import stat
+              snapshot_stat=snapshot.stat()
+              if snapshot.is_symlink() or not snapshot.is_dir() or snapshot_stat.st_uid != os.getuid() or snapshot_stat.st_gid != os.getgid() or stat.S_IMODE(snapshot_stat.st_mode) != 0o500:
+                  raise ValueError("REVIEWER_BRIDGE_DIAGNOSTIC_SNAPSHOT_INVALID")
+              diagnostic_hashes={}
+              for name in ("task-failure.json","result.json","status.json","bridge-source.json","trusted-commit-validator.jsonl","execution-driver.stdout","execution-driver.stderr","execution-context.json"):
+                  candidate=snapshot/name
+                  if candidate.is_symlink() or not candidate.is_file():
+                      continue
+                  target=diagnostics/name; target.write_bytes(candidate.read_bytes())
+                  diagnostic_hashes[name]=bridge._sha256_file(target)
+              bridge._json_dump(diagnostics/"sha256.json",{"non_authoritative":True,"files":diagnostic_hashes})
+              observed_failure=None
+              observed_failure_path=diagnostics/"task-failure.json"
+              if observed_failure_path.is_file():
+                  try:
+                      loaded=json.loads(observed_failure_path.read_text(encoding="utf-8"))
+                      if isinstance(loaded,dict): observed_failure=loaded
+                  except Exception:
+                      observed_failure=None
+              failure={"terminal_status":"FAILED","failed_task":"execution-boundary","return_code":int(bridge_rc),"stdout":"","stderr":error,"untrusted_diagnostics":{"path":"untrusted-execution-diagnostics","non_authoritative":True,"files":diagnostic_hashes}}
+              if observed_failure is not None:
+                  failure["observed_execution_failure"]={"failed_task":observed_failure.get("failed_task"),"return_code":observed_failure.get("return_code"),"terminal_status":observed_failure.get("terminal_status")}
               bridge._json_dump(dest/"task-failure.json",failure)
               bridge._json_dump(dest/"status.json",bridge._terminal_status_payload(request=request,terminal_status="FAILED",failure=failure))
               manifest=bridge.build_evidence_manifest(dest,request=request,runner_identity=identity,source_identity=expected)
@@ -487,6 +558,7 @@ jobs:
               raise SystemExit("REVIEWER_BRIDGE_SEALED_SOURCE_IDENTITY_MISMATCH")
           print(json.dumps({"sealed":True,"result":final},sort_keys=True))
           PY
+          rm -rf -- "$diagnostic_snapshot"
           if test -n "$execution_root"; then
             rm -rf -- "$execution_root"
           fi
@@ -566,7 +638,8 @@ jobs:
           root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-control"
           rm -rf -- "$root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             "$root/bootstrap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-            "$root/publisher-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            "$root/publisher-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            "$root/diagnostic-snapshot-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           rm -f -- "$root/execution-driver.stdout" "$root/execution-driver.stderr" \
             "$root/execution-context.json" "$root/control-principal-only" \
             "$root/principal-marker-candidate.json"
