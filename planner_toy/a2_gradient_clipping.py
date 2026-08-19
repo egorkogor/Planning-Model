@@ -30,8 +30,13 @@ from .a2_sufficient_budget_task_order import (
 )
 from .canonical import canonical_bytes, sha256
 from .canonical_runtime import canonical_cpu_runtime_fingerprint, configure_canonical_cpu_runtime
-from .learnability import FROZEN_QUALITY_V0_1_HELDOUT_TASK_IDS, SEEDS, _read_only_diagnostic_pass
-from .learnability import free_running_task, teacher_forced_task
+from .learnability import (
+    FROZEN_QUALITY_V0_1_HELDOUT_TASK_IDS,
+    SEEDS,
+    _read_only_diagnostic_pass,
+    free_running_task,
+    teacher_forced_task,
+)
 from .model import LockedPlanner, canonical_task_encoding
 from .numeric_identity import canonical_state_dict_sha256, canonical_torch_object_sha256
 from .quality import _optimizer_named_parameters

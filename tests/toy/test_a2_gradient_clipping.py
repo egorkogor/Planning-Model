@@ -398,9 +398,9 @@ def test_gradient_hash_is_read_only_and_deterministic():
 
 def test_bridge_task_literal_is_typed_and_has_three_stage_plan():
     from scripts.run_reviewer_execution_bridge import (
-        BridgeRequest,
         REQUEST_PATTERN,
         TASKS,
+        BridgeRequest,
         task_plan,
     )
     assert "a2-gradient-clipping-v1" in TASKS
