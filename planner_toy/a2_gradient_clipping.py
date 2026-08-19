@@ -16,16 +16,22 @@ import torch.nn.functional as F
 
 from .a2_optimization_budget_trajectory import (
     PREFIX_TRACE_FIELDS,
-    SOURCE_FILES as BUDGET_SOURCE_FILES,
     _checkpoint_evidence,
     _control_training,
     _train_rows,
 )
+from .a2_optimization_budget_trajectory import (
+    SOURCE_FILES as BUDGET_SOURCE_FILES,
+)
 from .a2_sufficient_budget_task_order import (
     ARMS as REFERENCE_ORDER_ARMS,
+)
+from .a2_sufficient_budget_task_order import (
     _free_rescued,
     _persistence,
     _position0_rescued,
+)
+from .a2_sufficient_budget_task_order import (
     _train_arm as _reference_train_arm,
 )
 from .canonical import canonical_bytes, sha256
