@@ -281,15 +281,13 @@ jobs:
           stdout="$control_root/execution-driver.stdout"; stderr="$control_root/execution-driver.stderr"
           context="$control_root/execution-context.json"
           : > "$stdout"; : > "$stderr"; : > "$context"; chmod 600 "$stdout" "$stderr" "$context"
-          (
-            cd "$repo"
-            sudo -n -u "$user" -- /usr/bin/env -i \
-              HOME="$home" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 \
-              OMP_NUM_THREADS="$omp_num_threads" MKL_NUM_THREADS="$mkl_num_threads" \
-              OPENBLAS_NUM_THREADS="$openblas_num_threads" NUMEXPR_NUM_THREADS="$numexpr_num_threads" \
-              ATEN_CPU_CAPABILITY="$aten_cpu_capability" MKL_CBWR="$mkl_cbwr" \
-              FIXED_TARGET_RUNNER_IMAGE="$runner_image" \
-              "$python_executable" - "$PRINCIPAL_CONTRACT_VERSION" "$target_contract" <<'PY' >"$context"
+          sudo -n -u "$user" -- /usr/bin/env -C "$repo" -i \
+            HOME="$home" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 \
+            OMP_NUM_THREADS="$omp_num_threads" MKL_NUM_THREADS="$mkl_num_threads" \
+            OPENBLAS_NUM_THREADS="$openblas_num_threads" NUMEXPR_NUM_THREADS="$numexpr_num_threads" \
+            ATEN_CPU_CAPABILITY="$aten_cpu_capability" MKL_CBWR="$mkl_cbwr" \
+            FIXED_TARGET_RUNNER_IMAGE="$runner_image" \
+            "$python_executable" - "$PRINCIPAL_CONTRACT_VERSION" "$target_contract" <<'PY' >"$context"
           import json,os,platform,pwd,sys
           from pathlib import Path
           import torch
@@ -317,9 +315,8 @@ jobs:
           }
           print(json.dumps(value,sort_keys=True,separators=(",",":")))
           PY
-          )
           set +e
-          sudo -n -u "$user" -- /usr/bin/env -i \
+          sudo -n -u "$user" -- /usr/bin/env -C "$repo" -i \
             HOME="$home" PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 \
             OMP_NUM_THREADS="$omp_num_threads" MKL_NUM_THREADS="$mkl_num_threads" \
             OPENBLAS_NUM_THREADS="$openblas_num_threads" NUMEXPR_NUM_THREADS="$numexpr_num_threads" \
@@ -558,7 +555,18 @@ jobs:
               raise SystemExit("REVIEWER_BRIDGE_SEALED_SOURCE_IDENTITY_MISMATCH")
           print(json.dumps({"sealed":True,"result":final},sort_keys=True))
           PY
-          rm -rf -- "$diagnostic_snapshot"
+          if test -e "$diagnostic_snapshot"; then
+            if test -d "$diagnostic_snapshot" && test ! -L "$diagnostic_snapshot" && \
+               test "$(stat -c '%u:%g' "$diagnostic_snapshot")" = "$control_uid:$control_gid"; then
+              if ! chmod 700 "$diagnostic_snapshot"; then
+                echo "::warning::REVIEWER_BRIDGE_DIAGNOSTIC_SNAPSHOT_CLEANUP_CHMOD_FAILED"
+              elif ! rm -rf -- "$diagnostic_snapshot"; then
+                echo "::warning::REVIEWER_BRIDGE_DIAGNOSTIC_SNAPSHOT_CLEANUP_FAILED"
+              fi
+            else
+              echo "::warning::REVIEWER_BRIDGE_DIAGNOSTIC_SNAPSHOT_CLEANUP_SKIPPED_UNSAFE"
+            fi
+          fi
           if test -n "$execution_root"; then
             rm -rf -- "$execution_root"
           fi
