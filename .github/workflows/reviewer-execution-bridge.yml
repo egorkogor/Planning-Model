@@ -398,6 +398,36 @@ jobs:
             fi
           fi
 
+          diagnostic_snapshot="$control_root/diagnostic-snapshot-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test ! -e "$diagnostic_snapshot"
+          python - "$workspace" "$control_root" "$diagnostic_snapshot" <<'PY'
+          import stat,sys
+          from pathlib import Path
+          workspace,control_root,snapshot=map(Path,sys.argv[1:])
+          snapshot.mkdir(mode=0o700)
+          def copy_regular(source: Path,target_name: str) -> None:
+              try:
+                  mode=source.lstat().st_mode
+              except FileNotFoundError:
+                  return
+              if stat.S_ISLNK(mode) or not stat.S_ISREG(mode):
+                  return
+              target=snapshot/target_name
+              target.write_bytes(source.read_bytes())
+              target.chmod(0o400)
+          evidence=workspace/"evidence"
+          try:
+              evidence_mode=evidence.lstat().st_mode
+          except FileNotFoundError:
+              evidence_mode=None
+          if evidence_mode is not None and stat.S_ISDIR(evidence_mode) and not stat.S_ISLNK(evidence_mode):
+              for name in ("task-failure.json","result.json","status.json","bridge-source.json","trusted-commit-validator.jsonl"):
+                  copy_regular(evidence/name,name)
+          for name in ("execution-driver.stdout","execution-driver.stderr","execution-context.json"):
+              copy_regular(control_root/name,name)
+          snapshot.chmod(0o500)
+          PY
+
           bootstrap="$control_root/bootstrap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           sealed="$control_root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           repo="$bootstrap/control-repository"; driver="$bootstrap/run_reviewer_execution_bridge.py"
@@ -419,13 +449,13 @@ jobs:
             "$WORKFLOW_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_JOB" \
             "$RUNNER_NAME_VALUE" "$rc" "$stdout" "$stderr" "$context" \
             "${EXEC_UID:-}" "${EXEC_GID:-}" "${EXEC_HOME:-}" "${EXEC_PYTHON:-}" \
-            "$PRINCIPAL_CONTRACT_VERSION" "$workspace_boundary_error" <<'PY'
+            "$PRINCIPAL_CONTRACT_VERSION" "$workspace_boundary_error" "$diagnostic_snapshot" <<'PY'
           import importlib.util,json,os,pwd,shutil,sys
           from pathlib import Path
           (driver_path,event_path,repo_root,workspace,sealed,workflow_sha,run_id,run_attempt,
            job_name,runner_name,bridge_rc,stdout_path,stderr_path,context_path,expected_uid,
            expected_gid,expected_home,expected_python,principal_contract_version,
-           workspace_boundary_error)=sys.argv[1:]
+           workspace_boundary_error,diagnostic_snapshot)=sys.argv[1:]
           spec=importlib.util.spec_from_file_location("reviewer_bridge_control",driver_path)
           if spec is None or spec.loader is None: raise SystemExit("REVIEWER_BRIDGE_CONTROL_DRIVER_IMPORT_FAILED")
           bridge=importlib.util.module_from_spec(spec); sys.modules[spec.name]=bridge; spec.loader.exec_module(bridge)
@@ -493,18 +523,17 @@ jobs:
               bridge._json_dump(dest/"request.json",bridge.asdict(request))
               bridge._json_dump(dest/"github-execution.json",{"event_name":"issue_comment","run_id":int(run_id),"run_attempt":int(run_attempt),"job_name":job_name,"workflow_sha":workflow_sha,"comment_id":request.comment_id,"control_issue":request.issue_number,"principal_contract_version":principal_contract_version,"execution_principal":"planning-model-bridge-exec","expected_execution_uid":expected_uid,"expected_execution_gid":expected_gid,"expected_execution_home":expected_home,"expected_python_executable":expected_python})
               bridge._json_dump(dest/"runner-identity.json",identity); bridge._json_dump(dest/"bridge-source.json",expected)
-              diagnostics=dest/"untrusted-execution-diagnostics"; diagnostics.mkdir(mode=0o700)
+              diagnostics=dest/"untrusted-execution-diagnostics"; diagnostics.mkdir(mode=0o700); snapshot=Path(diagnostic_snapshot)
+              import stat
+              snapshot_stat=snapshot.stat()
+              if snapshot.is_symlink() or not snapshot.is_dir() or snapshot_stat.st_uid != os.getuid() or snapshot_stat.st_gid != os.getgid() or stat.S_IMODE(snapshot_stat.st_mode) != 0o500:
+                  raise ValueError("REVIEWER_BRIDGE_DIAGNOSTIC_SNAPSHOT_INVALID")
               diagnostic_hashes={}
-              for name in ("task-failure.json","result.json","status.json","bridge-source.json","trusted-commit-validator.jsonl"):
-                  candidate=source/name
+              for name in ("task-failure.json","result.json","status.json","bridge-source.json","trusted-commit-validator.jsonl","execution-driver.stdout","execution-driver.stderr","execution-context.json"):
+                  candidate=snapshot/name
                   if candidate.is_symlink() or not candidate.is_file():
                       continue
                   target=diagnostics/name; target.write_bytes(candidate.read_bytes())
-                  diagnostic_hashes[name]=bridge._sha256_file(target)
-              for name,path in (("execution-driver.stdout",Path(stdout_path)),("execution-driver.stderr",Path(stderr_path)),("execution-context.json",Path(context_path))):
-                  if path.is_symlink() or not path.is_file():
-                      continue
-                  target=diagnostics/name; target.write_bytes(path.read_bytes())
                   diagnostic_hashes[name]=bridge._sha256_file(target)
               bridge._json_dump(diagnostics/"sha256.json",{"non_authoritative":True,"files":diagnostic_hashes})
               observed_failure=None
@@ -529,6 +558,7 @@ jobs:
               raise SystemExit("REVIEWER_BRIDGE_SEALED_SOURCE_IDENTITY_MISMATCH")
           print(json.dumps({"sealed":True,"result":final},sort_keys=True))
           PY
+          rm -rf -- "$diagnostic_snapshot"
           if test -n "$execution_root"; then
             rm -rf -- "$execution_root"
           fi
@@ -608,7 +638,8 @@ jobs:
           root="${RUNNER_TEMP%/}/planning-model-reviewer-bridge-control"
           rm -rf -- "$root/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             "$root/bootstrap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-            "$root/publisher-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            "$root/publisher-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            "$root/diagnostic-snapshot-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           rm -f -- "$root/execution-driver.stdout" "$root/execution-driver.stderr" \
             "$root/execution-context.json" "$root/control-principal-only" \
             "$root/principal-marker-candidate.json"
