@@ -74,6 +74,7 @@ def _run_fallback_diagnostic_fragment(
 ) -> dict:
     namespace = {
         "json": json,
+        "os": os,
         "Path": Path,
         "bridge": bridge,
         "diagnostic_snapshot": str(diagnostic_snapshot),
