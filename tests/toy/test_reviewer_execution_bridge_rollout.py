@@ -33,10 +33,20 @@ def test_workflow_materializes_fixed_target_dispatch_before_requested_python() -
     launch = text.index('"$python_executable" "$driver" execute')
     assert text.rfind('ATEN_CPU_CAPABILITY="$aten_cpu_capability"', 0, launch) >= 0
     assert text.rfind('MKL_CBWR="$mkl_cbwr"', 0, launch) >= 0
-    isolated = text[text.rfind('/usr/bin/env -i', 0, launch):launch]
+    isolated = text[text.rfind('/usr/bin/env -C "$repo" -i', 0, launch):launch]
     assert 'GITHUB_TOKEN' not in isolated
     assert 'GITHUB_ENV' not in isolated
     assert 'GITHUB_PATH' not in isolated
+
+
+def test_workflow_changes_repo_cwd_only_inside_execution_principal() -> None:
+    text = WORKFLOW.read_text(encoding='utf-8')
+    execute = text[text.index('      - id: execute'):text.index('      - id: seal')]
+    assert 'cd "$repo"' not in execute
+    launch = 'sudo -n -u "$user" -- /usr/bin/env -C "$repo" -i'
+    assert execute.count(launch) == 2
+    assert execute.index(launch) < execute.index('import scripts.run_fixed_target_acceptance')
+    assert execute.rindex(launch) < execute.index('"$python_executable" "$driver" execute')
 
 
 def test_real_env_i_child_preserves_target_dispatch_and_drops_control(tmp_path: Path) -> None:
@@ -236,6 +246,95 @@ def test_real_os_principal_cannot_traverse_runner_temp_but_can_use_dedicated_roo
     finally:
         subprocess.run([sudo, '-n', 'pkill', '-KILL', '-u', user], check=False)
         subprocess.run([sudo, '-n', userdel, user], check=True)
+
+
+def test_real_os_principal_enters_private_repo_with_env_c(tmp_path: Path) -> None:
+    sudo = shutil.which('sudo')
+    useradd = shutil.which('useradd')
+    userdel = shutil.which('userdel')
+    env_bin = shutil.which('env')
+    assert sudo is not None and useradd is not None and userdel is not None and env_bin is not None
+    subprocess.run([sudo, '-n', 'true'], check=True)
+
+    user = f'pmbridgecwd{os.getpid()}'
+    subprocess.run(
+        [
+            sudo,
+            '-n',
+            useradd,
+            '--system',
+            '--user-group',
+            '--home-dir',
+            '/nonexistent',
+            '--no-create-home',
+            '--shell',
+            '/usr/sbin/nologin',
+            user,
+        ],
+        check=True,
+    )
+    execution_root = Path(
+        subprocess.check_output(
+            ['mktemp', '-d', '/tmp/planning-model-reviewer-bridge-execution.XXXXXXXX'],
+            text=True,
+        ).strip()
+    )
+    try:
+        uid = int(subprocess.check_output(['id', '-u', user], text=True).strip())
+        gid = int(subprocess.check_output(['id', '-g', user], text=True).strip())
+        python_executable = os.path.abspath(sys.executable)
+        execution_root.chmod(0o711)
+        workspace = execution_root / 'run'
+        repo = workspace / 'repository'
+        home = workspace / 'home'
+        repo.mkdir(parents=True, mode=0o700)
+        home.mkdir(mode=0o700)
+        local_module = repo / 'private_repo_probe.py'
+        local_module.write_text("VALUE='private-repo-imported'\n", encoding='utf-8')
+        workspace.chmod(0o700)
+        subprocess.run([sudo, '-n', 'chown', '-R', f'{uid}:{gid}', str(workspace)], check=True)
+
+        blocked = subprocess.run(
+            ['bash', '-c', 'cd "$1"', 'bash', str(repo)],
+            capture_output=True,
+            text=True,
+        )
+        assert blocked.returncode != 0
+
+        code = (
+            "import os,torch,private_repo_probe; "
+            "assert private_repo_probe.VALUE=='private-repo-imported'; "
+            "print(os.getcwd()); print(torch.__version__); print('runtime-ok')"
+        )
+        completed = subprocess.run(
+            [
+                sudo,
+                '-n',
+                '-u',
+                user,
+                '--',
+                env_bin,
+                '-C',
+                str(repo),
+                '-i',
+                f'HOME={home}',
+                f"PATH={os.environ.get('PATH', '')}",
+                python_executable,
+                '-c',
+                code,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        lines = completed.stdout.splitlines()
+        assert lines[0] == str(repo)
+        assert lines[1]
+        assert lines[2] == 'runtime-ok'
+    finally:
+        subprocess.run([sudo, '-n', 'pkill', '-KILL', '-u', user], check=False)
+        subprocess.run([sudo, '-n', userdel, user], check=True)
+        shutil.rmtree(execution_root, ignore_errors=True)
 
 
 def test_kill_precedes_mutated_workspace_validation_for_detached_execution_uid() -> None:

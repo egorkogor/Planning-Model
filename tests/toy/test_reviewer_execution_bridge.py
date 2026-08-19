@@ -168,7 +168,7 @@ def test_workflow_uses_real_principal_boundary_and_no_cross_job_spool() -> None:
     assert "runs-on: ubuntu-latest" in text
     assert text.count("planning-model-canonical-cpu-v1") == 1
     assert "BRIDGE_EXECUTION_USER: planning-model-bridge-exec" in text
-    assert 'sudo -n -u "$user" -- /usr/bin/env -i' in text
+    assert 'sudo -n -u "$user" -- /usr/bin/env -C "$repo" -i' in text
     assert "EXECUTION_PRINCIPAL_SHARES_CONTROL_GROUP" in text
     assert "EXECUTION_PRINCIPAL_CAN_ESCALATE" in text
     assert "DETACHED_EXECUTION_PROCESS_SURVIVED" in text
@@ -186,7 +186,7 @@ def test_workflow_write_token_appears_only_off_host_reservation_and_after_kill()
     assert kill < publish
     execute = text[text.index("- id: execute", canonical):text.index("- id: seal", canonical)]
     assert "GITHUB_TOKEN: ${{ github.token }}" not in execute
-    assert "GITHUB_EVENT_PATH" not in execute[execute.index("/usr/bin/env -i"):]
+    assert "GITHUB_EVENT_PATH" not in execute[execute.index('/usr/bin/env -C "$repo" -i'):]
 
 
 def test_workflow_rebuilds_control_code_after_execution_uid_is_dead() -> None:
