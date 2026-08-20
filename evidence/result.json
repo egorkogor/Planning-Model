@@ -1,0 +1,10 @@
+{
+  "archive_sha256": "sha256:b6abd18c7058683810a235703bb86c40efea9c0e1e87f77ea9c1feb1030dc3bf",
+  "implementation_sha": "ee773479cbbc84eab52f93996bc8beb64a51453c",
+  "manifest_sha256": "sha256:43c3db9afdf6405ef6b107e1a0674aa29019b7d1f1c0a1cd1b187649594db7ca",
+  "request_id": "status-rollout-20260821-gradient-01",
+  "task": "status-v1",
+  "terminal_status": "SUCCEEDED",
+  "transport_ref": "refs/heads/evidence/reviewer-bridge/status-rollout-20260821-gradient-01",
+  "valid": true
+}
