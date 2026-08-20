@@ -66,6 +66,11 @@ def _update(index: int, arm: str):
         "clipping_policy": arm,
         "clip_threshold": threshold,
         "clipping_occurred": clipped,
+        "pre_intervention_global_l2_norm": 2.0,
+        "clip_primitive_return_norm": 2.0 if threshold is not None else None,
+        "threshold_exceeded": clipped,
+        "gradient_mutated": clipped,
+        "intervention_applied": clipped,
         "post_clip_global_l2_norm": 1.0 if clipped else 2.0,
         "gradient_before_sha256": FAKE_HASH_A,
         "gradient_after_sha256": FAKE_HASH_B if clipped else FAKE_HASH_A,
@@ -84,9 +89,7 @@ def _epoch(epoch: int):
                 "task_id": task,
                 "gold_operator": "END" if task.endswith("1") else "UNSTACK",
                 "predicted_operator": (
-                    "END"
-                    if task.endswith("1")
-                    else ("UNSTACK" if rescued else "END")
+                    "END" if task.endswith("1") else ("UNSTACK" if rescued else "END")
                 ),
                 "operator_correct": True if task.endswith("1") else rescued,
                 "probability_gold_operator": 1.0,
@@ -152,6 +155,21 @@ def _result(arm: str, seed: int):
     }
 
 
+def _synthetic_reference(seed: int):
+    return validator._control_projection(_result("clip_1_0", seed))
+
+
+def _synthetic_frozen_prefix(seed: int):
+    projection = _synthetic_reference(seed)
+    checkpoint = next(item for item in projection["checkpoints"] if item["epoch"] == 3)
+    return {
+        "initialization_canonical_sha256": projection["initialization_canonical_sha256"],
+        "trained_canonical_sha256": checkpoint["trained_canonical_sha256"],
+        "optimizer_canonical_sha256": checkpoint["optimizer_canonical_sha256"],
+        "updates": projection["updates"][:9],
+    }
+
+
 def _payload():
     results = [_result(arm, seed) for seed in validator.SEEDS for arm in validator.ARMS]
     indexed = {(r["arm"], r["seed"]): r for r in results}
@@ -159,6 +177,7 @@ def _payload():
     for seed in validator.SEEDS:
         projection = validator._control_projection(indexed[("clip_1_0", seed)])
         projection_hash = sha256(projection)
+        frozen_prefix = _synthetic_frozen_prefix(seed)
         equivalence[str(seed)] = {
             "seed": seed,
             "status": "PASS",
@@ -172,8 +191,8 @@ def _payload():
             ),
             "reference_historical_prefix_equivalence": {
                 "status": "PASS",
-                "control": {"x": 1},
-                "arm_prefix": {"x": 1},
+                "control": copy.deepcopy(frozen_prefix),
+                "arm_prefix": copy.deepcopy(frozen_prefix),
             },
             "checkpoint_epochs": list(validator.CHECKPOINTS),
             "reference_checkpoints": projection["checkpoints"],
@@ -204,21 +223,23 @@ def _payload():
             "clip_5_0_vs_no_clip_identical_preintervention_update_count": 300,
             "clip_5_0_vs_no_clip_no_effect_equivalence": {
                 "status": "PASS",
-                "projection_sha256": sha256({
-                    "losses": [
-                        (
-                            u["operator_loss"],
-                            u["arg1_pointer_loss"],
-                            u["arg2_pointer_loss"],
-                            u["total_loss"],
-                            u["gradient_before_sha256"],
-                        )
-                        for u in indexed[("clip_5_0", seed)]["updates"]
-                    ],
-                    "final_model": FAKE_HASH_C,
-                    "final_optimizer": FAKE_HASH_C,
-                    "rescue_events": indexed[("clip_5_0", seed)]["rescue_events"],
-                }),
+                "projection_sha256": sha256(
+                    {
+                        "losses": [
+                            (
+                                u["operator_loss"],
+                                u["arg1_pointer_loss"],
+                                u["arg2_pointer_loss"],
+                                u["total_loss"],
+                                u["gradient_before_sha256"],
+                            )
+                            for u in indexed[("clip_5_0", seed)]["updates"]
+                        ],
+                        "final_model": FAKE_HASH_C,
+                        "final_optimizer": FAKE_HASH_C,
+                        "rescue_events": indexed[("clip_5_0", seed)]["rescue_events"],
+                    }
+                ),
             },
         }
         for seed in validator.SEEDS
@@ -296,6 +317,14 @@ def validator_env(monkeypatch):
     )
     monkeypatch.setattr(validator, "_validate_position0", lambda *args, **kwargs: None)
     monkeypatch.setattr(validator, "_validate_free", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        validator,
+        "reconstruct_reference",
+        lambda rows, *, seed, dataset_hash: (
+            _synthetic_reference(seed),
+            _synthetic_frozen_prefix(seed),
+        ),
+    )
 
 
 def _reject(payload, validator_env):
@@ -331,11 +360,13 @@ def test_synthetic_contract_validates(validator_env):
         lambda p: p["clipping_contract"]["clip_1_0"].__setitem__("max_norm", 2.0),
         lambda p: next(
             r for r in p["arm_seed_results"] if r["arm"] == "no_clip"
-        )["updates"][0].__setitem__("clipping_occurred", True),
+        )["updates"][0].__setitem__("intervention_applied", True),
         lambda p: p["clipping_summaries"][0]["full_trajectory"].__setitem__(
             "clipped_update_count", 0
         ),
-        lambda p: p["arm_seed_results"][0]["updates"][0].__setitem__("gradient_norm", 0.25),
+        lambda p: p["arm_seed_results"][0]["updates"][0].__setitem__(
+            "pre_intervention_global_l2_norm", 0.25
+        ),
         lambda p: p["arm_seed_results"][0]["updates"][0].__setitem__(
             "gradient_before_sha256", FAKE_HASH_C
         ),
@@ -383,6 +414,36 @@ def test_adversarial_tampering_rejected(validator_env, mutation):
     _reject(payload, validator_env)
 
 
+def test_self_copied_reference_and_candidate_rejected(validator_env):
+    payload = _payload()
+    result = next(
+        item
+        for item in payload["arm_seed_results"]
+        if item["arm"] == "clip_1_0" and item["seed"] == 17
+    )
+    result["final_trained_canonical_sha256"] = FAKE_HASH_C
+    result["final_optimizer_canonical_sha256"] = FAKE_HASH_C
+    result["checkpoints"][-1]["trained_canonical_sha256"] = FAKE_HASH_C
+    result["checkpoints"][-1]["optimizer_canonical_sha256"] = FAKE_HASH_C
+    projection = validator._control_projection(result)
+    record = payload["control_equivalence"]["by_seed"]["17"]
+    record["reference_projection"] = copy.deepcopy(projection)
+    record["reference_projection_sha256"] = sha256(projection)
+    record["candidate_projection_sha256"] = sha256(projection)
+    record["prefix_9_update_projection_sha256"] = sha256(
+        validator._control_prefix_projection(projection)
+    )
+    record["reference_checkpoints"] = copy.deepcopy(projection["checkpoints"])
+    record["candidate_checkpoints"] = copy.deepcopy(projection["checkpoints"])
+    for prefix in ("reference", "candidate"):
+        record[f"{prefix}_final_trained_canonical_sha256"] = FAKE_HASH_C
+        record[f"{prefix}_final_optimizer_canonical_sha256"] = FAKE_HASH_C
+    payload["canonical_identity"] = sha256(
+        {k: v for k, v in payload.items() if k != "canonical_identity"}
+    )
+    _reject(payload, validator_env)
+
+
 def test_gradient_hash_is_read_only_and_deterministic():
     p1 = torch.nn.Parameter(torch.tensor([3.0, 4.0]))
     p2 = torch.nn.Parameter(torch.tensor([1.0]))
@@ -396,6 +457,53 @@ def test_gradient_hash_is_read_only_and_deterministic():
     assert all(torch.equal(old, new) for old, (_, new) in zip(before, items, strict=True))
 
 
+def test_reduced_real_model_intervention_semantics(monkeypatch):
+    _dataset, rows = producer._train_rows()
+    assert [row["task_id"] for row in rows] == list(producer.CANONICAL_ORDER)
+    assert set(producer.CANONICAL_ORDER).isdisjoint({"bw-00000004", "bw-00000005"})
+
+    calls: list[float] = []
+    original = torch.nn.utils.clip_grad_norm_
+
+    def observed(parameters, max_norm, *args, **kwargs):
+        calls.append(float(max_norm))
+        return original(parameters, max_norm, *args, **kwargs)
+
+    monkeypatch.setattr(torch.nn.utils, "clip_grad_norm_", observed)
+    results = {
+        arm: producer._train_arm(
+            rows,
+            seed=17,
+            arm=arm,
+            max_epoch=1,
+            checkpoint_epochs=(),
+        )
+        for arm in producer.ARMS
+    }
+
+    first = [results[arm]["updates"][0] for arm in producer.ARMS]
+    assert len({update["gradient_before_sha256"] for update in first}) == 1
+    assert len({update["pre_intervention_global_l2_norm"] for update in first}) == 1
+    assert calls.count(1.0) == 3
+    assert calls.count(5.0) == 3
+    assert len(calls) == 6
+    assert any(update["intervention_applied"] for update in results["clip_1_0"]["updates"])
+    assert all(
+        update["gradient_mutated"]
+        == (update["gradient_before_sha256"] != update["gradient_after_sha256"])
+        for result in results.values()
+        for update in result["updates"]
+    )
+    assert all(
+        not update["gradient_mutated"] and not update["intervention_applied"]
+        for update in results["no_clip"]["updates"]
+    )
+    assert all(
+        update["clip_primitive_return_norm"] is None
+        for update in results["no_clip"]["updates"]
+    )
+
+
 def test_bridge_task_literal_is_typed_and_has_three_stage_plan():
     from scripts.run_reviewer_execution_bridge import (
         REQUEST_PATTERN,
@@ -403,6 +511,7 @@ def test_bridge_task_literal_is_typed_and_has_three_stage_plan():
         BridgeRequest,
         task_plan,
     )
+
     assert "a2-gradient-clipping-v1" in TASKS
     body = "/reviewer-bridge/v1 task=a2-gradient-clipping-v1 request=clip-test-0001 sha=" + "a" * 40
     assert REQUEST_PATTERN.fullmatch(body)
@@ -438,27 +547,30 @@ def test_scientific_contract_has_no_heldout_or_verdict_escape_hatches():
 def test_bridge_workflow_adds_only_typed_clipping_literal():
     from pathlib import Path
 
-    workflow = Path('.github/workflows/reviewer-execution-bridge.yml').read_text(encoding='utf-8')
-    assert workflow.count('a2-gradient-clipping-v1') == 2
+    workflow = Path(".github/workflows/reviewer-execution-bridge.yml").read_text(
+        encoding="utf-8"
+    )
+    assert workflow.count("a2-gradient-clipping-v1") == 2
     assert (
-        'task=(status-v1|preflight-v1|a2-sufficient-budget-task-order-v1|'
-        'a2-gradient-clipping-v1) '
+        "task=(status-v1|preflight-v1|a2-sufficient-budget-task-order-v1|"
+        "a2-gradient-clipping-v1) "
     ) in workflow
     assert (
-        'status-v1|preflight-v1|a2-sufficient-budget-task-order-v1|'
-        'a2-gradient-clipping-v1) ;;'
+        "status-v1|preflight-v1|a2-sufficient-budget-task-order-v1|"
+        "a2-gradient-clipping-v1) ;;"
     ) in workflow
-    assert 'workflow_dispatch:' not in workflow
+    assert "workflow_dispatch:" not in workflow
 
 
 def test_source_inventory_closes_new_claim_bearing_paths():
     assert producer.SOURCE_FILES == validator.SOURCE_FILES
     required = {
-        '.github/workflows/reviewer-execution-bridge.yml',
-        'docs/evaluations/A2_GRADIENT_CLIPPING_CAUSAL_SPEC_RU.md',
-        'planner_toy/a2_gradient_clipping.py',
-        'planner_toy/a2_gradient_clipping_validator.py',
-        'scripts/run_a2_gradient_clipping.py',
-        'scripts/run_reviewer_execution_bridge.py',
+        ".github/workflows/reviewer-execution-bridge.yml",
+        "docs/evaluations/A2_GRADIENT_CLIPPING_CAUSAL_SPEC_RU.md",
+        "planner_toy/a2_gradient_clipping.py",
+        "planner_toy/a2_gradient_clipping_reference.py",
+        "planner_toy/a2_gradient_clipping_validator.py",
+        "scripts/run_a2_gradient_clipping.py",
+        "scripts/run_reviewer_execution_bridge.py",
     }
     assert required.issubset(set(producer.SOURCE_FILES))

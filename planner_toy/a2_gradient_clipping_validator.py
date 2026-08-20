@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 import torch
 
+from .a2_gradient_clipping_reference import reconstruct_reference
 from .a2_optimization_budget_trajectory import SOURCE_FILES as BUDGET_SOURCE_FILES
 from .canonical import sha256
 from .canonical_runtime import canonical_cpu_runtime_fingerprint, configure_canonical_cpu_runtime
@@ -48,6 +49,7 @@ SOURCE_FILES = tuple(
             "configs/fixed-cpu-target-1.0.json",
             "docs/evaluations/A2_GRADIENT_CLIPPING_CAUSAL_SPEC_RU.md",
             "planner_toy/a2_gradient_clipping.py",
+            "planner_toy/a2_gradient_clipping_reference.py",
             "planner_toy/a2_gradient_clipping_validator.py",
             "planner_toy/a2_sufficient_budget_task_order.py",
             "planner_toy/a2_sufficient_budget_task_order_validator.py",
@@ -81,6 +83,20 @@ CLIPPING_CONTRACT = {
     "gradient_hash_version": GRADIENT_HASH_VERSION,
     "gradient_hash_semantics": "name + dtype + shape + exact contiguous CPU bytes",
     "gradient_evidence_commitment_version": GRADIENT_EVIDENCE_COMMITMENT_VERSION,
+    "common_pre_intervention_norm_field": "pre_intervention_global_l2_norm",
+    "common_pre_intervention_norm_semantics": (
+        "read-only global L2 over the same ordered active named gradients before intervention"
+    ),
+    "legacy_reference_norm_field": "gradient_norm",
+    "legacy_reference_norm_semantics": (
+        "clip primitive return for clipped arms; retained only for accepted reference equivalence"
+    ),
+    "threshold_predicate_field": "threshold_exceeded",
+    "actual_mutation_field": "gradient_mutated",
+    "actual_intervention_field": "intervention_applied",
+    "actual_intervention_semantics": (
+        "clip arm and gradient_before_sha256 != gradient_after_sha256"
+    ),
 }
 
 
@@ -199,6 +215,7 @@ def _validate_updates(
     updates = result.get("updates")
     if not isinstance(updates, list) or len(updates) != EXPECTED_UPDATES:
         raise ValueError(f"A2_CLIP_VALIDATOR_UPDATE_COUNT:{arm}:{seed}")
+
     for index, update in enumerate(updates):
         task_id = TASKS[index % 3]
         if (
@@ -239,9 +256,11 @@ def _validate_updates(
             raise ValueError(f"A2_CLIP_VALIDATOR_POLICY:{arm}:{seed}:{index}")
         if update.get("gradient_clip_norm") != threshold:
             raise ValueError(f"A2_CLIP_VALIDATOR_REFERENCE_CLIP_FIELD:{arm}:{seed}:{index}")
-        pre = float(update["gradient_norm"])
+
+        legacy_pre = float(update["gradient_norm"])
+        common_pre = float(update["pre_intervention_global_l2_norm"])
         post = float(update["post_clip_global_l2_norm"])
-        if not math.isfinite(pre) or not math.isfinite(post) or pre < 0 or post < 0:
+        if any(not math.isfinite(value) or value < 0 for value in (legacy_pre, common_pre, post)):
             raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_NORM:{arm}:{seed}:{index}")
         before = update.get("gradient_before_sha256")
         after = update.get("gradient_after_sha256")
@@ -254,18 +273,35 @@ def _validate_updates(
             raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_HASH:{arm}:{seed}:{index}")
         if update.get("gradient_hash_version") != GRADIENT_HASH_VERSION:
             raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_HASH_VERSION:{arm}:{seed}:{index}")
-        clipped = bool(update.get("clipping_occurred"))
-        expected_clipped = threshold is not None and pre > threshold
-        if clipped != expected_clipped:
-            raise ValueError(f"A2_CLIP_VALIDATOR_CLIPPING_FLAG:{arm}:{seed}:{index}")
+
+        expected_legacy_clipped = threshold is not None and legacy_pre > threshold
+        if update.get("clipping_occurred") is not expected_legacy_clipped:
+            raise ValueError(f"A2_CLIP_VALIDATOR_LEGACY_CLIPPING_FLAG:{arm}:{seed}:{index}")
+        expected_threshold = threshold is not None and common_pre > threshold
+        if update.get("threshold_exceeded") is not expected_threshold:
+            raise ValueError(f"A2_CLIP_VALIDATOR_THRESHOLD_PREDICATE:{arm}:{seed}:{index}")
+        mutated = before != after
+        if update.get("gradient_mutated") is not mutated:
+            raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_MUTATION:{arm}:{seed}:{index}")
+        intervention = threshold is not None and mutated
+        if update.get("intervention_applied") is not intervention:
+            raise ValueError(f"A2_CLIP_VALIDATOR_INTERVENTION_APPLIED:{arm}:{seed}:{index}")
+
+        primitive_return = update.get("clip_primitive_return_norm")
         if threshold is None:
-            if clipped or before != after or pre != post:
+            if primitive_return is not None or legacy_pre != common_pre:
+                raise ValueError(f"A2_CLIP_VALIDATOR_NO_CLIP_NORM_SEMANTICS:{seed}:{index}")
+            if mutated or post != common_pre:
                 raise ValueError(f"A2_CLIP_VALIDATOR_NO_CLIP_MUTATION:{seed}:{index}")
-        elif clipped:
-            if before == after or post > threshold * (1.0 + 1e-5):
+        else:
+            if primitive_return is None or float(primitive_return) != legacy_pre:
+                raise ValueError(f"A2_CLIP_VALIDATOR_PRIMITIVE_RETURN:{arm}:{seed}:{index}")
+            if not math.isfinite(float(primitive_return)) or float(primitive_return) < 0:
+                raise ValueError(f"A2_CLIP_VALIDATOR_PRIMITIVE_RETURN:{arm}:{seed}:{index}")
+            if intervention and post > threshold * (1.0 + 1e-5):
                 raise ValueError(f"A2_CLIP_VALIDATOR_CLIP_TRANSFORM:{arm}:{seed}:{index}")
-        elif before != after:
-            raise ValueError(f"A2_CLIP_VALIDATOR_INACTIVE_CLIP_MUTATION:{arm}:{seed}:{index}")
+            if not intervention and post != common_pre:
+                raise ValueError(f"A2_CLIP_VALIDATOR_INACTIVE_CLIP_MUTATION:{arm}:{seed}:{index}")
 
 
 def _validate_position0(item: dict[str, Any], row: dict[str, Any], context: str) -> None:
@@ -418,8 +454,7 @@ def _validate_checkpoints(result: dict[str, Any]) -> None:
             raise ValueError(f"A2_CLIP_VALIDATOR_STATE_HASH:{key}")
     final_checkpoint = checkpoints[-1]
     if (
-        final_checkpoint["trained_canonical_sha256"]
-        != result["final_trained_canonical_sha256"]
+        final_checkpoint["trained_canonical_sha256"] != result["final_trained_canonical_sha256"]
         or final_checkpoint["optimizer_canonical_sha256"]
         != result["final_optimizer_canonical_sha256"]
     ):
@@ -466,6 +501,11 @@ def _gradient_evidence_projection(result: dict[str, Any]) -> list[dict[str, Any]
         "clipping_policy",
         "clip_threshold",
         "gradient_norm",
+        "pre_intervention_global_l2_norm",
+        "clip_primitive_return_norm",
+        "threshold_exceeded",
+        "gradient_mutated",
+        "intervention_applied",
         "post_clip_global_l2_norm",
         "clipping_occurred",
         "gradient_before_sha256",
@@ -487,7 +527,10 @@ def _gradient_evidence_commitment(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_control_equivalence(
-    payload: dict[str, Any], indexed: dict[tuple[str, int], dict[str, Any]]
+    payload: dict[str, Any],
+    indexed: dict[tuple[str, int], dict[str, Any]],
+    rows: list[dict[str, Any]],
+    dataset_hash: str,
 ) -> None:
     control = payload.get("control_equivalence")
     if not isinstance(control, dict) or control.get("required_status") != "PASS":
@@ -495,13 +538,20 @@ def _validate_control_equivalence(
     by_seed = control.get("by_seed")
     if not isinstance(by_seed, dict) or set(by_seed) != {str(seed) for seed in SEEDS}:
         raise ValueError("A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_COVERAGE")
+
     for seed in SEEDS:
         record = by_seed[str(seed)]
         candidate = _control_projection(indexed[("clip_1_0", seed)])
-        candidate_hash = sha256(candidate)
         reference = record.get("reference_projection")
-        if not isinstance(reference, dict) or reference != candidate:
-            raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_REFERENCE_DATA:{seed}")
+        independent, frozen_prefix = reconstruct_reference(
+            rows, seed=seed, dataset_hash=dataset_hash
+        )
+        if candidate != independent:
+            raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_INDEPENDENT_CANDIDATE:{seed}")
+        if not isinstance(reference, dict) or reference != independent:
+            raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_INDEPENDENT_REFERENCE:{seed}")
+
+        candidate_hash = sha256(candidate)
         reference_hash = sha256(reference)
         if record.get("status") != "PASS" or record.get("scope") != "WHOLE_300_UPDATE_TRAJECTORY":
             raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_STATUS:{seed}")
@@ -509,69 +559,58 @@ def _validate_control_equivalence(
             raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_CANDIDATE:{seed}")
         if record.get("reference_projection_sha256") != reference_hash:
             raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_REFERENCE:{seed}")
-        expected_prefix_hash = sha256(_control_prefix_projection(candidate))
+        expected_prefix_hash = sha256(_control_prefix_projection(independent))
         if record.get("prefix_9_update_projection_sha256") != expected_prefix_hash:
             raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_PREFIX:{seed}")
         if record.get("trace_fields") != list(REFERENCE_FIELDS):
             raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_FIELDS:{seed}")
         if (
-            record.get("candidate_checkpoints") != candidate["checkpoints"]
-            or record.get("reference_checkpoints") != candidate["checkpoints"]
+            record.get("candidate_checkpoints") != independent["checkpoints"]
+            or record.get("reference_checkpoints") != independent["checkpoints"]
         ):
             raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_CHECKPOINTS:{seed}")
-        if (
-            record.get("candidate_final_trained_canonical_sha256")
-            != candidate["final_trained_canonical_sha256"]
-        ):
-            raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_MODEL:{seed}")
-        if (
-            record.get("reference_final_trained_canonical_sha256")
-            != candidate["final_trained_canonical_sha256"]
-        ):
-            raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_REFERENCE_MODEL:{seed}")
-        if (
-            record.get("candidate_final_optimizer_canonical_sha256")
-            != candidate["final_optimizer_canonical_sha256"]
-        ):
-            raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_OPTIMIZER:{seed}")
-        if (
-            record.get("reference_final_optimizer_canonical_sha256")
-            != candidate["final_optimizer_canonical_sha256"]
-        ):
-            raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_REFERENCE_OPTIMIZER:{seed}")
-        if (
-            record.get("candidate_rescue_events") != candidate["rescue_events"]
-            or record.get("reference_rescue_events") != candidate["rescue_events"]
-        ):
-            raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_RESCUE:{seed}")
-        if (
-            record.get("candidate_rescue_persistence") != candidate["rescue_persistence"]
-            or record.get("reference_rescue_persistence") != candidate["rescue_persistence"]
-        ):
-            raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_PERSISTENCE:{seed}")
+        for prefix in ("candidate", "reference"):
+            if record.get(f"{prefix}_final_trained_canonical_sha256") != independent[
+                "final_trained_canonical_sha256"
+            ]:
+                raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_MODEL:{seed}:{prefix}")
+            if record.get(f"{prefix}_final_optimizer_canonical_sha256") != independent[
+                "final_optimizer_canonical_sha256"
+            ]:
+                raise ValueError(
+                    f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_OPTIMIZER:{seed}:{prefix}"
+                )
+            if record.get(f"{prefix}_rescue_events") != independent["rescue_events"]:
+                raise ValueError(f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_RESCUE:{seed}:{prefix}")
+            if record.get(f"{prefix}_rescue_persistence") != independent["rescue_persistence"]:
+                raise ValueError(
+                    f"A2_CLIP_VALIDATOR_CONTROL_EQUIVALENCE_PERSISTENCE:{seed}:{prefix}"
+                )
         historical = record.get("reference_historical_prefix_equivalence")
         if (
             not isinstance(historical, dict)
             or historical.get("status") != "PASS"
-            or historical.get("control") != historical.get("arm_prefix")
+            or historical.get("control") != frozen_prefix
+            or historical.get("arm_prefix") != frozen_prefix
         ):
             raise ValueError(f"A2_CLIP_VALIDATOR_HISTORICAL_PREFIX_EQUIVALENCE:{seed}")
 
 
 def _window_metrics(updates: list[dict[str, Any]]) -> dict[str, Any]:
-    norms = [float(update["gradient_norm"]) for update in updates]
-    clipped = [bool(update["clipping_occurred"]) for update in updates]
+    norms = [float(update["pre_intervention_global_l2_norm"]) for update in updates]
+    interventions = [bool(update["intervention_applied"]) for update in updates]
     effects = [
         max(
             0.0,
-            float(update["gradient_norm"]) - float(update["post_clip_global_l2_norm"]),
+            float(update["pre_intervention_global_l2_norm"])
+            - float(update["post_clip_global_l2_norm"]),
         )
         for update in updates
     ]
     return {
         "update_count": len(updates),
-        "clipped_update_count": sum(clipped),
-        "clipped_update_fraction": sum(clipped) / len(updates) if updates else None,
+        "clipped_update_count": sum(interventions),
+        "clipped_update_fraction": sum(interventions) / len(updates) if updates else None,
         "max_pre_clip_global_l2_norm": max(norms) if norms else None,
         "mean_pre_clip_global_l2_norm": statistics.fmean(norms) if norms else None,
         "median_pre_clip_global_l2_norm": statistics.median(norms) if norms else None,
@@ -623,7 +662,7 @@ def _cross_seed_clipping_aggregates(results: list[dict[str, Any]]) -> dict[str, 
             "full_trajectory": _window_metrics(updates),
             "clipped_update_count_by_seed": {
                 str(result["seed"]): sum(
-                    bool(update["clipping_occurred"]) for update in result["updates"]
+                    bool(update["intervention_applied"]) for update in result["updates"]
                 )
                 for result in arm_results
             },
@@ -654,8 +693,12 @@ def _contrasts(indexed: dict[tuple[str, int], dict[str, Any]]) -> dict[str, Any]
                 }
                 for key in ("position0_operator_rescue", "full_free_running_rescue")
             }
-            control_count = sum(bool(u["clipping_occurred"]) for u in control["updates"])
-            other_count = sum(bool(u["clipping_occurred"]) for u in other["updates"])
+            control_count = sum(
+                bool(update["intervention_applied"]) for update in control["updates"]
+            )
+            other_count = sum(
+                bool(update["intervention_applied"]) for update in other["updates"]
+            )
             by_seed[str(seed)] = {
                 "delta_first_position0_rescue_update_vs_clip_1_0": _event_delta(
                     other["rescue_events"]["first_position0_operator_rescue"],
@@ -689,7 +732,7 @@ def _pre_intervention_update_projection(update: dict[str, Any]) -> dict[str, Any
             "operator_target_count",
             "arg1_target_count",
             "arg2_target_count",
-            "gradient_norm",
+            "pre_intervention_global_l2_norm",
             "gradient_before_sha256",
             "gradient_hash_version",
             "operator_position_weight",
@@ -715,13 +758,13 @@ def _validate_intervention_consistency(
             if any(projection != projections[0] for projection in projections[1:]):
                 raise ValueError(f"A2_CLIP_VALIDATOR_PREINTERVENTION_DIVERGENCE:{seed}:{index}")
             identical_before_first_intervention += 1
-            if any(by_arm[arm]["updates"][index]["clipping_occurred"] for arm in ARMS):
+            if any(by_arm[arm]["updates"][index]["intervention_applied"] for arm in ARMS):
                 first_intervention = index
                 break
 
         clip5 = by_arm["clip_5_0"]
         no_clip = by_arm["no_clip"]
-        clip5_count = sum(bool(u["clipping_occurred"]) for u in clip5["updates"])
+        clip5_count = sum(bool(update["intervention_applied"]) for update in clip5["updates"])
         clip5_first_intervention = None
         clip5_noclip_identical = 0
         for index in range(EXPECTED_UPDATES):
@@ -732,20 +775,16 @@ def _validate_intervention_consistency(
                     f"A2_CLIP_VALIDATOR_CLIP5_NOCLIP_PREINTERVENTION:{seed}:{index}"
                 )
             clip5_noclip_identical += 1
-            if clip5["updates"][index]["clipping_occurred"]:
+            if clip5["updates"][index]["intervention_applied"]:
                 clip5_first_intervention = index
                 break
 
         expected_common = {
             "first_actual_or_pregradient_difference_update_index": first_intervention,
-            "all_arm_identical_preintervention_update_count": (
-                identical_before_first_intervention
-            ),
+            "all_arm_identical_preintervention_update_count": identical_before_first_intervention,
             "clip_5_0_clipped_update_count": clip5_count,
             "clip_5_0_first_actual_intervention_update_index": clip5_first_intervention,
-            "clip_5_0_vs_no_clip_identical_preintervention_update_count": (
-                clip5_noclip_identical
-            ),
+            "clip_5_0_vs_no_clip_identical_preintervention_update_count": clip5_noclip_identical,
         }
         for key, expected in expected_common.items():
             if actual[str(seed)].get(key) != expected:
@@ -755,13 +794,13 @@ def _validate_intervention_consistency(
             left = {
                 "losses": [
                     (
-                        u["operator_loss"],
-                        u["arg1_pointer_loss"],
-                        u["arg2_pointer_loss"],
-                        u["total_loss"],
-                        u["gradient_before_sha256"],
+                        update["operator_loss"],
+                        update["arg1_pointer_loss"],
+                        update["arg2_pointer_loss"],
+                        update["total_loss"],
+                        update["gradient_before_sha256"],
                     )
-                    for u in clip5["updates"]
+                    for update in clip5["updates"]
                 ],
                 "final_model": clip5["final_trained_canonical_sha256"],
                 "final_optimizer": clip5["final_optimizer_canonical_sha256"],
@@ -770,13 +809,13 @@ def _validate_intervention_consistency(
             right = {
                 "losses": [
                     (
-                        u["operator_loss"],
-                        u["arg1_pointer_loss"],
-                        u["arg2_pointer_loss"],
-                        u["total_loss"],
-                        u["gradient_before_sha256"],
+                        update["operator_loss"],
+                        update["arg1_pointer_loss"],
+                        update["arg2_pointer_loss"],
+                        update["total_loss"],
+                        update["gradient_before_sha256"],
                     )
-                    for u in no_clip["updates"]
+                    for update in no_clip["updates"]
                 ],
                 "final_model": no_clip["final_trained_canonical_sha256"],
                 "final_optimizer": no_clip["final_optimizer_canonical_sha256"],
@@ -871,9 +910,7 @@ def validate_claims_from_evidence(
         indexed[key] = result
     if set(indexed) != {(arm, seed) for arm in ARMS for seed in SEEDS}:
         raise ValueError("A2_CLIP_VALIDATOR_ARM_SEED_COVERAGE")
-    manifest_by_seed = {
-        seed: _expected_gradient_parameter_manifest(seed) for seed in SEEDS
-    }
+    manifest_by_seed = {seed: _expected_gradient_parameter_manifest(seed) for seed in SEEDS}
     for result in results:
         _validate_updates(result, rows, manifest_by_seed[int(result["seed"])])
         _validate_epochs(result, rows)
@@ -886,7 +923,12 @@ def validate_claims_from_evidence(
         if len(initializations) != 1:
             raise ValueError(f"A2_CLIP_VALIDATOR_INITIALIZATION_MISMATCH:{seed}")
 
-    _validate_control_equivalence(payload, indexed)
+    _validate_control_equivalence(
+        payload,
+        indexed,
+        rows_list,
+        dataset["frozen_dataset_lineage_hash"],
+    )
     expected_commitments = [_gradient_evidence_commitment(result) for result in results]
     if payload.get("gradient_evidence_commitments") != expected_commitments:
         raise ValueError("A2_CLIP_VALIDATOR_GRADIENT_EVIDENCE_COMMITMENTS")

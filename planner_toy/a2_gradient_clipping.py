@@ -75,6 +75,7 @@ SOURCE_FILES = tuple(
             "configs/fixed-cpu-target-1.0.json",
             "docs/evaluations/A2_GRADIENT_CLIPPING_CAUSAL_SPEC_RU.md",
             "planner_toy/a2_gradient_clipping.py",
+            "planner_toy/a2_gradient_clipping_reference.py",
             "planner_toy/a2_gradient_clipping_validator.py",
             "planner_toy/a2_sufficient_budget_task_order.py",
             "planner_toy/a2_sufficient_budget_task_order_validator.py",
@@ -101,6 +102,20 @@ CLIPPING_CONTRACT = {
     "gradient_hash_version": GRADIENT_HASH_VERSION,
     "gradient_hash_semantics": "name + dtype + shape + exact contiguous CPU bytes",
     "gradient_evidence_commitment_version": GRADIENT_EVIDENCE_COMMITMENT_VERSION,
+    "common_pre_intervention_norm_field": "pre_intervention_global_l2_norm",
+    "common_pre_intervention_norm_semantics": (
+        "read-only global L2 over the same ordered active named gradients before intervention"
+    ),
+    "legacy_reference_norm_field": "gradient_norm",
+    "legacy_reference_norm_semantics": (
+        "clip primitive return for clipped arms; retained only for accepted reference equivalence"
+    ),
+    "threshold_predicate_field": "threshold_exceeded",
+    "actual_mutation_field": "gradient_mutated",
+    "actual_intervention_field": "intervention_applied",
+    "actual_intervention_semantics": (
+        "clip arm and gradient_before_sha256 != gradient_after_sha256"
+    ),
 }
 
 
@@ -216,7 +231,6 @@ def _named_gradient_sha256(items: list[tuple[str, torch.Tensor]]) -> str:
 
 
 def _global_l2_norm(items: list[tuple[str, torch.Tensor]]) -> float:
-    # Read-only equivalent of the norm aggregation used by clip_grad_norm_ for finite L2 norms.
     norms = [torch.linalg.vector_norm(gradient, ord=2) for _, gradient in items]
     if not norms:
         return 0.0
@@ -327,31 +341,34 @@ def _train_arm(
                 )
                 loss += arg2_loss
             loss.backward()
+
             before_items = _gradient_items(optimizer_named)
             before_hash = _named_gradient_sha256(before_items)
+            common_pre_norm = _global_l2_norm(before_items)
+            primitive_return_norm: float | None = None
             if threshold is None:
-                pre_norm = _global_l2_norm(before_items)
+                legacy_pre_norm = common_pre_norm
             else:
-                # This exact call is the accepted canonical clipping primitive for clip_1_0.
-                pre_norm = float(
+                primitive_return_norm = float(
                     torch.nn.utils.clip_grad_norm_(
                         [parameter for _, parameter in optimizer_named], threshold
                     )
                 )
+                legacy_pre_norm = primitive_return_norm
+
             after_items = _gradient_items(optimizer_named)
             post_norm = _global_l2_norm(after_items)
             after_hash = _named_gradient_sha256(after_items)
-            clipping_occurred = threshold is not None and pre_norm > threshold
-            if threshold is None and before_hash != after_hash:
+            threshold_exceeded = threshold is not None and common_pre_norm > threshold
+            gradient_mutated = before_hash != after_hash
+            intervention_applied = threshold is not None and gradient_mutated
+            legacy_clipping_occurred = threshold is not None and legacy_pre_norm > threshold
+
+            if threshold is None and gradient_mutated:
                 raise RuntimeError(f"A2_CLIP_NO_CLIP_GRADIENT_MUTATION:{seed}:{len(updates)}")
-            if threshold is not None and not clipping_occurred and before_hash != after_hash:
-                raise RuntimeError(
-                    f"A2_CLIP_UNEXPECTED_GRADIENT_MUTATION:{arm}:{seed}:{len(updates)}"
-                )
-            if clipping_occurred and before_hash == after_hash:
-                raise RuntimeError(
-                    f"A2_CLIP_EXPECTED_GRADIENT_MUTATION_MISSING:{arm}:{seed}:{len(updates)}"
-                )
+            if intervention_applied and post_norm > threshold * (1.0 + 1e-5):
+                raise RuntimeError(f"A2_CLIP_POST_INTERVENTION_NORM:{arm}:{seed}:{len(updates)}")
+
             optimizer.step()
             updates.append(
                 {
@@ -365,11 +382,16 @@ def _train_arm(
                     "operator_target_count": int(flat.numel()),
                     "arg1_target_count": int(one.sum()),
                     "arg2_target_count": int(two.sum()),
-                    "gradient_norm": pre_norm,
+                    "gradient_norm": legacy_pre_norm,
                     "gradient_clip_norm": threshold,
                     "clipping_policy": arm,
                     "clip_threshold": threshold,
-                    "clipping_occurred": clipping_occurred,
+                    "clipping_occurred": legacy_clipping_occurred,
+                    "pre_intervention_global_l2_norm": common_pre_norm,
+                    "clip_primitive_return_norm": primitive_return_norm,
+                    "threshold_exceeded": threshold_exceeded,
+                    "gradient_mutated": gradient_mutated,
+                    "intervention_applied": intervention_applied,
                     "post_clip_global_l2_norm": post_norm,
                     "gradient_before_sha256": before_hash,
                     "gradient_after_sha256": after_hash,
@@ -430,10 +452,7 @@ def _reference_projection(result: dict[str, Any]) -> dict[str, Any]:
 def _candidate_control_projection(result: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(result)
     normalized["updates"] = [
-        {
-            **update,
-            "gradient_clip_norm": update["clip_threshold"],
-        }
+        {**update, "gradient_clip_norm": update["clip_threshold"]}
         for update in result["updates"]
     ]
     return _reference_projection(normalized)
@@ -490,6 +509,11 @@ def _gradient_evidence_projection(result: dict[str, Any]) -> list[dict[str, Any]
         "clipping_policy",
         "clip_threshold",
         "gradient_norm",
+        "pre_intervention_global_l2_norm",
+        "clip_primitive_return_norm",
+        "threshold_exceeded",
+        "gradient_mutated",
+        "intervention_applied",
         "post_clip_global_l2_norm",
         "clipping_occurred",
         "gradient_before_sha256",
@@ -511,16 +535,20 @@ def _gradient_evidence_commitment(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _window_metrics(updates: list[dict[str, Any]]) -> dict[str, Any]:
-    norms = [float(update["gradient_norm"]) for update in updates]
-    clipped = [bool(update["clipping_occurred"]) for update in updates]
+    norms = [float(update["pre_intervention_global_l2_norm"]) for update in updates]
+    interventions = [bool(update["intervention_applied"]) for update in updates]
     effects = [
-        max(0.0, float(update["gradient_norm"]) - float(update["post_clip_global_l2_norm"]))
+        max(
+            0.0,
+            float(update["pre_intervention_global_l2_norm"])
+            - float(update["post_clip_global_l2_norm"]),
+        )
         for update in updates
     ]
     return {
         "update_count": len(updates),
-        "clipped_update_count": sum(clipped),
-        "clipped_update_fraction": sum(clipped) / len(updates) if updates else None,
+        "clipped_update_count": sum(interventions),
+        "clipped_update_fraction": sum(interventions) / len(updates) if updates else None,
         "max_pre_clip_global_l2_norm": max(norms) if norms else None,
         "mean_pre_clip_global_l2_norm": statistics.fmean(norms) if norms else None,
         "median_pre_clip_global_l2_norm": statistics.median(norms) if norms else None,
@@ -570,7 +598,7 @@ def _cross_seed_clipping_aggregates(results: list[dict[str, Any]]) -> dict[str, 
             "full_trajectory": _window_metrics(updates),
             "clipped_update_count_by_seed": {
                 str(result["seed"]): sum(
-                    bool(update["clipping_occurred"]) for update in result["updates"]
+                    bool(update["intervention_applied"]) for update in result["updates"]
                 )
                 for result in arm_results
             },
@@ -595,9 +623,11 @@ def _paired_contrasts(results: list[dict[str, Any]]) -> dict[str, Any]:
             control_events = control["rescue_events"]
             other_events = other["rescue_events"]
             control_clipped = sum(
-                bool(update["clipping_occurred"]) for update in control["updates"]
+                bool(update["intervention_applied"]) for update in control["updates"]
             )
-            other_clipped = sum(bool(update["clipping_occurred"]) for update in other["updates"])
+            other_clipped = sum(
+                bool(update["intervention_applied"]) for update in other["updates"]
+            )
             persistence = {}
             for key in ("position0_operator_rescue", "full_free_running_rescue"):
                 persistence[key] = {
@@ -640,7 +670,7 @@ def _pre_intervention_update_projection(update: dict[str, Any]) -> dict[str, Any
             "operator_target_count",
             "arg1_target_count",
             "arg2_target_count",
-            "gradient_norm",
+            "pre_intervention_global_l2_norm",
             "gradient_before_sha256",
             "gradient_hash_version",
             "operator_position_weight",
@@ -663,13 +693,13 @@ def _intervention_consistency(results: list[dict[str, Any]]) -> dict[str, Any]:
             if any(projection != projections[0] for projection in projections[1:]):
                 raise RuntimeError(f"A2_CLIP_PREINTERVENTION_DIVERGENCE:{seed}:{index}")
             identical_before_first_intervention += 1
-            if any(by_arm[arm]["updates"][index]["clipping_occurred"] for arm in ARMS):
+            if any(by_arm[arm]["updates"][index]["intervention_applied"] for arm in ARMS):
                 first_intervention = index
                 break
 
         clip5 = by_arm["clip_5_0"]
         no_clip = by_arm["no_clip"]
-        clip5_count = sum(bool(update["clipping_occurred"]) for update in clip5["updates"])
+        clip5_count = sum(bool(update["intervention_applied"]) for update in clip5["updates"])
         clip5_first_intervention = None
         clip5_noclip_identical = 0
         for index in range(EXPECTED_UPDATES):
@@ -678,7 +708,7 @@ def _intervention_consistency(results: list[dict[str, Any]]) -> dict[str, Any]:
             if left != right:
                 raise RuntimeError(f"A2_CLIP_CLIP5_NOCLIP_PREINTERVENTION:{seed}:{index}")
             clip5_noclip_identical += 1
-            if clip5["updates"][index]["clipping_occurred"]:
+            if clip5["updates"][index]["intervention_applied"]:
                 clip5_first_intervention = index
                 break
 
@@ -687,13 +717,13 @@ def _intervention_consistency(results: list[dict[str, Any]]) -> dict[str, Any]:
             left = {
                 "losses": [
                     (
-                        u["operator_loss"],
-                        u["arg1_pointer_loss"],
-                        u["arg2_pointer_loss"],
-                        u["total_loss"],
-                        u["gradient_before_sha256"],
+                        update["operator_loss"],
+                        update["arg1_pointer_loss"],
+                        update["arg2_pointer_loss"],
+                        update["total_loss"],
+                        update["gradient_before_sha256"],
                     )
-                    for u in clip5["updates"]
+                    for update in clip5["updates"]
                 ],
                 "final_model": clip5["final_trained_canonical_sha256"],
                 "final_optimizer": clip5["final_optimizer_canonical_sha256"],
@@ -702,13 +732,13 @@ def _intervention_consistency(results: list[dict[str, Any]]) -> dict[str, Any]:
             right = {
                 "losses": [
                     (
-                        u["operator_loss"],
-                        u["arg1_pointer_loss"],
-                        u["arg2_pointer_loss"],
-                        u["total_loss"],
-                        u["gradient_before_sha256"],
+                        update["operator_loss"],
+                        update["arg1_pointer_loss"],
+                        update["arg2_pointer_loss"],
+                        update["total_loss"],
+                        update["gradient_before_sha256"],
                     )
-                    for u in no_clip["updates"]
+                    for update in no_clip["updates"]
                 ],
                 "final_model": no_clip["final_trained_canonical_sha256"],
                 "final_optimizer": no_clip["final_optimizer_canonical_sha256"],
@@ -719,14 +749,10 @@ def _intervention_consistency(results: list[dict[str, Any]]) -> dict[str, Any]:
             no_effect_equivalence = {"status": "PASS", "projection_sha256": sha256(left)}
         output[str(seed)] = {
             "first_actual_or_pregradient_difference_update_index": first_intervention,
-            "all_arm_identical_preintervention_update_count": (
-                identical_before_first_intervention
-            ),
+            "all_arm_identical_preintervention_update_count": identical_before_first_intervention,
             "clip_5_0_clipped_update_count": clip5_count,
             "clip_5_0_first_actual_intervention_update_index": clip5_first_intervention,
-            "clip_5_0_vs_no_clip_identical_preintervention_update_count": (
-                clip5_noclip_identical
-            ),
+            "clip_5_0_vs_no_clip_identical_preintervention_update_count": clip5_noclip_identical,
             "clip_5_0_vs_no_clip_no_effect_equivalence": no_effect_equivalence,
         }
     return output
