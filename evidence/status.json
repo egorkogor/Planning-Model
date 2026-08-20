@@ -1,0 +1,9 @@
+{
+  "go_latent": "NOT EVALUATED",
+  "implementation_sha": "ee773479cbbc84eab52f93996bc8beb64a51453c",
+  "science_policy": "NO_RERUN_PERMISSION_GRANTED",
+  "task": "preflight-v1",
+  "terminal_status": "SUCCEEDED",
+  "valid": true,
+  "version": "reviewer-execution-bridge/1.0"
+}

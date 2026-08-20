@@ -1,0 +1,10 @@
+{
+  "merge_forbidden": true,
+  "orphan_history": true,
+  "request_id": "preflight-rollout-20260821-gradient-01",
+  "run_id": 32428296061,
+  "source_branch": false,
+  "transport_ref": "refs/heads/evidence/reviewer-bridge/preflight-rollout-20260821-gradient-01",
+  "version": "reviewer-execution-bridge/1.0",
+  "workflow_sha": "ee773479cbbc84eab52f93996bc8beb64a51453c"
+}

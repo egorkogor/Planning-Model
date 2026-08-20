@@ -1,0 +1,10 @@
+{
+  "archive_sha256": "sha256:cac2c8c228fd059eec885e9825f66cec75b07c7a7a169813a8cc7188b32e5309",
+  "implementation_sha": "ee773479cbbc84eab52f93996bc8beb64a51453c",
+  "manifest_sha256": "sha256:6e10d73a02f77107f3ccbc2879536976dcd74e987dbd6f07a059567d997053dc",
+  "request_id": "preflight-rollout-20260821-gradient-01",
+  "task": "preflight-v1",
+  "terminal_status": "SUCCEEDED",
+  "transport_ref": "refs/heads/evidence/reviewer-bridge/preflight-rollout-20260821-gradient-01",
+  "valid": true
+}

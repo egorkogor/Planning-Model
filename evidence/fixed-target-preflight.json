@@ -1,0 +1,615 @@
+{
+  "implementation_commit": "ee773479cbbc84eab52f93996bc8beb64a51453c",
+  "runtime_contract": {
+    "ATEN_CPU_CAPABILITY": "avx2",
+    "MKL_CBWR": "COMPATIBLE",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "actual_atten_cpu_capability": "AVX2",
+    "deterministic_algorithms": true,
+    "deterministic_warn_only": false,
+    "fixed_target_contract_sha256": "sha256:f087cc2577906d784cb6aca7a14f3aaa3a0bd90056adac8d13b67d983db0eb62",
+    "fixed_target_contract_version": "toy-quality-fixed-cpu-target/1.0",
+    "mkldnn_enabled": false,
+    "optimizer_class": "AdamW",
+    "optimizer_foreach": false,
+    "optimizer_fused": false,
+    "runtime_version": "toy-quality-canonical-cpu-runtime/1.1",
+    "torch_num_interop_threads": 1,
+    "torch_num_threads": 1
+  },
+  "runtime_contract_sha256": "sha256:3a33520afa6ba236794a81e194bae511d87364bf66a9392cdae6b79af9518d1a",
+  "source_inventory": {
+    "files": [
+      {
+        "path": ".github/workflows/fixed-target-acceptance.yml",
+        "sha256": "sha256:5b47dc7f2c0fa3a09bb5d9865468ee13f1bf54c09c8eedff29af4197328a3731"
+      },
+      {
+        "path": "docs/architecture/planner_module_inventory_v1.yaml",
+        "sha256": "sha256:f111f69265d152b43a583536736c337f3b1c2a893c740b7c141a533b8bf55aef"
+      },
+      {
+        "path": "docs/architecture/task_encoding_v1.yaml",
+        "sha256": "sha256:9e29b8ec07c6be71c5aaadbb93301bd1f608bd0890d035a5d0d6f3f4d6cb0e69"
+      },
+      {
+        "path": "docs/evaluations/data/a2_a3_a4_heldout_summary.json",
+        "sha256": "sha256:0a9c0cb0ee98fa4d458cb0a6fafa2e9e78bb0771a223d46a035f458c566df050"
+      },
+      {
+        "path": "planner_toy/__init__.py",
+        "sha256": "sha256:9213ff731148d183858181d12c112bed30f4195e19b41267a2ac98cd9d6f4ee6"
+      },
+      {
+        "path": "planner_toy/canonical.py",
+        "sha256": "sha256:f30915ff36024faba5e64809f02e764f938b3406f9088b30388443b7f738e6dc"
+      },
+      {
+        "path": "planner_toy/canonical_runtime.py",
+        "sha256": "sha256:4d610cac81858d1d6dd7e18a64fbb89cc6f2d80c33e72dd10639fd9d91f0bf59"
+      },
+      {
+        "path": "planner_toy/dataset.py",
+        "sha256": "sha256:07c528bcd6b1f395c0845b3edd6e0bbc02af5002ca97d9c88e4877a6f2969755"
+      },
+      {
+        "path": "planner_toy/domain.py",
+        "sha256": "sha256:d4e80f77d8e648e2d3832cece07c74714814ae2cb25685f80133d19231fb1d69"
+      },
+      {
+        "path": "planner_toy/e2e.py",
+        "sha256": "sha256:a472d2e62ad8d68e1e0317afd1d40bbd5b049af233b91b2b281d5c2ee8932a26"
+      },
+      {
+        "path": "planner_toy/model.py",
+        "sha256": "sha256:63c5e874dc7bd2b11957458c886b8313c63f8c4901be8406079e287b1012fe57"
+      },
+      {
+        "path": "planner_toy/numeric_identity.py",
+        "sha256": "sha256:9d7867f7def13fc76595a166b23d31365883116bb80ddb8b7a6ca6a6639a297e"
+      },
+      {
+        "path": "planner_toy/quality.py",
+        "sha256": "sha256:d7a00853073c8357a31d6e6d438c353a55c6a16ad339e7108f3e2ef5d88a7bd4"
+      },
+      {
+        "path": "planner_toy/schemas/fixed_target_acceptance.schema.json",
+        "sha256": "sha256:a362401c03bfee27bfe0b57c68cc89996ccd9c0dbbb2cf759d68e81828562d2b"
+      },
+      {
+        "path": "planner_toy/schemas/fixed_target_cpu_target.schema.json",
+        "sha256": "sha256:b3325a5483b630d5524c1348c777318d99623ca77e96efc5c97a42f7055d26f3"
+      },
+      {
+        "path": "planner_toy/schemas/fixed_target_execution_evidence.schema.json",
+        "sha256": "sha256:778e532c87a51b1fc42a30da935e9e356d795bb0303f7cf6bc46d5c2ee417d2a"
+      },
+      {
+        "path": "planner_toy/schemas/fixed_target_observation.schema.json",
+        "sha256": "sha256:14ce75b641f0291ad303e8c0a1c7f4f04a7d1f1e33634f7c662cc144e1b52725"
+      },
+      {
+        "path": "planner_toy/schemas/fixed_target_runtime.schema.json",
+        "sha256": "sha256:6687596a654b55d3cfdd28e07c6d72d5f50a28ad83602bfe18ee3d5109e15b47"
+      },
+      {
+        "path": "planner_toy/schemas/fixed_target_scientific_policy.schema.json",
+        "sha256": "sha256:1782cc7cb743bb6b76dd5c9b51b57d0b972b5e3ad68d9be2b76dee318a91d2d7"
+      },
+      {
+        "path": "planner_toy/schemas/toy_attempt_log.schema.json",
+        "sha256": "sha256:be6035f36e931a326e6ab79a20561ef0b99ae7f14c44954bcefbc374d1c91cf5"
+      },
+      {
+        "path": "planner_toy/schemas/toy_checkpoint_manifest.schema.json",
+        "sha256": "sha256:7c7a1056eef646814a94151eee835cad98e43ab8fcaaafcb1d176e86303d280f"
+      },
+      {
+        "path": "planner_toy/schemas/toy_development_config.schema.json",
+        "sha256": "sha256:ec90541caa31ead988dc56215c7d551c243f7b8cd4e5e178bbe4a09758263619"
+      },
+      {
+        "path": "planner_toy/schemas/toy_episode_log.schema.json",
+        "sha256": "sha256:b44ee2f4869c01611c5e16b1da315861761a74dae2fe70320ac9965c005d4a7f"
+      },
+      {
+        "path": "planner_toy/schemas/toy_episode_plan_manifest.schema.json",
+        "sha256": "sha256:179b6735c00fc040e35af96150f02d7a4b1e5e3955ea98998664d103ff7f876b"
+      },
+      {
+        "path": "planner_toy/schemas/toy_evaluation_result.schema.json",
+        "sha256": "sha256:e75aea44d9651a6bc63dadf5f521b3360bc130671879310e6f1ab0dbe8d3324d"
+      },
+      {
+        "path": "planner_toy/schemas/toy_optimizer_evidence.schema.json",
+        "sha256": "sha256:535a80b9d06608c8f88d946edba6987245440442587597d79771d3c6c85db767"
+      },
+      {
+        "path": "planner_toy/schemas/toy_planner_request.schema.json",
+        "sha256": "sha256:151261409b04b6cbd61e933b86c88ca969eb6c6532ffff1a88685e3c197a0852"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_aggregate_summary.schema.json",
+        "sha256": "sha256:84d484ca630afa8973d70e9fb0b4dbc609fee21f16fa2875d3ad16dfe15f78a8"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_attempt_log.schema.json",
+        "sha256": "sha256:a49d944df6601f7364ef54d57638124dfce3d28ff24dcc925845ae0f44b6ee7f"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_checkpoint_manifest.schema.json",
+        "sha256": "sha256:8133f5ac39123542a93cb873480ad599fb8cd39937d44a9b26381badbfe0cd14"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_compact_summary.schema.json",
+        "sha256": "sha256:2c45726211a8908be394bdba8b7d06dd26b17bc6349ad5abd6e5555acce6d3da"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_dataset_manifest.schema.json",
+        "sha256": "sha256:1682491891d1b3a90f7a9050838797cc0910f81bc31efa7bf981c5a2f044a666"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_episode_log.schema.json",
+        "sha256": "sha256:be5c0d58c94b7d80cd579db3002f3bd6d5aafcf3d9623fb38651770af0b95e10"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_episode_plan_manifest.schema.json",
+        "sha256": "sha256:a66f800b05df57d7ec00a26267e1f50d342490401556c36883d502b3f3737dad"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_evaluation.schema.json",
+        "sha256": "sha256:11c544d6a318cffb89900f38ad3e14b5a48f673ad870f11c34901f1d696a2c7e"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_evaluation_manifest.schema.json",
+        "sha256": "sha256:105ced7165a1524d353ce1b86ecdc10bdc585a888e322d076a180e73af93ad24"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_evaluation_result.schema.json",
+        "sha256": "sha256:52ade9cb1a3a8fc321499905144c0b279c724c04a6c6dcb39d56550d5b85f3dd"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_optimizer_evidence.schema.json",
+        "sha256": "sha256:ff2bfcc2415b776303c57329d336f6d53404bfbdac206d9f58f651b877e0310d"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_paired_comparison.schema.json",
+        "sha256": "sha256:53d8ae606ee991a26716a9fa4bda500c5565c47729b4dc4c3fe8e7e320cee8ee"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_per_seed_summary.schema.json",
+        "sha256": "sha256:abed386f480e32b13bb693ff8b763e7f0b76719a50d8e9a70adb8902b273b8eb"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_planner_request.schema.json",
+        "sha256": "sha256:a5fdc5a89b6ad1a04c1f5de6a47aa808ab27170b860bcacceb302a08851429e6"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_semantic_trace.schema.json",
+        "sha256": "sha256:85e5c755ca63090dddbdf56b009f5f7325e83a9fd4071cfde6cb772f1f962daa"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_structural_breakdown.schema.json",
+        "sha256": "sha256:a963179522234c39d29665724597ef2559932be12dd5bb27bdad45ce05c58450"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_task_result.schema.json",
+        "sha256": "sha256:f2ae58278eabc4172d51f8530a676e1c22177370a9c29b1d94aa8f63c28042fd"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_training_config.schema.json",
+        "sha256": "sha256:516d1c7c54dd60abe8b4d992650fa0bf896319404e2d25640ceb24f6b0270221"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_training_report.schema.json",
+        "sha256": "sha256:4a2a06c24d9019fe19456bceca7934479d156a449988ebfd832a83aac44655cd"
+      },
+      {
+        "path": "planner_toy/schemas/toy_quality_work_plan.schema.json",
+        "sha256": "sha256:22015b60d4e022a2de0707f90d5b37e097b08e74f9f4d0abf16caba7c817f5b5"
+      },
+      {
+        "path": "planner_toy/schemas/toy_run_result.schema.json",
+        "sha256": "sha256:3805ad3a1b1adbfeeb5055b620a8eef5e9620a47b0094c80a5bdf032157f7833"
+      },
+      {
+        "path": "planner_toy/schemas/toy_semantic_trace.schema.json",
+        "sha256": "sha256:cbadf6ff106d20ecc95b76784cb7985d282a4549ed423c5ccef152d840a07c2e"
+      },
+      {
+        "path": "planner_toy/schemas/toy_training_report.schema.json",
+        "sha256": "sha256:467706cc0d64b6afcdde07fcbb50883ba885a0997d571ba72b7af00777f655a3"
+      },
+      {
+        "path": "planner_toy/schemas/toy_work_plan.schema.json",
+        "sha256": "sha256:4ae7924740496a5d387af8a4fde16a69e5df5d897b1418327f8892b5aa661093"
+      },
+      {
+        "path": "planner_toy/semantic.py",
+        "sha256": "sha256:cb3bf0dfa030dd436e3942f8ca5e3d83f65b965117cea387fd79d2b98d1d32d7"
+      },
+      {
+        "path": "planner_toy/training.py",
+        "sha256": "sha256:4713ed373b085464d4201feceb76c6e1ad63ef8c9913f582b84e69347391a20c"
+      },
+      {
+        "path": "pyproject.toml",
+        "sha256": "sha256:e91d41e37ac9a077caac7f9d5be9f355a7cce1eb3a65e643f1f37257a082942e"
+      },
+      {
+        "path": "requirements.lock",
+        "sha256": "sha256:883c8e262c6f3ea917239010be08ac0064ab67de70c1caad7bb98fe9f0b68401"
+      },
+      {
+        "path": "scripts/__init__.py",
+        "sha256": "sha256:0189425887fdf24f42ca198289cde90841a026e54d4d841cf788a18f299e2957"
+      },
+      {
+        "path": "scripts/fixed_target_contract.py",
+        "sha256": "sha256:0c2c54c7b01cd16e0e131272c3f32bf43179eda0fd9f9dd5b42cdc1197fb9830"
+      },
+      {
+        "path": "scripts/run_fixed_target_acceptance.py",
+        "sha256": "sha256:310e40b702611c3bb6719cd4f33ba685a4b2e0502a475d861890eae44d37e99b"
+      },
+      {
+        "path": "scripts/run_toy_quality_evaluation.py",
+        "sha256": "sha256:eec6cdb13f3326ddac75facb164298b126ef4774e71aa8d3856239fefbebe667"
+      }
+    ],
+    "implementation_commit": "ee773479cbbc84eab52f93996bc8beb64a51453c",
+    "source_inventory_sha256": "sha256:be0dca02b1e70dcb128222bb589bbb3105eefd9b5600eded176380058fb6e244",
+    "source_inventory_version": "toy-quality-fixed-target-source-inventory/1.0"
+  },
+  "target_contract": {
+    "ATEN_CPU_CAPABILITY": "avx2",
+    "MKL_CBWR": "COMPATIBLE",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "actual_atten_cpu_capability": "AVX2",
+    "architecture": "x86_64",
+    "cpu_family": "6",
+    "cpu_model": "143",
+    "cpu_model_name": "Intel(R) Xeon(R) Platinum 8488C",
+    "cpu_stepping": "8",
+    "cpu_vendor": "GenuineIntel",
+    "deterministic_algorithms": true,
+    "deterministic_warn_only": false,
+    "forbidden_or_irrelevant_flags_policy": {
+      "forbidden_flags": [],
+      "mode": "ignore-unlisted-reject-forbidden"
+    },
+    "kernel_policy": {
+      "mode": "exact",
+      "value": "6.17.0-1017-aws"
+    },
+    "logical_cpu_count_policy": {
+      "mode": "exact",
+      "value": 2
+    },
+    "microcode_policy": {
+      "mode": "exact",
+      "value": "0x2b000661"
+    },
+    "mkl_available": true,
+    "mkldnn_available": true,
+    "mkldnn_enabled": false,
+    "openmp_available": true,
+    "optimizer_foreach": false,
+    "optimizer_fused": false,
+    "os": "Linux",
+    "os_version": "Ubuntu 24.04.4 LTS",
+    "pip_version": "24.0",
+    "python_build": [
+      "main",
+      "Jun 19 2026 12:46:00"
+    ],
+    "python_compiler": "GCC 13.3.0",
+    "python_implementation": "CPython",
+    "python_version": "3.12.3",
+    "required_cpu_flags": [
+      "3dnowprefetch",
+      "abm",
+      "adx",
+      "aes",
+      "amx_bf16",
+      "amx_int8",
+      "amx_tile",
+      "apic",
+      "arat",
+      "arch_capabilities",
+      "avx",
+      "avx2",
+      "avx512_bf16",
+      "avx512_bitalg",
+      "avx512_fp16",
+      "avx512_vbmi2",
+      "avx512_vnni",
+      "avx512_vpopcntdq",
+      "avx512bw",
+      "avx512cd",
+      "avx512dq",
+      "avx512f",
+      "avx512ifma",
+      "avx512vbmi",
+      "avx512vl",
+      "avx_vnni",
+      "bmi1",
+      "bmi2",
+      "cldemote",
+      "clflush",
+      "clflushopt",
+      "clwb",
+      "cmov",
+      "constant_tsc",
+      "cpuid",
+      "cpuid_fault",
+      "cx16",
+      "cx8",
+      "de",
+      "erms",
+      "f16c",
+      "flush_l1d",
+      "fma",
+      "fpu",
+      "fsgsbase",
+      "fxsr",
+      "gfni",
+      "ht",
+      "hypervisor",
+      "ibpb",
+      "ibrs",
+      "ibrs_enhanced",
+      "ida",
+      "invpcid",
+      "lahf_lm",
+      "lm",
+      "mca",
+      "mce",
+      "md_clear",
+      "mmx",
+      "movbe",
+      "movdir64b",
+      "movdiri",
+      "msr",
+      "mtrr",
+      "nonstop_tsc",
+      "nopl",
+      "nx",
+      "ospke",
+      "pae",
+      "pat",
+      "pcid",
+      "pclmulqdq",
+      "pdcm",
+      "pdpe1gb",
+      "pge",
+      "pku",
+      "pni",
+      "popcnt",
+      "pse",
+      "pse36",
+      "rdpid",
+      "rdrand",
+      "rdseed",
+      "rdtscp",
+      "rep_good",
+      "sep",
+      "serialize",
+      "sha_ni",
+      "smap",
+      "smep",
+      "ss",
+      "ssbd",
+      "sse",
+      "sse2",
+      "sse4_1",
+      "sse4_2",
+      "ssse3",
+      "stibp",
+      "syscall",
+      "tme",
+      "tsc",
+      "tsc_adjust",
+      "tsc_deadline_timer",
+      "tsc_known_freq",
+      "umip",
+      "vaes",
+      "vme",
+      "vpclmulqdq",
+      "waitpkg",
+      "wbnoinvd",
+      "x2apic",
+      "xgetbv1",
+      "xsave",
+      "xsavec",
+      "xsaveopt",
+      "xsaves",
+      "xtopology"
+    ],
+    "required_runner_labels": [
+      "linux",
+      "planning-model-canonical-cpu-v1",
+      "self-hosted",
+      "x64"
+    ],
+    "runner_image": "planning-model-canonical-cpu-v1|provider=aws-ec2|instance=i-0ef4e446bfb12ce21|ami=ami-05bfa4a7765f38076|type=m7i-flex.large|runtime=1.1|torch=2.12.0+cpu",
+    "runner_type": "self-hosted-dedicated",
+    "target_contract_version": "toy-quality-fixed-cpu-target/1.0",
+    "target_name": "planning-model-canonical-cpu-v1",
+    "torch_build_configuration_sha256": "sha256:7e6be40c3827e6ae8a91057472c3f401a6fe4a382bd1bf5b332e735261334745",
+    "torch_num_interop_threads": 1,
+    "torch_num_threads": 1,
+    "torch_version": "2.12.0+cpu"
+  },
+  "target_contract_sha256": "sha256:f087cc2577906d784cb6aca7a14f3aaa3a0bd90056adac8d13b67d983db0eb62",
+  "target_observation": {
+    "ATEN_CPU_CAPABILITY": "avx2",
+    "MKL_CBWR": "COMPATIBLE",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "actual_atten_cpu_capability": "AVX2",
+    "architecture": "x86_64",
+    "cpu_family": "6",
+    "cpu_flags": [
+      "3dnowprefetch",
+      "abm",
+      "adx",
+      "aes",
+      "amx_bf16",
+      "amx_int8",
+      "amx_tile",
+      "apic",
+      "arat",
+      "arch_capabilities",
+      "avx",
+      "avx2",
+      "avx512_bf16",
+      "avx512_bitalg",
+      "avx512_fp16",
+      "avx512_vbmi2",
+      "avx512_vnni",
+      "avx512_vpopcntdq",
+      "avx512bw",
+      "avx512cd",
+      "avx512dq",
+      "avx512f",
+      "avx512ifma",
+      "avx512vbmi",
+      "avx512vl",
+      "avx_vnni",
+      "bmi1",
+      "bmi2",
+      "cldemote",
+      "clflush",
+      "clflushopt",
+      "clwb",
+      "cmov",
+      "constant_tsc",
+      "cpuid",
+      "cpuid_fault",
+      "cx16",
+      "cx8",
+      "de",
+      "erms",
+      "f16c",
+      "flush_l1d",
+      "fma",
+      "fpu",
+      "fsgsbase",
+      "fxsr",
+      "gfni",
+      "ht",
+      "hypervisor",
+      "ibpb",
+      "ibrs",
+      "ibrs_enhanced",
+      "ida",
+      "invpcid",
+      "lahf_lm",
+      "lm",
+      "mca",
+      "mce",
+      "md_clear",
+      "mmx",
+      "movbe",
+      "movdir64b",
+      "movdiri",
+      "msr",
+      "mtrr",
+      "nonstop_tsc",
+      "nopl",
+      "nx",
+      "ospke",
+      "pae",
+      "pat",
+      "pcid",
+      "pclmulqdq",
+      "pdcm",
+      "pdpe1gb",
+      "pge",
+      "pku",
+      "pni",
+      "popcnt",
+      "pse",
+      "pse36",
+      "rdpid",
+      "rdrand",
+      "rdseed",
+      "rdtscp",
+      "rep_good",
+      "sep",
+      "serialize",
+      "sha_ni",
+      "smap",
+      "smep",
+      "ss",
+      "ssbd",
+      "sse",
+      "sse2",
+      "sse4_1",
+      "sse4_2",
+      "ssse3",
+      "stibp",
+      "syscall",
+      "tme",
+      "tsc",
+      "tsc_adjust",
+      "tsc_deadline_timer",
+      "tsc_known_freq",
+      "umip",
+      "vaes",
+      "vme",
+      "vpclmulqdq",
+      "waitpkg",
+      "wbnoinvd",
+      "x2apic",
+      "xgetbv1",
+      "xsave",
+      "xsavec",
+      "xsaveopt",
+      "xsaves",
+      "xtopology"
+    ],
+    "cpu_model": "143",
+    "cpu_model_name": "Intel(R) Xeon(R) Platinum 8488C",
+    "cpu_stepping": "8",
+    "cpu_vendor": "GenuineIntel",
+    "deterministic_algorithms": true,
+    "deterministic_warn_only": false,
+    "kernel_version": "6.17.0-1017-aws",
+    "logical_cpu_count": 2,
+    "microcode": "0x2b000661",
+    "mkl_available": true,
+    "mkldnn_available": true,
+    "mkldnn_enabled": false,
+    "observation_sha256": "sha256:f91835aaec8de55e2e06761d5cd0de015a5838d83aa673badb6147213692f7ba",
+    "observation_version": "toy-quality-fixed-cpu-target-observation/1.0",
+    "openmp_available": true,
+    "os": "Linux",
+    "os_version": "Ubuntu 24.04.4 LTS",
+    "pip_version": "24.0",
+    "python_build": [
+      "main",
+      "Jun 19 2026 12:46:00"
+    ],
+    "python_compiler": "GCC 13.3.0",
+    "python_implementation": "CPython",
+    "python_version": "3.12.3",
+    "runner_image": "planning-model-canonical-cpu-v1|provider=aws-ec2|instance=i-0ef4e446bfb12ce21|ami=ami-05bfa4a7765f38076|type=m7i-flex.large|runtime=1.1|torch=2.12.0+cpu",
+    "runner_type": "self-hosted-dedicated",
+    "target_contract_sha256": "sha256:f087cc2577906d784cb6aca7a14f3aaa3a0bd90056adac8d13b67d983db0eb62",
+    "target_contract_version": "toy-quality-fixed-cpu-target/1.0",
+    "torch_build_configuration_sha256": "sha256:7e6be40c3827e6ae8a91057472c3f401a6fe4a382bd1bf5b332e735261334745",
+    "torch_num_interop_threads": 1,
+    "torch_num_threads": 1,
+    "torch_version": "2.12.0+cpu"
+  }
+}
