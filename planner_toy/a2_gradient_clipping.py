@@ -66,6 +66,8 @@ OUTPUT_MARKDOWN = "A2_GRADIENT_CLIPPING_CAUSAL.md"
 INTERPRETATION_LABEL = "SUPPORTED HYPOTHESIS / NOT PROVEN"
 GRADIENT_HASH_VERSION = "a2-named-gradients-exact/1.0"
 GRADIENT_EVIDENCE_COMMITMENT_VERSION = "a2-gradient-evidence-commitment/1.0"
+INACTIVE_GRADIENT_MARKER = b"NO_GRAD"
+ACTIVE_GRADIENT_MARKER = b"GRAD"
 ROOT = Path(__file__).parents[1]
 SOURCE_FILES = tuple(
     sorted(
@@ -187,11 +189,12 @@ def _runtime() -> dict[str, Any]:
 
 def _gradient_items(
     optimizer_named: list[tuple[str, torch.Tensor]],
-) -> list[tuple[str, torch.Tensor]]:
-    items = []
+) -> list[tuple[str, torch.Tensor | None]]:
+    items: list[tuple[str, torch.Tensor | None]] = []
     for name, parameter in optimizer_named:
         if parameter.grad is None:
-            raise RuntimeError(f"A2_CLIP_ACTIVE_GRADIENT_MISSING:{name}")
+            items.append((name, None))
+            continue
         gradient = parameter.grad.detach()
         if not torch.isfinite(gradient).all().item():
             raise RuntimeError(f"A2_CLIP_NONFINITE_GRADIENT:{name}")
@@ -213,14 +216,20 @@ def _gradient_parameter_manifest(
     ]
 
 
-def _named_gradient_sha256(items: list[tuple[str, torch.Tensor]]) -> str:
+def _named_gradient_sha256(items: list[tuple[str, torch.Tensor | None]]) -> str:
     digest = hashlib.sha256()
     digest.update(GRADIENT_HASH_VERSION.encode("ascii") + b"\0")
     for name, gradient in items:
-        tensor = gradient.detach().cpu().contiguous()
         name_b = name.encode("utf-8")
-        dtype_b = str(tensor.dtype).encode("ascii")
         digest.update(len(name_b).to_bytes(8, "big") + name_b)
+        if gradient is None:
+            digest.update(len(INACTIVE_GRADIENT_MARKER).to_bytes(8, "big"))
+            digest.update(INACTIVE_GRADIENT_MARKER)
+            continue
+        digest.update(len(ACTIVE_GRADIENT_MARKER).to_bytes(8, "big"))
+        digest.update(ACTIVE_GRADIENT_MARKER)
+        tensor = gradient.detach().cpu().contiguous()
+        dtype_b = str(tensor.dtype).encode("ascii")
         digest.update(len(dtype_b).to_bytes(8, "big") + dtype_b)
         digest.update(tensor.ndim.to_bytes(8, "big"))
         for dimension in tensor.shape:
@@ -230,8 +239,12 @@ def _named_gradient_sha256(items: list[tuple[str, torch.Tensor]]) -> str:
     return "sha256:" + digest.hexdigest()
 
 
-def _global_l2_norm(items: list[tuple[str, torch.Tensor]]) -> float:
-    norms = [torch.linalg.vector_norm(gradient, ord=2) for _, gradient in items]
+def _global_l2_norm(items: list[tuple[str, torch.Tensor | None]]) -> float:
+    norms = [
+        torch.linalg.vector_norm(gradient, ord=2)
+        for _, gradient in items
+        if gradient is not None
+    ]
     if not norms:
         return 0.0
     return float(torch.linalg.vector_norm(torch.stack(norms), ord=2))
