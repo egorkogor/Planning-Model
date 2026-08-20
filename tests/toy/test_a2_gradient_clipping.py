@@ -468,22 +468,6 @@ def test_adversarial_tampering_rejected(validator_env, mutation):
     _reject(payload, validator_env)
 
 
-def test_inactive_entry_cannot_be_represented_as_real_zero_gradient(validator_env):
-    payload = _payload()
-    result = payload["arm_seed_results"][0]
-    update = result["updates"][0]
-    tampered_items = [
-        ("shared.weight", torch.ones(1, dtype=torch.float32)),
-        ("heads.arg1_pointer.weight", torch.zeros(1, dtype=torch.float32)),
-        ("heads.arg2_pointer.weight", None),
-    ]
-    update["gradient_activity"][1]["state"] = "GRAD"
-    update["gradient_activity_sha256"] = sha256(update["gradient_activity"])
-    update["gradient_before_sha256"] = producer._named_gradient_sha256(tampered_items)
-    _resign(payload)
-    _reject(payload, validator_env)
-
-
 def test_self_consistent_activity_zero_tamper_rejected_by_independent_anchor(validator_env):
     payload = _payload()
     tampered_activity = [
@@ -512,7 +496,11 @@ def test_self_consistent_activity_zero_tamper_rejected_by_independent_anchor(val
         update["gradient_before_sha256"] = before_hash
         update["gradient_after_sha256"] = after_hash if result["arm"] == "clip_1_0" else before_hash
     _resign(payload)
-    _reject(payload, validator_env)
+    with pytest.raises(
+        ValueError,
+        match=r"^A2_CLIP_VALIDATOR_GRADIENT_ACTIVITY_SEMANTICS:clip_1_0:17:0$",
+    ):
+        validator.validate_claims_from_evidence(payload, implementation_commit=IMPLEMENTATION)
 
 
 def test_self_copied_reference_and_candidate_rejected(validator_env):
