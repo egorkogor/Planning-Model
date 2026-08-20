@@ -18,7 +18,19 @@ FAKE_SOURCE = {
 }
 IMPLEMENTATION = "a" * 40
 GRADIENT_MANIFEST = [
-    {"index": 0, "name": "weight", "dtype": "torch.float32", "shape": [1]}
+    {"index": 0, "name": "shared.weight", "dtype": "torch.float32", "shape": [1]},
+    {
+        "index": 1,
+        "name": "heads.arg1_pointer.weight",
+        "dtype": "torch.float32",
+        "shape": [1],
+    },
+    {
+        "index": 2,
+        "name": "heads.arg2_pointer.weight",
+        "dtype": "torch.float32",
+        "shape": [1],
+    },
 ]
 
 
@@ -45,11 +57,21 @@ def _losses(task_id: str):
     return 1.0, 0.5, 0.25, float(a + b + c)
 
 
+def _activity(task_id: str):
+    pointer_state = "NO_GRAD" if task_id == "bw-00000001" else "GRAD"
+    return [
+        {"index": 0, "name": "shared.weight", "state": "GRAD"},
+        {"index": 1, "name": "heads.arg1_pointer.weight", "state": pointer_state},
+        {"index": 2, "name": "heads.arg2_pointer.weight", "state": pointer_state},
+    ]
+
+
 def _update(index: int, arm: str):
     task_id = validator.TASKS[index % 3]
     op, arg1, arg2, total = _losses(task_id)
     threshold = validator.ARMS[arm]
     clipped = arm == "clip_1_0"
+    activity = _activity(task_id)
     return {
         "update_index": index,
         "epoch_index": index // 3,
@@ -75,6 +97,9 @@ def _update(index: int, arm: str):
         "gradient_before_sha256": FAKE_HASH_A,
         "gradient_after_sha256": FAKE_HASH_B if clipped else FAKE_HASH_A,
         "gradient_hash_version": validator.GRADIENT_HASH_VERSION,
+        "gradient_parameter_manifest_sha256": sha256(GRADIENT_MANIFEST),
+        "gradient_activity": activity,
+        "gradient_activity_sha256": sha256(activity),
         "operator_position_weight": 1.0 if task_id == "bw-00000001" else 0.5,
     }
 
@@ -332,6 +357,21 @@ def _reject(payload, validator_env):
         validator.validate_claims_from_evidence(payload, implementation_commit=IMPLEMENTATION)
 
 
+def _resign(payload):
+    results = payload["arm_seed_results"]
+    indexed = {(r["arm"], r["seed"]): r for r in results}
+    payload["gradient_evidence_commitments"] = [
+        validator._gradient_evidence_commitment(result) for result in results
+    ]
+    payload["intervention_consistency"] = producer._intervention_consistency(results)
+    payload["paired_causal_contrasts"] = validator._contrasts(indexed)
+    payload["clipping_summaries"] = [validator._summary(result) for result in results]
+    payload["cross_seed_clipping_aggregates"] = validator._cross_seed_clipping_aggregates(results)
+    payload["canonical_identity"] = sha256(
+        {key: value for key, value in payload.items() if key != "canonical_identity"}
+    )
+
+
 def test_synthetic_contract_validates(validator_env):
     result = validator.validate_claims_from_evidence(
         _payload(), implementation_commit=IMPLEMENTATION
@@ -403,6 +443,20 @@ def test_synthetic_contract_validates(validator_env):
             copy.deepcopy(p["arm_seed_results"][0]["updates"][-1])
         ),
         lambda p: p["clipping_summaries"][0].__setitem__("first_9_updates", {}),
+        lambda p: p["arm_seed_results"][0]["updates"][0]["gradient_activity"][1].__setitem__(
+            "state", "GRAD"
+        ),
+        lambda p: p["arm_seed_results"][0]["updates"][0]["gradient_activity"].reverse(),
+        lambda p: p["arm_seed_results"][0]["updates"][0]["gradient_activity"].pop(),
+        lambda p: p["arm_seed_results"][0]["updates"][0]["gradient_activity"].append(
+            {"index": 3, "name": "extra.weight", "state": "GRAD"}
+        ),
+        lambda p: p["arm_seed_results"][0]["updates"][0]["gradient_activity"][1].__setitem__(
+            "state", "ZERO"
+        ),
+        lambda p: p["arm_seed_results"][0]["updates"][0].__setitem__(
+            "gradient_hash_version", "a2-named-gradients-exact/1.0"
+        ),
     ],
 )
 def test_adversarial_tampering_rejected(validator_env, mutation):
@@ -411,6 +465,53 @@ def test_adversarial_tampering_rejected(validator_env, mutation):
     payload["canonical_identity"] = sha256(
         {k: v for k, v in payload.items() if k != "canonical_identity"}
     )
+    _reject(payload, validator_env)
+
+
+def test_inactive_entry_cannot_be_represented_as_real_zero_gradient(validator_env):
+    payload = _payload()
+    result = payload["arm_seed_results"][0]
+    update = result["updates"][0]
+    tampered_items = [
+        ("shared.weight", torch.ones(1, dtype=torch.float32)),
+        ("heads.arg1_pointer.weight", torch.zeros(1, dtype=torch.float32)),
+        ("heads.arg2_pointer.weight", None),
+    ]
+    update["gradient_activity"][1]["state"] = "GRAD"
+    update["gradient_activity_sha256"] = sha256(update["gradient_activity"])
+    update["gradient_before_sha256"] = producer._named_gradient_sha256(tampered_items)
+    _resign(payload)
+    _reject(payload, validator_env)
+
+
+def test_self_consistent_activity_zero_tamper_rejected_by_independent_anchor(validator_env):
+    payload = _payload()
+    tampered_activity = [
+        {"index": 0, "name": "shared.weight", "state": "GRAD"},
+        {"index": 1, "name": "heads.arg1_pointer.weight", "state": "GRAD"},
+        {"index": 2, "name": "heads.arg2_pointer.weight", "state": "GRAD"},
+    ]
+    before_items = [
+        ("shared.weight", torch.ones(1, dtype=torch.float32)),
+        ("heads.arg1_pointer.weight", torch.zeros(1, dtype=torch.float32)),
+        ("heads.arg2_pointer.weight", torch.zeros(1, dtype=torch.float32)),
+    ]
+    after_items = [
+        ("shared.weight", torch.tensor([0.5], dtype=torch.float32)),
+        ("heads.arg1_pointer.weight", torch.zeros(1, dtype=torch.float32)),
+        ("heads.arg2_pointer.weight", torch.zeros(1, dtype=torch.float32)),
+    ]
+    before_hash = producer._named_gradient_sha256(before_items)
+    after_hash = producer._named_gradient_sha256(after_items)
+    for result in payload["arm_seed_results"]:
+        if result["seed"] != 17:
+            continue
+        update = result["updates"][0]
+        update["gradient_activity"] = copy.deepcopy(tampered_activity)
+        update["gradient_activity_sha256"] = sha256(update["gradient_activity"])
+        update["gradient_before_sha256"] = before_hash
+        update["gradient_after_sha256"] = after_hash if result["arm"] == "clip_1_0" else before_hash
+    _resign(payload)
     _reject(payload, validator_env)
 
 
@@ -481,6 +582,8 @@ def test_reduced_real_model_intervention_semantics(monkeypatch):
         for arm in producer.ARMS
     }
 
+    assert producer.GRADIENT_HASH_VERSION == validator.GRADIENT_HASH_VERSION
+    assert producer.GRADIENT_HASH_VERSION == "a2-named-gradients-exact/1.1"
     first = [results[arm]["updates"][0] for arm in producer.ARMS]
     assert len({update["gradient_before_sha256"] for update in first}) == 1
     assert len({update["pre_intervention_global_l2_norm"] for update in first}) == 1
@@ -502,6 +605,21 @@ def test_reduced_real_model_intervention_semantics(monkeypatch):
         update["clip_primitive_return_norm"] is None
         for update in results["no_clip"]["updates"]
     )
+    for result in results.values():
+        manifest = result["gradient_parameter_manifest"]
+        manifest_hash = result["gradient_parameter_manifest_sha256"]
+        for update in result["updates"]:
+            assert update["gradient_parameter_manifest_sha256"] == manifest_hash
+            assert update["gradient_activity_sha256"] == sha256(update["gradient_activity"])
+            assert update["gradient_activity"] == validator._expected_gradient_activity(
+                manifest,
+                arg1_target_count=update["arg1_target_count"],
+                arg2_target_count=update["arg2_target_count"],
+            )
+    task1 = results["no_clip"]["updates"][0]
+    by_name = {entry["name"]: entry["state"] for entry in task1["gradient_activity"]}
+    assert by_name["heads.arg1_pointer.weight"] == "NO_GRAD"
+    assert by_name["heads.arg2_pointer.weight"] == "NO_GRAD"
 
 
 def test_bridge_task_literal_is_typed_and_has_three_stage_plan():
@@ -542,6 +660,7 @@ def test_scientific_contract_has_no_heldout_or_verdict_escape_hatches():
     assert producer.ARMS == {"clip_1_0": 1.0, "clip_5_0": 5.0, "no_clip": None}
     assert producer.MAX_EPOCH == 100
     assert producer.EXPECTED_UPDATES == 300
+    assert producer.CLIPPING_CONTRACT == validator.CLIPPING_CONTRACT
 
 
 def test_bridge_workflow_adds_only_typed_clipping_literal():

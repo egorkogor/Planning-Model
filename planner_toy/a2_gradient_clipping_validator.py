@@ -37,8 +37,9 @@ CHECKPOINTS = (3, 10, 30, 100)
 PERSISTENCE_CHECKPOINTS = (10, 30, 100)
 MAX_EPOCH = 100
 EXPECTED_UPDATES = 300
-GRADIENT_HASH_VERSION = "a2-named-gradients-exact/1.0"
-GRADIENT_EVIDENCE_COMMITMENT_VERSION = "a2-gradient-evidence-commitment/1.0"
+GRADIENT_HASH_VERSION = "a2-named-gradients-exact/1.1"
+GRADIENT_EVIDENCE_COMMITMENT_VERSION = "a2-gradient-evidence-commitment/1.1"
+GRADIENT_ACTIVITY_STATES = ("GRAD", "NO_GRAD")
 HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
 ROOT = Path(__file__).parents[1]
 SOURCE_FILES = tuple(
@@ -81,7 +82,27 @@ CLIPPING_CONTRACT = {
     "clip_5_0": {"primitive": "torch.nn.utils.clip_grad_norm_", "max_norm": 5.0},
     "no_clip": {"primitive": None, "max_norm": None},
     "gradient_hash_version": GRADIENT_HASH_VERSION,
-    "gradient_hash_semantics": "name + dtype + shape + exact contiguous CPU bytes",
+    "gradient_hash_semantics": {
+        "domain_separator": "ASCII gradient_hash_version followed by one NUL byte",
+        "parameter_order": "canonical optimizer parameter order",
+        "parameter_name": "u64be UTF-8 byte length followed by UTF-8 parameter-name bytes",
+        "activity_marker": "u64be ASCII byte length followed by exactly GRAD or NO_GRAD",
+        "grad_payload": (
+            "for GRAD only: u64be dtype ASCII length + dtype ASCII; u64be ndim; "
+            "each shape dimension as u64be; u64be tensor-byte length; exact "
+            "detach().cpu().contiguous().numpy().tobytes() bytes"
+        ),
+        "no_grad_payload": (
+            "for NO_GRAD: no dtype, ndim, shape, tensor-byte length, or tensor bytes; "
+            "NO_GRAD is not equivalent to a real zero-valued gradient tensor"
+        ),
+    },
+    "gradient_activity_field": "gradient_activity",
+    "gradient_activity_states": list(GRADIENT_ACTIVITY_STATES),
+    "gradient_activity_semantics": (
+        "ordered [{index,name,state}] aligned exactly with gradient_parameter_manifest; "
+        "state is actual autograd presence before intervention and is unchanged by clipping"
+    ),
     "gradient_evidence_commitment_version": GRADIENT_EVIDENCE_COMMITMENT_VERSION,
     "common_pre_intervention_norm_field": "pre_intervention_global_l2_norm",
     "common_pre_intervention_norm_semantics": (
@@ -92,10 +113,16 @@ CLIPPING_CONTRACT = {
         "clip primitive return for clipped arms; retained only for accepted reference equivalence"
     ),
     "threshold_predicate_field": "threshold_exceeded",
+    "threshold_predicate_semantics": (
+        "pre_intervention_global_l2_norm > configured threshold; not proof of actual mutation"
+    ),
     "actual_mutation_field": "gradient_mutated",
+    "actual_mutation_semantics": (
+        "gradient_before_sha256 != gradient_after_sha256 under the versioned named-gradient encoding"
+    ),
     "actual_intervention_field": "intervention_applied",
     "actual_intervention_semantics": (
-        "clip arm and gradient_before_sha256 != gradient_after_sha256"
+        "clipping arm and actual before/after gradient commitment difference"
     ),
 }
 
@@ -185,6 +212,27 @@ def _task_counts(row: dict[str, Any]) -> tuple[int, int, int]:
     )
 
 
+def _expected_gradient_activity(
+    expected_gradient_manifest: list[dict[str, Any]],
+    *,
+    arg1_target_count: int,
+    arg2_target_count: int,
+) -> list[dict[str, Any]]:
+    """Derive A2 autograd activity from the frozen objective graph, not producer evidence."""
+    activity = []
+    for entry in expected_gradient_manifest:
+        name = entry["name"]
+        if name == "heads.arg1_pointer.weight":
+            state = "GRAD" if arg1_target_count > 0 else "NO_GRAD"
+        elif name == "heads.arg2_pointer.weight":
+            state = "GRAD" if arg2_target_count > 0 else "NO_GRAD"
+        else:
+            # Every other optimizer parameter lies on the always-present action-loss path.
+            state = "GRAD"
+        activity.append({"index": entry["index"], "name": name, "state": state})
+    return activity
+
+
 def _float32_total(operator: float, arg1: float | None, arg2: float | None) -> float:
     total = torch.tensor(operator, dtype=torch.float32)
     if arg1 is not None:
@@ -192,6 +240,38 @@ def _float32_total(operator: float, arg1: float | None, arg2: float | None) -> f
     if arg2 is not None:
         total = total + torch.tensor(arg2, dtype=torch.float32)
     return float(total)
+
+
+def _validate_gradient_activity(
+    update: dict[str, Any],
+    expected_gradient_manifest: list[dict[str, Any]],
+    *,
+    arg1_target_count: int,
+    arg2_target_count: int,
+    context: str,
+) -> None:
+    manifest_hash = sha256(expected_gradient_manifest)
+    if update.get("gradient_parameter_manifest_sha256") != manifest_hash:
+        raise ValueError(f"A2_CLIP_VALIDATOR_UPDATE_GRADIENT_MANIFEST_HASH:{context}")
+    activity = update.get("gradient_activity")
+    if not isinstance(activity, list) or len(activity) != len(expected_gradient_manifest):
+        raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_ACTIVITY_LENGTH:{context}")
+    for entry, manifest_entry in zip(activity, expected_gradient_manifest, strict=True):
+        if not isinstance(entry, dict) or set(entry) != {"index", "name", "state"}:
+            raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_ACTIVITY_ENTRY:{context}")
+        if entry.get("index") != manifest_entry["index"] or entry.get("name") != manifest_entry["name"]:
+            raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_ACTIVITY_ORDER:{context}")
+        if entry.get("state") not in GRADIENT_ACTIVITY_STATES:
+            raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_ACTIVITY_STATE:{context}")
+    expected_activity = _expected_gradient_activity(
+        expected_gradient_manifest,
+        arg1_target_count=arg1_target_count,
+        arg2_target_count=arg2_target_count,
+    )
+    if activity != expected_activity:
+        raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_ACTIVITY_SEMANTICS:{context}")
+    if update.get("gradient_activity_sha256") != sha256(activity):
+        raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_ACTIVITY_HASH:{context}")
 
 
 def _validate_updates(
@@ -210,7 +290,8 @@ def _validate_updates(
         raise ValueError(f"A2_CLIP_VALIDATOR_POLICY_METADATA:{arm}:{seed}")
     if result.get("gradient_parameter_manifest") != expected_gradient_manifest:
         raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_PARAMETER_MANIFEST:{arm}:{seed}")
-    if result.get("gradient_parameter_manifest_sha256") != sha256(expected_gradient_manifest):
+    manifest_hash = sha256(expected_gradient_manifest)
+    if result.get("gradient_parameter_manifest_sha256") != manifest_hash:
         raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_PARAMETER_MANIFEST_HASH:{arm}:{seed}")
     updates = result.get("updates")
     if not isinstance(updates, list) or len(updates) != EXPECTED_UPDATES:
@@ -218,12 +299,13 @@ def _validate_updates(
 
     for index, update in enumerate(updates):
         task_id = TASKS[index % 3]
+        context = f"{arm}:{seed}:{index}"
         if (
             update.get("update_index") != index
             or update.get("epoch_index") != index // 3
             or update.get("task_id") != task_id
         ):
-            raise ValueError(f"A2_CLIP_VALIDATOR_UPDATE_SCHEDULE:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_UPDATE_SCHEDULE:{context}")
         operator_count, arg1_count, arg2_count = _task_counts(rows[task_id])
         if (
             update.get("operator_target_count") != operator_count
@@ -231,37 +313,44 @@ def _validate_updates(
             or update.get("arg2_target_count") != arg2_count
             or update.get("operator_position_weight") != 1.0 / operator_count
         ):
-            raise ValueError(f"A2_CLIP_VALIDATOR_TARGETS:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_TARGETS:{context}")
+        _validate_gradient_activity(
+            update,
+            expected_gradient_manifest,
+            arg1_target_count=arg1_count,
+            arg2_target_count=arg2_count,
+            context=context,
+        )
         operator = float(update["operator_loss"])
         arg1 = update.get("arg1_pointer_loss")
         arg2 = update.get("arg2_pointer_loss")
         if not math.isfinite(operator):
-            raise ValueError(f"A2_CLIP_VALIDATOR_LOSS:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_LOSS:{context}")
         if (arg1_count == 0) != (arg1 is None):
-            raise ValueError(f"A2_CLIP_VALIDATOR_ARG1:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_ARG1:{context}")
         if (arg2_count == 0) != (arg2 is None):
-            raise ValueError(f"A2_CLIP_VALIDATOR_ARG2:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_ARG2:{context}")
         if arg1 is not None and not math.isfinite(float(arg1)):
-            raise ValueError(f"A2_CLIP_VALIDATOR_ARG1:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_ARG1:{context}")
         if arg2 is not None and not math.isfinite(float(arg2)):
-            raise ValueError(f"A2_CLIP_VALIDATOR_ARG2:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_ARG2:{context}")
         expected_total = _float32_total(
             operator,
             float(arg1) if arg1 is not None else None,
             float(arg2) if arg2 is not None else None,
         )
         if float(update["total_loss"]) != expected_total:
-            raise ValueError(f"A2_CLIP_VALIDATOR_LOSS_DECOMPOSITION:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_LOSS_DECOMPOSITION:{context}")
         if update.get("clipping_policy") != arm or update.get("clip_threshold") != threshold:
-            raise ValueError(f"A2_CLIP_VALIDATOR_POLICY:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_POLICY:{context}")
         if update.get("gradient_clip_norm") != threshold:
-            raise ValueError(f"A2_CLIP_VALIDATOR_REFERENCE_CLIP_FIELD:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_REFERENCE_CLIP_FIELD:{context}")
 
         legacy_pre = float(update["gradient_norm"])
         common_pre = float(update["pre_intervention_global_l2_norm"])
         post = float(update["post_clip_global_l2_norm"])
         if any(not math.isfinite(value) or value < 0 for value in (legacy_pre, common_pre, post)):
-            raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_NORM:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_NORM:{context}")
         before = update.get("gradient_before_sha256")
         after = update.get("gradient_after_sha256")
         if (
@@ -270,22 +359,22 @@ def _validate_updates(
             or not isinstance(after, str)
             or not HASH.fullmatch(after)
         ):
-            raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_HASH:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_HASH:{context}")
         if update.get("gradient_hash_version") != GRADIENT_HASH_VERSION:
-            raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_HASH_VERSION:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_HASH_VERSION:{context}")
 
         expected_legacy_clipped = threshold is not None and legacy_pre > threshold
         if update.get("clipping_occurred") is not expected_legacy_clipped:
-            raise ValueError(f"A2_CLIP_VALIDATOR_LEGACY_CLIPPING_FLAG:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_LEGACY_CLIPPING_FLAG:{context}")
         expected_threshold = threshold is not None and common_pre > threshold
         if update.get("threshold_exceeded") is not expected_threshold:
-            raise ValueError(f"A2_CLIP_VALIDATOR_THRESHOLD_PREDICATE:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_THRESHOLD_PREDICATE:{context}")
         mutated = before != after
         if update.get("gradient_mutated") is not mutated:
-            raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_MUTATION:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_MUTATION:{context}")
         intervention = threshold is not None and mutated
         if update.get("intervention_applied") is not intervention:
-            raise ValueError(f"A2_CLIP_VALIDATOR_INTERVENTION_APPLIED:{arm}:{seed}:{index}")
+            raise ValueError(f"A2_CLIP_VALIDATOR_INTERVENTION_APPLIED:{context}")
 
         primitive_return = update.get("clip_primitive_return_norm")
         if threshold is None:
@@ -295,13 +384,13 @@ def _validate_updates(
                 raise ValueError(f"A2_CLIP_VALIDATOR_NO_CLIP_MUTATION:{seed}:{index}")
         else:
             if primitive_return is None or float(primitive_return) != legacy_pre:
-                raise ValueError(f"A2_CLIP_VALIDATOR_PRIMITIVE_RETURN:{arm}:{seed}:{index}")
+                raise ValueError(f"A2_CLIP_VALIDATOR_PRIMITIVE_RETURN:{context}")
             if not math.isfinite(float(primitive_return)) or float(primitive_return) < 0:
-                raise ValueError(f"A2_CLIP_VALIDATOR_PRIMITIVE_RETURN:{arm}:{seed}:{index}")
+                raise ValueError(f"A2_CLIP_VALIDATOR_PRIMITIVE_RETURN:{context}")
             if intervention and post > threshold * (1.0 + 1e-5):
-                raise ValueError(f"A2_CLIP_VALIDATOR_CLIP_TRANSFORM:{arm}:{seed}:{index}")
+                raise ValueError(f"A2_CLIP_VALIDATOR_CLIP_TRANSFORM:{context}")
             if not intervention and post != common_pre:
-                raise ValueError(f"A2_CLIP_VALIDATOR_INACTIVE_CLIP_MUTATION:{arm}:{seed}:{index}")
+                raise ValueError(f"A2_CLIP_VALIDATOR_INACTIVE_CLIP_MUTATION:{context}")
 
 
 def _validate_position0(item: dict[str, Any], row: dict[str, Any], context: str) -> None:
@@ -511,6 +600,9 @@ def _gradient_evidence_projection(result: dict[str, Any]) -> list[dict[str, Any]
         "gradient_before_sha256",
         "gradient_after_sha256",
         "gradient_hash_version",
+        "gradient_parameter_manifest_sha256",
+        "gradient_activity",
+        "gradient_activity_sha256",
     )
     return [{field: update[field] for field in fields} for update in result["updates"]]
 
@@ -519,6 +611,8 @@ def _gradient_evidence_commitment(result: dict[str, Any]) -> dict[str, Any]:
     projection = _gradient_evidence_projection(result)
     return {
         "version": GRADIENT_EVIDENCE_COMMITMENT_VERSION,
+        "gradient_hash_version": GRADIENT_HASH_VERSION,
+        "gradient_parameter_manifest_sha256": result["gradient_parameter_manifest_sha256"],
         "arm": result["arm"],
         "seed": result["seed"],
         "update_count": len(projection),
@@ -735,6 +829,9 @@ def _pre_intervention_update_projection(update: dict[str, Any]) -> dict[str, Any
             "pre_intervention_global_l2_norm",
             "gradient_before_sha256",
             "gradient_hash_version",
+            "gradient_parameter_manifest_sha256",
+            "gradient_activity",
+            "gradient_activity_sha256",
             "operator_position_weight",
         )
     }

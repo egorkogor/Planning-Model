@@ -64,10 +64,11 @@ EXPECTED_UPDATES = MAX_EPOCH * UPDATES_PER_EPOCH
 OUTPUT_JSON = "a2-gradient-clipping.json"
 OUTPUT_MARKDOWN = "A2_GRADIENT_CLIPPING_CAUSAL.md"
 INTERPRETATION_LABEL = "SUPPORTED HYPOTHESIS / NOT PROVEN"
-GRADIENT_HASH_VERSION = "a2-named-gradients-exact/1.0"
-GRADIENT_EVIDENCE_COMMITMENT_VERSION = "a2-gradient-evidence-commitment/1.0"
+GRADIENT_HASH_VERSION = "a2-named-gradients-exact/1.1"
+GRADIENT_EVIDENCE_COMMITMENT_VERSION = "a2-gradient-evidence-commitment/1.1"
 INACTIVE_GRADIENT_MARKER = b"NO_GRAD"
 ACTIVE_GRADIENT_MARKER = b"GRAD"
+GRADIENT_ACTIVITY_STATES = ("GRAD", "NO_GRAD")
 ROOT = Path(__file__).parents[1]
 SOURCE_FILES = tuple(
     sorted(
@@ -102,7 +103,27 @@ CLIPPING_CONTRACT = {
     "clip_5_0": {"primitive": "torch.nn.utils.clip_grad_norm_", "max_norm": 5.0},
     "no_clip": {"primitive": None, "max_norm": None},
     "gradient_hash_version": GRADIENT_HASH_VERSION,
-    "gradient_hash_semantics": "name + dtype + shape + exact contiguous CPU bytes",
+    "gradient_hash_semantics": {
+        "domain_separator": "ASCII gradient_hash_version followed by one NUL byte",
+        "parameter_order": "canonical optimizer parameter order",
+        "parameter_name": "u64be UTF-8 byte length followed by UTF-8 parameter-name bytes",
+        "activity_marker": "u64be ASCII byte length followed by exactly GRAD or NO_GRAD",
+        "grad_payload": (
+            "for GRAD only: u64be dtype ASCII length + dtype ASCII; u64be ndim; "
+            "each shape dimension as u64be; u64be tensor-byte length; exact "
+            "detach().cpu().contiguous().numpy().tobytes() bytes"
+        ),
+        "no_grad_payload": (
+            "for NO_GRAD: no dtype, ndim, shape, tensor-byte length, or tensor bytes; "
+            "NO_GRAD is not equivalent to a real zero-valued gradient tensor"
+        ),
+    },
+    "gradient_activity_field": "gradient_activity",
+    "gradient_activity_states": list(GRADIENT_ACTIVITY_STATES),
+    "gradient_activity_semantics": (
+        "ordered [{index,name,state}] aligned exactly with gradient_parameter_manifest; "
+        "state is actual autograd presence before intervention and is unchanged by clipping"
+    ),
     "gradient_evidence_commitment_version": GRADIENT_EVIDENCE_COMMITMENT_VERSION,
     "common_pre_intervention_norm_field": "pre_intervention_global_l2_norm",
     "common_pre_intervention_norm_semantics": (
@@ -113,10 +134,16 @@ CLIPPING_CONTRACT = {
         "clip primitive return for clipped arms; retained only for accepted reference equivalence"
     ),
     "threshold_predicate_field": "threshold_exceeded",
+    "threshold_predicate_semantics": (
+        "pre_intervention_global_l2_norm > configured threshold; not proof of actual mutation"
+    ),
     "actual_mutation_field": "gradient_mutated",
+    "actual_mutation_semantics": (
+        "gradient_before_sha256 != gradient_after_sha256 under the versioned named-gradient encoding"
+    ),
     "actual_intervention_field": "intervention_applied",
     "actual_intervention_semantics": (
-        "clip arm and gradient_before_sha256 != gradient_after_sha256"
+        "clipping arm and actual before/after gradient commitment difference"
     ),
 }
 
@@ -213,6 +240,19 @@ def _gradient_parameter_manifest(
             "shape": list(parameter.shape),
         }
         for index, (name, parameter) in enumerate(optimizer_named)
+    ]
+
+
+def _gradient_activity(
+    items: list[tuple[str, torch.Tensor | None]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "index": index,
+            "name": name,
+            "state": "NO_GRAD" if gradient is None else "GRAD",
+        }
+        for index, (name, gradient) in enumerate(items)
     ]
 
 
@@ -315,6 +355,7 @@ def _train_arm(
     initialization = canonical_state_dict_sha256(model.state_dict())
     optimizer_named = _optimizer_named_parameters(model)
     gradient_parameter_manifest = _gradient_parameter_manifest(optimizer_named)
+    gradient_parameter_manifest_sha256 = sha256(gradient_parameter_manifest)
     optimizer = torch.optim.AdamW(
         [parameter for _, parameter in optimizer_named],
         lr=3e-4,
@@ -356,6 +397,8 @@ def _train_arm(
             loss.backward()
 
             before_items = _gradient_items(optimizer_named)
+            gradient_activity = _gradient_activity(before_items)
+            gradient_activity_sha256 = sha256(gradient_activity)
             before_hash = _named_gradient_sha256(before_items)
             common_pre_norm = _global_l2_norm(before_items)
             primitive_return_norm: float | None = None
@@ -370,6 +413,11 @@ def _train_arm(
                 legacy_pre_norm = primitive_return_norm
 
             after_items = _gradient_items(optimizer_named)
+            after_activity = _gradient_activity(after_items)
+            if after_activity != gradient_activity:
+                raise RuntimeError(
+                    f"A2_CLIP_GRADIENT_ACTIVITY_MUTATION:{arm}:{seed}:{len(updates)}"
+                )
             post_norm = _global_l2_norm(after_items)
             after_hash = _named_gradient_sha256(after_items)
             threshold_exceeded = threshold is not None and common_pre_norm > threshold
@@ -409,6 +457,9 @@ def _train_arm(
                     "gradient_before_sha256": before_hash,
                     "gradient_after_sha256": after_hash,
                     "gradient_hash_version": GRADIENT_HASH_VERSION,
+                    "gradient_parameter_manifest_sha256": gradient_parameter_manifest_sha256,
+                    "gradient_activity": gradient_activity,
+                    "gradient_activity_sha256": gradient_activity_sha256,
                     "operator_position_weight": 1.0 / int(flat.numel()),
                 }
             )
@@ -431,7 +482,7 @@ def _train_arm(
         "final_trained_canonical_sha256": canonical_state_dict_sha256(model.state_dict()),
         "final_optimizer_canonical_sha256": canonical_torch_object_sha256(optimizer.state_dict()),
         "gradient_parameter_manifest": gradient_parameter_manifest,
-        "gradient_parameter_manifest_sha256": sha256(gradient_parameter_manifest),
+        "gradient_parameter_manifest_sha256": gradient_parameter_manifest_sha256,
         "updates": updates,
         "checkpoints": checkpoints,
         "epoch_evidence": epochs,
@@ -532,6 +583,9 @@ def _gradient_evidence_projection(result: dict[str, Any]) -> list[dict[str, Any]
         "gradient_before_sha256",
         "gradient_after_sha256",
         "gradient_hash_version",
+        "gradient_parameter_manifest_sha256",
+        "gradient_activity",
+        "gradient_activity_sha256",
     )
     return [{field: update[field] for field in fields} for update in result["updates"]]
 
@@ -540,6 +594,8 @@ def _gradient_evidence_commitment(result: dict[str, Any]) -> dict[str, Any]:
     projection = _gradient_evidence_projection(result)
     return {
         "version": GRADIENT_EVIDENCE_COMMITMENT_VERSION,
+        "gradient_hash_version": GRADIENT_HASH_VERSION,
+        "gradient_parameter_manifest_sha256": result["gradient_parameter_manifest_sha256"],
         "arm": result["arm"],
         "seed": result["seed"],
         "update_count": len(projection),
@@ -686,6 +742,9 @@ def _pre_intervention_update_projection(update: dict[str, Any]) -> dict[str, Any
             "pre_intervention_global_l2_norm",
             "gradient_before_sha256",
             "gradient_hash_version",
+            "gradient_parameter_manifest_sha256",
+            "gradient_activity",
+            "gradient_activity_sha256",
             "operator_position_weight",
         )
     }
