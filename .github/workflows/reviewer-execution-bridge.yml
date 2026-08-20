@@ -42,7 +42,7 @@ jobs:
           import os, re
           pattern = re.compile(
               r"^/reviewer-bridge/v1 "
-              r"task=(status-v1|preflight-v1|a2-sufficient-budget-task-order-v1) "
+              r"task=(status-v1|preflight-v1|a2-sufficient-budget-task-order-v1|a2-gradient-clipping-v1) "
               r"request=([a-z0-9][a-z0-9-]{6,62}[a-z0-9]) "
               r"sha=([0-9a-f]{40})$"
           )
@@ -121,7 +121,7 @@ jobs:
           set -euo pipefail
           user="$BRIDGE_EXECUTION_USER"; task="$REQUESTED_TASK"
           case "$task" in
-            status-v1|preflight-v1|a2-sufficient-budget-task-order-v1) ;;
+            status-v1|preflight-v1|a2-sufficient-budget-task-order-v1|a2-gradient-clipping-v1) ;;
             *) echo "::error::REVIEWER_BRIDGE_TASK_NOT_ALLOWLISTED"; exit 1 ;;
           esac
           sudo -n true || { echo "::error::REVIEWER_BRIDGE_CONTROL_SUDO_REQUIRED"; exit 1; }

@@ -36,10 +36,12 @@ TASKS = (
     "status-v1",
     "preflight-v1",
     "a2-sufficient-budget-task-order-v1",
+    "a2-gradient-clipping-v1",
 )
 REQUEST_PATTERN = re.compile(
     r"^/reviewer-bridge/v1 "
-    r"task=(?P<task>status-v1|preflight-v1|a2-sufficient-budget-task-order-v1) "
+    r"task=(?P<task>status-v1|preflight-v1|"
+    r"a2-sufficient-budget-task-order-v1|a2-gradient-clipping-v1) "
     r"request=(?P<request>[a-z0-9][a-z0-9-]{6,62}[a-z0-9]) "
     r"sha=(?P<sha>[0-9a-f]{40})$"
 )
@@ -359,6 +361,36 @@ def task_plan(request: BridgeRequest, evidence_root: Path) -> list[tuple[str, li
                     sys.executable,
                     "-m",
                     "scripts.run_a2_sufficient_budget_task_order",
+                    "--output-dir",
+                    str(experiment),
+                    "--implementation-commit",
+                    request.implementation_sha,
+                    "--validate-only",
+                ],
+            ),
+        ]
+    if request.task == "a2-gradient-clipping-v1":
+        experiment = evidence_root / "producer-evidence"
+        return [
+            ("fixed-target-preflight", _preflight_argv(request, evidence_root)),
+            (
+                "producer",
+                [
+                    sys.executable,
+                    "-m",
+                    "scripts.run_a2_gradient_clipping",
+                    "--output-dir",
+                    str(experiment),
+                    "--implementation-commit",
+                    request.implementation_sha,
+                ],
+            ),
+            (
+                "independent-validator",
+                [
+                    sys.executable,
+                    "-m",
+                    "scripts.run_a2_gradient_clipping",
                     "--output-dir",
                     str(experiment),
                     "--implementation-commit",
