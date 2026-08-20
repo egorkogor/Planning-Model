@@ -118,7 +118,8 @@ CLIPPING_CONTRACT = {
     ),
     "actual_mutation_field": "gradient_mutated",
     "actual_mutation_semantics": (
-        "gradient_before_sha256 != gradient_after_sha256 under the versioned named-gradient encoding"
+        "gradient_before_sha256 != gradient_after_sha256 under the versioned "
+        "named-gradient encoding"
     ),
     "actual_intervention_field": "intervention_applied",
     "actual_intervention_semantics": (
@@ -259,7 +260,10 @@ def _validate_gradient_activity(
     for entry, manifest_entry in zip(activity, expected_gradient_manifest, strict=True):
         if not isinstance(entry, dict) or set(entry) != {"index", "name", "state"}:
             raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_ACTIVITY_ENTRY:{context}")
-        if entry.get("index") != manifest_entry["index"] or entry.get("name") != manifest_entry["name"]:
+        if (
+            entry.get("index") != manifest_entry["index"]
+            or entry.get("name") != manifest_entry["name"]
+        ):
             raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_ACTIVITY_ORDER:{context}")
         if entry.get("state") not in GRADIENT_ACTIVITY_STATES:
             raise ValueError(f"A2_CLIP_VALIDATOR_GRADIENT_ACTIVITY_STATE:{context}")
