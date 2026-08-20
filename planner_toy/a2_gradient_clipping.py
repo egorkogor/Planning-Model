@@ -947,8 +947,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"JSON evidence: `{OUTPUT_JSON}`. This Markdown is derivative only.",
         "",
     ]
-    return "\
-".join(lines)
+    return "\n".join(lines)
 
 
 def _validate_payload_invariants(payload: dict[str, Any]) -> None:
@@ -997,8 +996,7 @@ def run(output: Path, *, implementation_commit: str) -> dict[str, Any]:
     from .a2_gradient_clipping_validator import validate_claims_from_evidence
 
     validate_claims_from_evidence(payload, implementation_commit=implementation_commit)
-    (output / OUTPUT_JSON).write_bytes(canonical_bytes(payload) + b"\
-")
+    (output / OUTPUT_JSON).write_bytes(canonical_bytes(payload) + b"\n")
     (output / OUTPUT_MARKDOWN).write_text(render_markdown(payload), encoding="utf-8")
     return payload
 
