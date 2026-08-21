@@ -1,0 +1,109 @@
+registry_version: "research-os/planning-adapter/1.0"
+mode: advisory
+canonical_authority: existing-project-scientific-contracts-and-reviewer-decisions
+
+research_questions:
+  - id: RQ-A2-001
+    status: active-lineage
+    question: >-
+      Why did the A2 structured baseline collapse to END-only behavior in the historical
+      development setup, and which training/optimization factors causally control rescue?
+    authority_refs:
+      - docs/evaluations/A2_A3_A4_V0_1_DECISION_RU.md
+      - docs/evaluations/A2_OPTIMIZATION_BUDGET_TRAJECTORY_SPEC_RU.md
+      - docs/evaluations/A2_SUFFICIENT_BUDGET_TASK_ORDER_SPEC_RU.md
+      - docs/evaluations/A2_GRADIENT_CLIPPING_CAUSAL_SPEC_RU.md
+    scope_boundary: "A2 diagnosis only; GO_LATENT = NOT EVALUATED"
+
+claims:
+  - id: CLM-A2-BUDGET
+    rq: RQ-A2-001
+    type: hypothesis
+    statement: >-
+      Insufficient optimization budget is a major explanation of historical A2 END-collapse.
+    status: supported-hypothesis-not-proven
+    authority_refs:
+      - docs/evaluations/A2_OPTIMIZATION_BUDGET_TRAJECTORY_SPEC_RU.md
+    interpretation_guard: "Not evidence for A3/latent/semantic-target claims."
+
+  - id: CLM-A2-TASK-ORDER
+    rq: RQ-A2-001
+    type: competing-hypothesis
+    statement: >-
+      Within-epoch placement of the trivial task may materially control rescue timing/stability
+      even under sufficient budget.
+    status: bounded-by-accepted-task-order-study
+    authority_refs:
+      - docs/evaluations/A2_SUFFICIENT_BUDGET_TASK_ORDER_SPEC_RU.md
+    interpretation_guard: >-
+      The study distinguishes order as a material contributor versus secondary trajectory
+      modifier; do not infer latent conclusions.
+
+  - id: CLM-A2-GRADIENT-CLIPPING
+    rq: RQ-A2-001
+    type: competing-hypothesis
+    statement: >-
+      Canonical gradient clipping at max_norm=1.0 may be an additional causal factor delaying
+      A2 rescue after optimization budget is made sufficient.
+    status: legacy-bound-current-line
+    authority_refs:
+      - docs/evaluations/A2_GRADIENT_CLIPPING_CAUSAL_SPEC_RU.md
+      - "PR #43 merged implementation"
+      - "PR #44 derivative reviewability only"
+    interpretation_guard: "Producer/validator do not own scientific verdict; GO_LATENT = NOT EVALUATED."
+
+evaluations:
+  - id: EVAL-A2-LEGACY
+    governance: legacy-bound
+    status: indexed-not-retrofitted
+    intended_construct: >-
+      A2 learnability/rescue and causal discrimination among bounded optimization/training
+      explanations in the train-only toy regime.
+    existing_authority_refs:
+      - docs/evaluations/A2_END_COLLAPSE_DIAGNOSTIC_SPEC_RU_v0.2.md
+      - docs/evaluations/A2_OPTIMIZATION_BUDGET_TRAJECTORY_SPEC_RU.md
+      - docs/evaluations/A2_SUFFICIENT_BUDGET_TASK_ORDER_SPEC_RU.md
+      - docs/evaluations/A2_GRADIENT_CLIPPING_CAUSAL_SPEC_RU.md
+    measurement_status: "defined inside versioned legacy study specs"
+    os_native_eval_contract: false
+    note: >-
+      Do not split or rewrite historical specs merely to create an OS-native Evaluation Contract.
+      A separate EVAL object is required only for future studies when it adds real measurement
+      governance value.
+
+studies:
+  - id: STU-A2-V0-1
+    governance: legacy-bound
+    class: discovery
+    authority_ref: docs/evaluations/A2_A3_A4_V0_1_DECISION_RU.md
+    decision: REDESIGN
+    scientific_boundary: "No causal usefulness conclusion for latent feedback."
+
+  - id: STU-A2-BUDGET
+    governance: legacy-bound
+    class: confirmatory-like-development-microexperiment
+    authority_ref: docs/evaluations/A2_OPTIMIZATION_BUDGET_TRAJECTORY_SPEC_RU.md
+    claim_refs: [CLM-A2-BUDGET]
+
+  - id: STU-A2-TASK-ORDER
+    governance: legacy-bound
+    class: confirmatory-like-development-microexperiment
+    authority_ref: docs/evaluations/A2_SUFFICIENT_BUDGET_TASK_ORDER_SPEC_RU.md
+    claim_refs: [CLM-A2-BUDGET, CLM-A2-TASK-ORDER]
+
+  - id: STU-A2-GRADIENT-CLIPPING
+    governance: legacy-bound
+    class: confirmatory-like-development-microexperiment
+    authority_ref: docs/evaluations/A2_GRADIENT_CLIPPING_CAUSAL_SPEC_RU.md
+    claim_refs: [CLM-A2-BUDGET, CLM-A2-GRADIENT-CLIPPING]
+    execution_backend: reviewer-bridge/fixed-target
+    current_review_ref: "PR #44"
+    evidence_policy: "Existing claim-bearing evidence remains authoritative and immutable."
+
+decision_policy:
+  producer_may_set_scientific_claim_status: false
+  evidence_validator_may_set_scientific_claim_status: false
+  validity_audit_distinct_from_evidence_validation: true
+  reviewer_owns_scientific_decision: true
+  retain_negative_results: true
+  retain_invalid_runs_separately_from_negative_results: true
