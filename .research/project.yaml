@@ -15,6 +15,8 @@ current_state:
   authoritative_branch: "main"
   authoritative_base_at_bootstrap: "ee773479cbbc84eab52f93996bc8beb64a51453c"
   active_scientific_program: "A2 causal-discrimination / gradient-clipping line"
+  audit_ref: ".research/PLANNER_RESEARCH_OS_AUDIT.md"
+  lineage_ref: ".research/lineage.yaml"
   active_review_work:
     - pr: 44
       title: "Add compact reviewer summary for gradient clipping evidence"
@@ -34,19 +36,28 @@ existing_confirmatory_backend:
     - "consumed-run/no-rerun semantics"
     - "held-out restrictions"
     - "reviewer-only scientific interpretation"
+  research_os_replacement_required: false
 
-research_os_focus:
-  missing_or_underformalized:
-    - "research-question registry"
-    - "claim/competing-hypothesis graph"
-    - "versioned Evaluation Contracts"
-    - "measurement/eval calibration lifecycle"
-    - "explicit validity-audit layer separate from evidence validation"
-    - "statistical design/power rationale before new confirmatory studies"
-    - "negative/invalid/replication decision registry"
-    - "literature/prior-art linkage to claims and studies"
+verified_research_os_gaps:
+  - "single research-question/claim/study lineage index"
+  - "future versioned Evaluation Contract distinct from intervention-specific Study Protocol"
+  - "explicit measurement/eval calibration lifecycle and construct-validity threat tracking"
+  - "validity-audit role/process distinct from persisted-evidence validator"
+  - "future statistical design/power-or-precision rationale before new confirmatory studies"
+  - "central negative/invalid/replication decision linkage"
+  - "structured literature/prior-art linkage to questions/claims/evals/studies"
+
+not_gaps:
+  - "versioned/frozen study protocols"
+  - "implementation/source/runtime provenance"
+  - "independent persisted-evidence validation"
+  - "adversarial tamper coverage"
+  - "fixed-target execution"
+  - "held-out restrictions"
+  - "reviewer-owned scientific interpretation"
 
 migration_policy:
   current_gradient_clipping_round: "index-only; do not rewrite"
   future_new_studies: "eligible for OS-native RQ -> CLM -> EVAL -> STU workflow"
   first_enforcement_step: "advisory validation only"
+  required_ci_gate_now: false
