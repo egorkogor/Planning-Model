@@ -1,0 +1,108 @@
+version: "planning-research-lineage/0.1"
+mode: "advisory-read-only-index"
+governance: "legacy-bound"
+authority_precedence: "existing project specs/evidence/reviewer decisions"
+
+research_questions:
+  - id: "RQ-PLN-001"
+    question: "Why did the historical A2 baseline collapse to END-only behavior under Development Quality Evaluation v0.1?"
+    status: "active-causal-discrimination-line"
+    authority_refs:
+      - "docs/evaluations/A2_A3_A4_V0_1_DECISION_RU.md"
+      - "docs/evaluations/A2_OPTIMIZATION_BUDGET_TRAJECTORY_SPEC_RU.md"
+      - "docs/evaluations/A2_SUFFICIENT_BUDGET_TASK_ORDER_SPEC_RU.md"
+      - "docs/evaluations/A2_GRADIENT_CLIPPING_CAUSAL_SPEC_RU.md"
+
+claims:
+  - id: "CLM-PLN-A2-BUDGET"
+    rq: "RQ-PLN-001"
+    statement: "Insufficient optimization budget is a major supported explanation for the historical A2 END-collapse in the tested toy regime."
+    bounded_status: "SUPPORTED_HYPOTHESIS_NOT_PROVEN"
+    scope_note: "Do not generalize beyond the accepted A2 train-only causal-discrimination evidence."
+    evidence_refs:
+      - "docs/evaluations/A2_OPTIMIZATION_BUDGET_TRAJECTORY_SPEC_RU.md"
+      - "PR #34 scientific lineage"
+
+  - id: "CLM-PLN-A2-TASK-ORDER"
+    rq: "RQ-PLN-001"
+    statement: "Within-epoch task01 placement can modify transient optimization trajectory but is not established as a stable primary controller of eventual rescue at sufficient budget."
+    bounded_status: "SECONDARY_TRAJECTORY_MODIFIER"
+    scope_note: "Bound to accepted task-order evidence; not a universal no-effect claim."
+    evidence_refs:
+      - "docs/evaluations/A2_SUFFICIENT_BUDGET_TASK_ORDER_SPEC_RU.md"
+      - "PR #34 comment 5318288809"
+    competes_with:
+      - "CLM-PLN-A2-BUDGET"
+
+  - id: "CLM-PLN-A2-CLIPPING"
+    rq: "RQ-PLN-001"
+    statement: "Canonical gradient clipping at max_norm=1.0 may be an additional causal contributor to delayed A2 rescue."
+    bounded_status: "PENDING_EXTERNAL_SCIENTIFIC_REVIEW"
+    scope_note: "Current legacy-bound gradient-clipping study; producer/validator do not own scientific verdict."
+    evidence_refs:
+      - "docs/evaluations/A2_GRADIENT_CLIPPING_CAUSAL_SPEC_RU.md"
+      - "PR #44 derivative reviewability work"
+    competes_with:
+      - "CLM-PLN-A2-BUDGET"
+
+  - id: "CLM-PLN-LATENT"
+    rq: "RQ-PLN-001"
+    statement: "Current A2 causal-discrimination results do not establish latent/A3 usefulness or superiority."
+    bounded_status: "NOT_EVALUATED"
+    scope_note: "GO_LATENT = NOT EVALUATED"
+
+studies:
+  - id: "STU-PLN-DEV-QUALITY-V0.1"
+    governance: "legacy-bound"
+    evidence_class: "DISCOVERY"
+    status: "COMPLETED_REDIRECTED"
+    scientific_decision: "REDESIGN"
+    authority_ref: "docs/evaluations/A2_A3_A4_V0_1_DECISION_RU.md"
+    notes: "Historical development baseline; never promote retroactively to confirmatory evidence."
+
+  - id: "STU-PLN-A2-BUDGET"
+    governance: "legacy-bound"
+    evidence_class: "CONFIRMATORY_WITHIN_EXISTING_PROJECT_TERMS"
+    status: "COMPLETED_ACCEPTED_LINEAGE"
+    claim_refs:
+      - "CLM-PLN-A2-BUDGET"
+    authority_ref: "docs/evaluations/A2_OPTIMIZATION_BUDGET_TRAJECTORY_SPEC_RU.md"
+    heldout_policy: "train-only; bw-00000004/05 forbidden"
+
+  - id: "STU-PLN-A2-TASK-ORDER"
+    governance: "legacy-bound"
+    evidence_class: "CONFIRMATORY_WITHIN_EXISTING_PROJECT_TERMS"
+    status: "COMPLETED_ACCEPTED_SCIENTIFIC_EVIDENCE"
+    claim_refs:
+      - "CLM-PLN-A2-BUDGET"
+      - "CLM-PLN-A2-TASK-ORDER"
+    authority_ref: "docs/evaluations/A2_SUFFICIENT_BUDGET_TASK_ORDER_SPEC_RU.md"
+    reviewer_decision_ref: "PR #34 comment 5318288809"
+    provenance_note: "Accepted as scientific evidence with manual fixed-target provenance; not promoted to native GitHub-workflow acceptance."
+    heldout_policy: "train-only; bw-00000004/05 forbidden"
+
+  - id: "STU-PLN-A2-GRADIENT-CLIPPING"
+    governance: "legacy-bound"
+    evidence_class: "CONFIRMATORY_WITHIN_EXISTING_PROJECT_TERMS"
+    status: "ACTIVE_REVIEW_LINE"
+    claim_refs:
+      - "CLM-PLN-A2-BUDGET"
+      - "CLM-PLN-A2-CLIPPING"
+    authority_ref: "docs/evaluations/A2_GRADIENT_CLIPPING_CAUSAL_SPEC_RU.md"
+    reviewability_ref: "PR #44"
+    heldout_policy: "train-only; bw-00000004/05 forbidden"
+    interpretation_owner: "external reviewer"
+
+future_os_native_policy:
+  object_flow:
+    - "RQ-*"
+    - "CLM-*"
+    - "EVAL-*"
+    - "STU-*"
+    - "RUN-*"
+    - "EVD-*"
+    - "AUD-*"
+    - "DEC-*"
+  required_now: false
+  advisory_only: true
+  first_candidate: "next genuinely new scientific question after current legacy-bound gradient-clipping line"
