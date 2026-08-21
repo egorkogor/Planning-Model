@@ -1,0 +1,285 @@
+version: "research-os-study-protocol/0.1"
+status: "DISCOVERY_PREEXECUTION_NON_OUTCOME_BEARING"
+id: "STU-PLN-SEM-DISC-001"
+rq: "RQ-PLN-SEMANTIC-001"
+eval_ref: "EVAL-PLN-SEM-FEEDBACK-001@research-os-evaluation-contract/0.1"
+evidence_class: "DISCOVERY"
+authority:
+  issue: 57
+  authoritative_base: "f43c21c86dd96b0d27860dd9cb14d2d0ee2f9b6b"
+  parent_validity_comment: 5374374686
+  accepted_eval: ".research/evals/semantic_feedback_causal_eval_v1.yaml"
+  accepted_portfolio: ".research/planner_portfolio.yaml"
+  frozen_v1_21_read_only: true
+  explicit_non_authority:
+    - "This protocol does not authorize model training, inference, scientific producer execution, held-out access, or outcome collection."
+    - "This protocol does not create confirmatory evidence or permit SUPPORTED/REFUTED/GO/NO-GO conclusions."
+    - "This protocol does not change GO_LATENT = NOT EVALUATED."
+
+purpose: >-
+  Freeze the scientific degrees of freedom required for a later separately authorized development-only
+  semantic-feedback Discovery execution so the three accepted estimands remain interpretable and
+  shortcut/censoring failures are explicit before outcomes are observed.
+
+data_governance:
+  mode: "DEVELOPMENT_ONLY_NON_CONFIRMATORY"
+  legacy_held_out_04_05: "FORBIDDEN_NO_ACCESS_NO_MATERIALIZATION"
+  confirmatory_thresholds: "NOT_DEFINED"
+  claim_promotion: "FORBIDDEN"
+  adaptation_after_outcomes: >-
+    Any change to codebook identities, novel-composition construction, donor matching, collision fixture,
+    endpoint definitions, or null/invalidity semantics after outcome inspection requires a new protocol version.
+
+estimands:
+  - id: "EST-PLN-SEM-ARCH-BUNDLE"
+    contrast: "A3_vs_A2c"
+    interpretation: "architecture-bundle effect only"
+    forbidden_interpretations:
+      - "pure semantic representation effect"
+      - "semantic geometry alone caused any A3 advantage"
+  - id: "EST-PLN-SEM-GEOMETRY"
+    contrast: "A3_vs_A3r"
+    interpretation: "semantic geometry/alignment/inductive-bias specificity relative to arbitrary identity-preserving code"
+    forbidden_interpretations:
+      - "semantic information versus no semantic information"
+      - "a single convenient codebook result"
+  - id: "EST-PLN-SEM-RELIANCE"
+    contrasts: ["A3_vs_A4", "A3_vs_A5", "A3_vs_WRONG_SEMANTIC_DONOR"]
+    interpretation: "exact-checkpoint feedback path/content/order reliance"
+    forbidden_interpretations:
+      - "A3 superiority over A2c"
+      - "same-checkpoint intervention alone proves semantic geometry"
+triangulation:
+  pooled_semantic_effect: "FORBIDDEN"
+  reporting_rule: "report every estimand separately with its own validity state before any qualitative triangulation"
+
+random_codebooks:
+  required_for: "EST-PLN-SEM-GEOMETRY"
+  count: 2
+  generator_contract: "docs/controls/random_codebook_contract_v1.yaml"
+  identities:
+    - id: "A3R-CODEBOOK-170029"
+      seed: 170029
+    - id: "A3R-CODEBOOK-290043"
+      seed: 290043
+  selection_after_outcomes: "FORBIDDEN"
+  aggregation:
+    primary_reporting: "REPORT_EACH_CODEBOOK_SEPARATELY"
+    joint_summary: "UNWEIGHTED_MEAN_OF_DEFINED_CODEBOOK_EFFECTS"
+    minimum_defined_codebooks: 2
+    missing_or_invalid_codebook: "INVALID_GEOMETRY_ESTIMAND_NO_PARTIAL_AGGREGATION"
+
+novel_compositional_signature_stress:
+  required_for: "EST-PLN-SEM-GEOMETRY"
+  construction_id: "SEM-COMP-PAIR-HOLDOUT-V1"
+  vocabulary:
+    relation_atoms: ["LEFT_OF", "RIGHT_OF", "ON_TOP_OF", "UNDER"]
+    distance_atoms: ["NEAR", "FAR"]
+  signature_encoding: "relation_atom + '|' + distance_atom"
+  train_signatures:
+    - "LEFT_OF|NEAR"
+    - "LEFT_OF|FAR"
+    - "RIGHT_OF|NEAR"
+    - "ON_TOP_OF|NEAR"
+    - "ON_TOP_OF|FAR"
+    - "UNDER|FAR"
+  stress_signatures:
+    - "RIGHT_OF|FAR"
+    - "UNDER|NEAR"
+  mechanical_requirements:
+    - "set(train_signatures) and set(stress_signatures) are disjoint"
+    - "every atom appearing in a stress signature appears in at least one train signature"
+    - "stress exact signatures may not occur in any training example for any A3/A3r arm"
+    - "the same train/stress construction is shared by both frozen random codebooks"
+  contamination_failure: "INVALID_GEOMETRY_ESTIMAND_SIGNATURE_OVERLAP"
+
+wrong_semantic_donor:
+  required_for: "EST-PLN-SEM-RELIANCE"
+  checkpoint: "EXACT_A3_CHECKPOINT"
+  retraining: "FORBIDDEN"
+  source: "same authorized development split and same A3 checkpoint"
+  candidate_filter_all_required:
+    - "candidate unit differs from target unit"
+    - "candidate semantic signature differs from target semantic signature"
+    - "candidate planner_seed equals target planner_seed"
+    - "candidate split_id equals target split_id"
+    - "candidate intervention_position equals target intervention_position"
+    - "candidate remaining_distance_bucket equals target remaining_distance_bucket"
+    - "candidate hand_mode equals target hand_mode"
+    - "candidate feedback_norm_bucket equals target feedback_norm_bucket"
+  deterministic_order:
+    - "ascending absolute difference in feedback_norm_raw"
+    - "ascending candidate episode_id"
+    - "ascending candidate unit_id"
+  selection: "first candidate after applying the complete filter and deterministic order"
+  no_relaxation: true
+  donor_unavailable_state: "NOT_EVALUATED_DONOR_UNAVAILABLE"
+  analyst_override: "FORBIDDEN"
+
+checkpoint_and_intervention_binding:
+  A3_checkpoint_identity: "ONE_EXACT_FROZEN_CHECKPOINT_PER_PLANNER_SEED_FOR_THE_LATER_EXECUTION"
+  A4_checkpoint: "EXACT_A3_CHECKPOINT"
+  A5_checkpoint: "EXACT_A3_CHECKPOINT"
+  wrong_semantic_donor_checkpoint: "EXACT_A3_CHECKPOINT"
+  A4_A5_donor_retraining: "FORBIDDEN"
+  mismatch_state: "INVALID_CHECKPOINT_OR_RETRAINING"
+  zero_warning: "potentially OOD; never sufficient as sole semantic-content control"
+  shuffle_warning: "potentially OOD; never sufficient without matched wrong-semantic donor"
+
+exposure_and_endpoints:
+  opportunity_set_source: "PRE_INTERVENTION_REFERENCE_PREFIX_ONLY"
+  first_feedback_rule: >-
+    For each unit, define the first eligible downstream feedback position from one shared reference prefix;
+    all same-checkpoint interventions branch from that identical state and position.
+  post_treatment_survivor_denominator: "FORBIDDEN"
+  immediate:
+    id: "immediate_next_step_effect"
+    scope: "first common downstream feedback opportunity"
+  total:
+    id: "free_running_total_effect"
+    scope: "downstream terminal effect after the intervention"
+  collapse_immediate_and_total: "FORBIDDEN"
+  treatment_survival_conditioning_for_total: "FORBIDDEN"
+
+collision_fixture:
+  fixture_id: "SEM-METADATA-COLLISION-V1"
+  synthetic_only: true
+  scientific_outcome: false
+  allowed_metadata_fields:
+    - "opaque_task_id"
+    - "opaque_ref_ids"
+    - "opaque_signature_id"
+    - "position"
+    - "nuisance_bucket"
+  collision_pair:
+    - id: "COLLISION-A"
+      opaque_task_id: "task-kappa"
+      opaque_ref_ids: ["ref-17", "ref-29"]
+      opaque_signature_id: "sig-opaque-5"
+      position: 3
+      nuisance_bucket: "n0"
+      semantic_feedback: "MOVE_ALPHA_TO_BETA"
+      required_next_action: "action-alpha"
+    - id: "COLLISION-B"
+      opaque_task_id: "task-kappa"
+      opaque_ref_ids: ["ref-17", "ref-29"]
+      opaque_signature_id: "sig-opaque-5"
+      position: 3
+      nuisance_bucket: "n0"
+      semantic_feedback: "MOVE_GAMMA_TO_DELTA"
+      required_next_action: "action-gamma"
+  inverse_metadata_pair:
+    - id: "INVERSE-A"
+      opaque_task_id: "task-lambda"
+      opaque_ref_ids: ["ref-43", "ref-71"]
+      opaque_signature_id: "sig-opaque-9"
+      position: 3
+      nuisance_bucket: "n1"
+      semantic_feedback: "MOVE_ALPHA_TO_BETA"
+      required_next_action: "action-alpha"
+    - id: "INVERSE-B"
+      opaque_task_id: "task-mu"
+      opaque_ref_ids: ["ref-101", "ref-103"]
+      opaque_signature_id: "sig-opaque-11"
+      position: 7
+      nuisance_bucket: "n2"
+      semantic_feedback: "MOVE_ALPHA_TO_BETA"
+      required_next_action: "action-alpha"
+  expected_controls:
+    metadata_only_no_feedback:
+      collision_pair: "INDETERMINATE_MUST_NOT_SEPARATE_TARGETS"
+      inverse_metadata_pair: "TARGET_MUST_REMAIN_INVARIANT"
+    semantic_oracle:
+      collision_pair: "MUST_SEPARATE_TARGETS"
+      inverse_metadata_pair: "TARGET_MUST_REMAIN_INVARIANT"
+  failure_states:
+    metadata_only_separates_collision: "INVALID_SHORTCUT_NOT_EXCLUDED"
+    oracle_fails_collision: "INVALID_SEMANTIC_CHANNEL_NOT_USABLE"
+    metadata_change_changes_semantic_target: "INVALID_METADATA_INVARIANCE"
+
+null_and_invalidity_states:
+  precedence:
+    - "INVALID_CHECKPOINT_OR_RETRAINING"
+    - "INVALID_SHORTCUT_NOT_EXCLUDED"
+    - "INVALID_SEMANTIC_CHANNEL_NOT_USABLE"
+    - "INVALID_METADATA_INVARIANCE"
+    - "INVALID_GEOMETRY_ESTIMAND_SIGNATURE_OVERLAP"
+    - "INVALID_GEOMETRY_ESTIMAND_NO_PARTIAL_AGGREGATION"
+    - "NOT_EVALUATED_NO_DOWNSTREAM_OPPORTUNITY"
+    - "NOT_EVALUATED_INTERVENTION_NOT_APPLICABLE"
+    - "NOT_EVALUATED_DONOR_UNAVAILABLE"
+    - "CENSORED_TERMINATED_BEFORE_PLANNED_INTERVENTION"
+    - "NOT_APPLICABLE_ENDPOINT_UNDEFINED"
+    - "EVALUATED"
+  states:
+    NOT_EVALUATED_NO_DOWNSTREAM_OPPORTUNITY:
+      endpoint: null
+      trigger: "reference downstream exposure count equals zero"
+    NOT_EVALUATED_INTERVENTION_NOT_APPLICABLE:
+      endpoint: null
+      trigger: "reference opportunity exists but intervention cannot be constructed"
+    NOT_EVALUATED_DONOR_UNAVAILABLE:
+      endpoint: null
+      trigger: "wrong-semantic donor candidate filter returns zero candidates"
+    INVALID_CHECKPOINT_OR_RETRAINING:
+      endpoint: null
+      trigger: "same-checkpoint identity mismatch or prohibited retraining"
+    INVALID_SHORTCUT_NOT_EXCLUDED:
+      endpoint: null
+      trigger: "metadata-only or identifier shortcut falsification fails"
+    INVALID_SEMANTIC_CHANNEL_NOT_USABLE:
+      endpoint: null
+      trigger: "semantic oracle cannot separate the collision pair"
+    INVALID_METADATA_INVARIANCE:
+      endpoint: null
+      trigger: "metadata counterfactual changes target behavior while semantics are fixed"
+    INVALID_GEOMETRY_ESTIMAND_SIGNATURE_OVERLAP:
+      endpoint: null
+      trigger: "stress exact signature appears in training"
+    INVALID_GEOMETRY_ESTIMAND_NO_PARTIAL_AGGREGATION:
+      endpoint: null
+      trigger: "fewer than both frozen codebooks are valid/defined"
+    CENSORED_TERMINATED_BEFORE_PLANNED_INTERVENTION:
+      endpoint: null
+      trigger: "free-running treatment terminates before planned intervention"
+      denominator_rule: "remain in pre-intervention opportunity accounting; never convert to zero effect"
+    NOT_APPLICABLE_ENDPOINT_UNDEFINED:
+      endpoint: null
+      trigger: "requested endpoint is structurally undefined"
+    EVALUATED:
+      endpoint: "DEFINED"
+      trigger: "all validity preconditions pass and endpoint is defined"
+  null_is_zero_effect: false
+
+preexecution_calibration_matrix:
+  - id: "CAL-CODEBOOK-COUNT"
+    assertion: "exactly two frozen codebooks with distinct ids and seeds"
+  - id: "CAL-NOVEL-SIGNATURE"
+    assertion: "stress exact signatures are disjoint from training while all component atoms are seen in training"
+  - id: "CAL-DONOR-DETERMINISM"
+    assertion: "donor filter, ordering, tie-break, and unavailable state are fully specified"
+  - id: "CAL-COLLISION"
+    assertion: "collision metadata are byte-equivalent in canonical form except semantic feedback and required target"
+  - id: "CAL-INVERSE-METADATA"
+    assertion: "inverse pair holds semantic feedback and target fixed while metadata changes"
+  - id: "CAL-CHECKPOINT"
+    assertion: "A4/A5/wrong-donor are exact-A3-checkpoint no-retraining interventions"
+  - id: "CAL-EXPOSURE"
+    assertion: "opportunity set is pre-intervention and total-effect denominator does not condition on treatment survival"
+  - id: "CAL-NULL-STATES"
+    assertion: "all issue-57 required null/invalidity cases have explicit non-numeric semantics"
+
+promotion_boundary:
+  current_round: "PREEXECUTION_PROTOCOL_ONLY"
+  model_training: "FORBIDDEN"
+  model_inference: "FORBIDDEN"
+  scientific_execution: "FORBIDDEN"
+  held_out_access: "FORBIDDEN"
+  execution_work_package: "REQUIRES_SEPARATE_EXTERNAL_REVIEWER_AUTHORIZATION"
+  confirmatory_freeze: "NOT_AUTHORIZED"
+  go_latent: "NOT EVALUATED"
+
+versioning:
+  protocol_version: "0.1"
+  immutable_after_outcome_inspection: true
+  amendment_rule: "scientific-degree-of-freedom changes require a new version and external review before execution"
