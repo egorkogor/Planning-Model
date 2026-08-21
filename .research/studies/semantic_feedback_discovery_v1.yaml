@@ -57,11 +57,33 @@ random_codebooks:
   required_for: "EST-PLN-SEM-GEOMETRY"
   count: 2
   generator_contract: "docs/controls/random_codebook_contract_v1.yaml"
+  generator_contract_binding:
+    inherited_fields_unchanged:
+      - "code_generation.algorithm = SHAKE256_BITS_V1"
+      - "code_generation.payload = seed_bytes || UTF8(signature_sha256)"
+      - "code_generation.output_bytes = 48"
+      - "code_generation.dimension = 384"
+      - "code_generation.bit_mapping = 0_to_minus_one; 1_to_plus_one"
+      - "code_generation.model_target = float32(bit_value / sqrt(384))"
+      - "code_generation.signature_order = ascending_signature_sha256"
+      - "code_generation.rejection_or_manual_selection = forbidden"
+    discovery_only_parameterization: >-
+      For each identity below, compute SHA256 over the exact UTF-8 derivation_input string and use the
+      resulting 32 bytes as seed_bytes in place of the frozen contract's single code_generation.seed_hex.
+      No other frozen generator field changes. The stored seed_hex is the exact expected digest of
+      derivation_input and MUST match recomputation before any later execution.
+    hash_algorithm: "SHA256"
+    encoding: "UTF-8"
+    analyst_override: "FORBIDDEN"
   identities:
     - id: "A3R-CODEBOOK-170029"
-      seed: 170029
+      legacy_label_seed: 170029
+      derivation_input: "STU-PLN-SEM-DISC-001|A3R-CODEBOOK-170029|170029"
+      seed_hex: "c83c21942a85cd899b0ddb764eb007f205d79f9c498bd3ec9dd94cf859d75c47"
     - id: "A3R-CODEBOOK-290043"
-      seed: 290043
+      legacy_label_seed: 290043
+      derivation_input: "STU-PLN-SEM-DISC-001|A3R-CODEBOOK-290043|290043"
+      seed_hex: "088d3f30429645884c69975744ca9414c8bbaaed4f1ac7dfea2832979396af3e"
   selection_after_outcomes: "FORBIDDEN"
   aggregation:
     primary_reporting: "REPORT_EACH_CODEBOOK_SEPARATELY"
@@ -253,7 +275,7 @@ null_and_invalidity_states:
 
 preexecution_calibration_matrix:
   - id: "CAL-CODEBOOK-COUNT"
-    assertion: "exactly two frozen codebooks with distinct ids and seeds"
+    assertion: "exactly two frozen codebooks with distinct ids and exact reconstructible generator seed inputs"
   - id: "CAL-NOVEL-SIGNATURE"
     assertion: "stress exact signatures are disjoint from training while all component atoms are seen in training"
   - id: "CAL-DONOR-DETERMINISM"
