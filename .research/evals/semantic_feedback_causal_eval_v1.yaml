@@ -1,0 +1,408 @@
+version: "research-os-evaluation-contract/0.1"
+status: "ADVISORY_DISCOVERY_DESIGN_NON_OUTCOME_BEARING"
+research_os_required_gate: false
+
+id: "EVAL-PLN-SEM-FEEDBACK-001"
+rq: "RQ-PLN-SEMANTIC-001"
+study_node: "STU-PLN-SEM-EVAL-CAL-001"
+
+purpose: >-
+  Define construct-validity and causal-identification requirements for future semantic-feedback
+  evaluation without executing science, changing frozen v1.21 contracts, or creating claim-bearing
+  evidence.
+
+authority:
+  issue: 52
+  authoritative_base: "744837335f6d4e21bdc18b729c57b752b93a3a72"
+  independent_validity_comment: 5372914356
+  accepted_portfolio: ".research/planner_portfolio.yaml"
+  evidence_class: "DISCOVERY_DESIGN_NON_OUTCOME_BEARING"
+  explicit_non_authority:
+    - "This contract does not authorize training, inference, held-out access, or scientific execution."
+    - "This contract does not freeze confirmatory thresholds, effect sizes, seeds, or trial counts."
+    - "This contract cannot emit SUPPORTED, REFUTED, GO, or NO-GO scientific verdicts."
+    - "This contract does not modify GO_LATENT = NOT EVALUATED."
+
+legacy_bindings:
+  frozen_v1_21_read_only: true
+  scientific_contract: "docs/architecture/planner_scientific_contract_v1.yaml"
+  semantic_target_contract: "docs/semantic/semantic_target_v1.yaml"
+  random_codebook_contract: "docs/controls/random_codebook_contract_v1.yaml"
+  latent_ablation_contract: "docs/controls/planner_latent_ablation_contract_v1.yaml"
+  arm_semantics:
+    A2c: "information-matched structured discrete semantic baseline"
+    A3: "continuous-latent architecture bundle; not representation-only causal isolation"
+    A3r: "A3-matched architecture/training with frozen deterministic random code per exact signature"
+    A4: "exact-A3-checkpoint zero-feedback inference intervention"
+    A5: "exact-A3-checkpoint shuffled-feedback inference intervention"
+  derivative_only_boundary: >-
+    PR #44 and all legacy A2/gradient-clipping evidence, runtime, producer, validator, bridge,
+    status, preflight, and scientific-interpretation surfaces are read-only and out of scope.
+
+construct:
+  name: "semantic-feedback causal triangulation"
+  operational_definition: >-
+    Evaluate three distinct estimands that jointly constrain a semantic explanation while preserving
+    their different causal meanings. No result is interpreted as one monolithic semantic effect.
+  intended_inference: >-
+    A future reviewer may triangulate architecture-bundle evidence, semantic-geometry specificity,
+    and same-checkpoint feedback reliance only when each estimand is individually valid and its
+    required controls pass.
+  collapse_into_single_causal_contrast: "FORBIDDEN"
+  known_proxies_or_shortcuts:
+    - "active capacity or projection-path differences"
+    - "one-to-one random-code memorization"
+    - "task ID, ref ordering, signature ID, position, or stable metadata lookup"
+    - "distribution shift caused by zero or implausible shuffled feedback"
+    - "post-treatment selection caused by intervention-dependent early termination"
+
+estimands:
+  - id: "EST-PLN-SEM-ARCH-BUNDLE"
+    contrasts:
+      - "A3_vs_A2c"
+    estimand: >-
+      Architecture-bundle effect of the frozen A3 continuous-latent design relative to the
+      information-matched A2c structured-semantic baseline.
+    allowed_interpretation: >-
+      Continuous target geometry, projection path, and active capacity may jointly contribute.
+    forbidden_interpretation:
+      - "pure semantic representation effect"
+      - "semantic geometry alone caused any A3 advantage"
+    downstream_feedback_exposure_required: true
+    zero_exposure_semantics: "INVALID_FOR_ESTIMAND"
+
+  - id: "EST-PLN-SEM-GEOMETRY"
+    contrasts:
+      - "A3_vs_A3r"
+    estimand: >-
+      Semantic geometry, alignment, or inductive-bias specificity relative to an arbitrary
+      one-to-one random code with A3-matched architecture and training schedule.
+    allowed_interpretation: >-
+      Difference attributable to semantic alignment/geometry or related inductive bias beyond a
+      learnable arbitrary identity-preserving code, subject to robustness and novelty stress.
+    forbidden_interpretation:
+      - "semantic information versus no semantic information"
+      - "random code is information-free"
+    downstream_feedback_exposure_required: true
+    zero_exposure_semantics: "INVALID_FOR_ESTIMAND"
+    interpretation_preconditions:
+      - "random-codebook robustness requirement satisfied"
+      - "compositional or novel-signature stress satisfied"
+      - "shortcut baselines do not reconstruct target semantics from identifiers or metadata"
+
+  - id: "EST-PLN-SEM-RELIANCE"
+    contrasts:
+      - "A3_vs_A4"
+      - "A3_vs_A5"
+    estimand: >-
+      Same-checkpoint reliance on the feedback path, content, and order under zero and shuffled
+      interventions using the exact A3 checkpoint with no retraining.
+    allowed_interpretation: >-
+      The fixed A3 model relies on the feedback path/content/order under the stated interventions.
+    forbidden_interpretation:
+      - "A3 is superior to A2c"
+      - "same-checkpoint ablation alone proves semantic geometry"
+    downstream_feedback_exposure_required: true
+    zero_exposure_semantics: "INVALID_FOR_ESTIMAND"
+    interpretation_preconditions:
+      - "matched in-distribution wrong-semantic donor control is available"
+      - "zero and shuffle OOD risk is reported rather than silently treated as semantic removal"
+
+triangulation:
+  allowed: true
+  rule: >-
+    The three estimands may jointly strengthen or weaken a semantic explanation only after separate
+    validity judgments. A failure or invalidity in one estimand remains visible and is never replaced
+    by a pooled semantic-effect number.
+  pooled_semantic_effect: "FORBIDDEN"
+
+interventions_and_controls:
+  zero_intervention:
+    legacy_arm: "A4"
+    required: true
+    checkpoint: "exact_A3"
+    retraining: "FORBIDDEN"
+    validity_warning: "Exact zero may be out of distribution and is insufficient as a content control."
+
+  constrained_shuffle:
+    legacy_arm: "A5"
+    required: true
+    checkpoint: "exact_A3"
+    retraining: "FORBIDDEN"
+    legacy_matching_contract: "docs/controls/planner_latent_ablation_contract_v1.yaml"
+    validity_warning: >-
+      Even constrained shuffling can be distributionally implausible; it is insufficient without a
+      matched in-distribution wrong-semantic content intervention.
+
+  matched_in_distribution_wrong_semantic_donor:
+    required: true
+    future_control_only: true
+    checkpoint: "exact_A3"
+    retraining: "FORBIDDEN"
+    donor_source: >-
+      Observed in-distribution A3 feedback from a different semantic state in the same authorized
+      development distribution; no held-out materialization is permitted by this contract.
+    matching_requirements:
+      - "same planner seed"
+      - "same split/distribution"
+      - "same step index or common fixed-prefix intervention position"
+      - "same remaining-distance bucket when defined"
+      - "same hand mode when defined"
+      - "matched feedback norm/marginal bucket when defined"
+      - "semantic signature differs"
+    interpretation_role: >-
+      Preserve nuisance/distributional properties while substituting incorrect semantic content so
+      content sensitivity is not inferred only from zeroing or implausible shuffling.
+
+  random_codebook_robustness:
+    required_for_estimand: "EST-PLN-SEM-GEOMETRY"
+    policy: >-
+      A future real-model design must either use multiple independently frozen deterministic
+      codebooks or preregister a reviewer-approved reason that one frozen codebook is sufficient.
+    single_codebook_without_predeclared_justification: "INVALID_FOR_GEOMETRY_INTERPRETATION"
+
+  compositional_novel_signature_stress:
+    required_for_estimand: "EST-PLN-SEM-GEOMETRY"
+    policy: >-
+      Include development-authorized compositional or novel-signature-combination stress that cannot
+      be passed by memorizing a small finite signature-to-code lookup table.
+    absent: "INVALID_FOR_GEOMETRY_INTERPRETATION"
+
+shortcut_defenses:
+  task_id_ref_signature_baseline:
+    required: true
+    inputs_allowed:
+      - "opaque task IDs"
+      - "opaque/permuted object or reference IDs"
+      - "opaque/permuted signature IDs"
+      - "position and explicitly declared nonsemantic metadata"
+    semantic_feedback_input: "FORBIDDEN"
+    purpose: "measure how much target behavior is recoverable from identifiers/metadata alone"
+
+  opaque_permuted_ids:
+    required: true
+    invariance_fixture: >-
+      Keep semantic target/content fixed while permuting opaque task/ref/signature identifiers and
+      ref ordering; a semantic endpoint must not depend on the original identifier assignment.
+
+  metadata_counterfactual_decoupling:
+    required: true
+    paired_fixture: >-
+      Hold identifiers and nuisance metadata fixed while changing semantic target/content, and pair
+      it with the inverse fixture where semantics stay fixed while identifiers/metadata change.
+    failure_semantics: "SHORTCUT_NOT_EXCLUDED"
+
+fixed_prefix_first_feedback_probe:
+  required: true
+  common_prefix_rule: >-
+    Reach the first eligible downstream feedback position under one identical reference prefix,
+    then branch interventions from that pre-intervention state. Do not let each treatment free-run
+    to define its own intervention position.
+  immediate_endpoint:
+    name: "immediate_next_step_effect"
+    required_observables:
+      - "next action or action distribution when available"
+      - "next-step action validity"
+      - "intervention applicability"
+    role: "local causal effect at the first common downstream feedback opportunity"
+  free_running_endpoint:
+    name: "free_running_total_effect"
+    required_observables:
+      - "goal_success or explicitly defined terminal task outcome"
+      - "termination/censoring state"
+    role: "downstream total effect after intervention; analyzed separately from immediate effect"
+  immediate_and_total_must_not_be_collapsed: true
+
+exposure_and_censoring:
+  downstream_exposure_precondition: true
+  opportunity_set: >-
+    Define eligible units/positions from the pre-intervention reference trajectory or common prefix,
+    never from positions that survive after treatment.
+  persist_for_each_unit:
+    - "reference downstream feedback opportunity count"
+    - "first eligible intervention position"
+    - "intervention applicability"
+    - "termination relative to planned intervention"
+  post_treatment_survivor_denominator: "FORBIDDEN"
+  zero_reference_exposure: "INVALID_FOR_ESTIMAND"
+  estimand_level_zero_exposure_rule: >-
+    Unit-level no-opportunity records remain null/NOT_EVALUATED; if the reference opportunity set
+    contains zero eligible downstream feedback opportunities for an estimand, that estimand is
+    INVALID_FOR_ESTIMAND and no numerical effect may be reported.
+  null_is_not_zero_effect: true
+  states:
+    EVALUATED:
+      endpoint_value: "DEFINED"
+      meaning: "Reference opportunity exists, intervention is applicable, and endpoint is defined."
+    NOT_EVALUATED_NO_DOWNSTREAM_OPPORTUNITY:
+      endpoint_value: null
+      meaning: "Reference trajectory has no downstream feedback opportunity."
+    NOT_EVALUATED_INTERVENTION_NOT_APPLICABLE:
+      endpoint_value: null
+      meaning: "A reference opportunity exists but this intervention cannot be constructed/applied."
+    CENSORED_TERMINATED_BEFORE_PLANNED_INTERVENTION:
+      endpoint_value: null
+      meaning: >-
+        Free-running generation terminated before the planned intervention; this may not remove the
+        unit from the pre-intervention denominator or be converted to zero effect.
+    NOT_APPLICABLE_ENDPOINT_UNDEFINED:
+      endpoint_value: null
+      meaning: "The requested action/terminal endpoint is structurally undefined for the unit."
+    INVALID_CHECKPOINT_OR_RETRAINING:
+      endpoint_value: null
+      meaning: "A4/A5 or same-checkpoint content intervention is not bound to exact A3 weights/no retraining."
+    INVALID_SHORTCUT_NOT_EXCLUDED:
+      endpoint_value: null
+      meaning: "Identifier/ref/signature/metadata shortcut controls fail or are absent."
+
+checkpoint_and_provenance:
+  A3_A4_A5_exact_checkpoint_identity: "MANDATORY"
+  A4_A5_retraining: "FORBIDDEN"
+  same_checkpoint_content_interventions_retraining: "FORBIDDEN"
+  required_bindings_for_future_execution:
+    - "A3 weights SHA-256"
+    - "A4 weights SHA-256 equal A3"
+    - "A5 weights SHA-256 equal A3"
+    - "intervention/control manifest identity"
+    - "reference opportunity-set identity"
+  mismatch_semantics: "INVALID_CHECKPOINT_OR_RETRAINING"
+
+synthetic_calibration:
+  status: "STATIC_SCHEMA_CALIBRATION_ONLY"
+  scientific_runtime_invoked: false
+  outcome_bearing: false
+  cases:
+    - id: "CAL-POSITIVE-SEMANTIC-DONOR"
+      kind: "positive_control"
+      reference_exposure_count: 1
+      intervention_applicable: true
+      endpoint_defined: true
+      checkpoint_match: true
+      shortcut_controls_pass: true
+      expected_status: "EVALUATED"
+      expected_construct_behavior: "known correct semantic donor changes the immediate next action correctly"
+
+    - id: "CAL-MATCHED-WRONG-SEMANTIC"
+      kind: "matched_wrong_semantic"
+      reference_exposure_count: 1
+      intervention_applicable: true
+      endpoint_defined: true
+      checkpoint_match: true
+      shortcut_controls_pass: true
+      donor_distribution_matched: true
+      semantic_content_wrong: true
+      expected_status: "EVALUATED"
+      expected_construct_behavior: "wrong-semantic donor changes immediate behavior in the incorrect direction"
+
+    - id: "CAL-ID-PERMUTATION"
+      kind: "shortcut_invariance"
+      reference_exposure_count: 1
+      intervention_applicable: true
+      endpoint_defined: true
+      checkpoint_match: true
+      shortcut_controls_pass: true
+      semantic_content_fixed: true
+      identifiers_permuted: true
+      expected_status: "EVALUATED"
+      expected_construct_behavior: "semantic endpoint is invariant to opaque identifier permutation"
+
+    - id: "CAL-METADATA-DECOUPLING"
+      kind: "shortcut_counterfactual"
+      reference_exposure_count: 1
+      intervention_applicable: true
+      endpoint_defined: true
+      checkpoint_match: true
+      shortcut_controls_pass: true
+      identifiers_metadata_fixed: true
+      semantic_content_changed: true
+      expected_status: "EVALUATED"
+      expected_construct_behavior: "semantic-sensitive endpoint follows content rather than fixed metadata"
+
+    - id: "CAL-NO-EXPOSURE"
+      kind: "null_semantics"
+      reference_exposure_count: 0
+      intervention_applicable: false
+      endpoint_defined: false
+      checkpoint_match: true
+      shortcut_controls_pass: true
+      expected_status: "NOT_EVALUATED_NO_DOWNSTREAM_OPPORTUNITY"
+      expected_endpoint: null
+
+    - id: "CAL-NOT-APPLICABLE"
+      kind: "null_semantics"
+      reference_exposure_count: 1
+      intervention_applicable: false
+      endpoint_defined: true
+      checkpoint_match: true
+      shortcut_controls_pass: true
+      expected_status: "NOT_EVALUATED_INTERVENTION_NOT_APPLICABLE"
+      expected_endpoint: null
+
+    - id: "CAL-CHECKPOINT-MISMATCH"
+      kind: "invalidity"
+      reference_exposure_count: 1
+      intervention_applicable: true
+      endpoint_defined: true
+      checkpoint_match: false
+      shortcut_controls_pass: true
+      expected_status: "INVALID_CHECKPOINT_OR_RETRAINING"
+      expected_endpoint: null
+
+    - id: "CAL-POST-TREATMENT-CENSORING"
+      kind: "censoring"
+      reference_exposure_count: 1
+      intervention_applicable: true
+      endpoint_defined: true
+      checkpoint_match: true
+      shortcut_controls_pass: true
+      treatment_terminated_before_planned_free_running_position: true
+      expected_status: "CENSORED_TERMINATED_BEFORE_PLANNED_INTERVENTION"
+      expected_endpoint: null
+      denominator_rule: "retain unit in pre-intervention reference opportunity set"
+
+    - id: "CAL-A3R-NOVEL-COMPOSITION"
+      kind: "random_code_lookup_stress"
+      reference_exposure_count: 1
+      intervention_applicable: true
+      endpoint_defined: true
+      checkpoint_match: true
+      shortcut_controls_pass: true
+      novel_signature_combination: true
+      expected_status: "EVALUATED"
+      expected_construct_behavior: >-
+        geometry interpretation is withheld if performance can be explained by memorized exact-signature code lookup
+
+prior_art_bindings:
+  - id: "Coconut"
+    primary_source: "https://arxiv.org/abs/2412.06769"
+    relevance: "continuous latent reasoning; broad latent-feedback novelty boundary"
+  - id: "CODI"
+    primary_source: "https://aclanthology.org/2025.emnlp-main.36/"
+    relevance: "continuous-space chain-of-thought compression"
+  - id: "SoftCoT"
+    primary_source: "https://aclanthology.org/2025.acl-long.1137/"
+    relevance: "soft/continuous reasoning representations"
+  - id: "Feedback Transformer"
+    primary_source: "https://arxiv.org/abs/2002.09402"
+    relevance: "recurrent feedback-memory path prior art"
+  - id: "Causal mediation in neural NLP"
+    primary_source: "https://arxiv.org/abs/2004.12265"
+    relevance: "causal intervention/mediation framing for internal representations"
+  - id: "Interchange interventions / causal abstraction"
+    primary_source: "https://proceedings.mlr.press/v162/geiger22a.html"
+    relevance: "intervention-based causal abstraction and matched internal-state tests"
+  - id: "ROME causal tracing"
+    primary_source: "https://arxiv.org/abs/2202.05262"
+    relevance: "causal tracing/intervention methodology"
+
+calibration:
+  current_status: "CALIBRATING_STATIC_ONLY"
+  valid_for_real_model_inference: false
+  valid_for_confirmatory_freeze: false
+  reviewer_required: true
+
+promotion_boundary:
+  real_model_discovery: "SEPARATE_REVIEWER_AUTHORIZED_VERSIONED_WORK_PACKAGE_REQUIRED"
+  confirmatory_freeze: "NOT_AUTHORIZED"
+  thresholds_or_supported_refuted_decision: "FORBIDDEN"
+  go_latent: "NOT EVALUATED"
