@@ -69,7 +69,7 @@ Use when safe progress requires an external prerequisite, ownership release, aut
 
 Use when worker implementation and allowed local/natural checks are complete enough for external review.
 
-- release normal write ownership unless the reviewer explicitly reserves it;
+- shared scientific/evaluation/runtime surfaces remain `RETAINED` by default until the reviewer accepts, cancels, releases, or reassigns them; state every surface explicitly;
 - set blocker to `NONE` unless review itself is waiting on a known prerequisite;
 - set exact next atomic action to `NONE — external reviewer decision required`;
 - do not convert `REVIEW` into `DONE`, merge, self-approve, or mark a Draft PR ready on the worker's own authority.
