@@ -1,0 +1,63 @@
+research_os_version: "1.0-bootstrap"
+project_id: "planning-model"
+project_name: "Planning-Model"
+mode: "advisory"
+integration: "read-only-adapter"
+
+governance:
+  existing_project_authority_precedence: true
+  legacy_rounds_finish_under_existing_rules: true
+  new_required_gates_enabled: false
+  scientific_runtime_dependency: false
+
+current_state:
+  governance: "legacy-bound"
+  authoritative_branch: "main"
+  authoritative_base_at_bootstrap: "ee773479cbbc84eab52f93996bc8beb64a51453c"
+  active_scientific_program: "A2 causal-discrimination / gradient-clipping line"
+  audit_ref: ".research/PLANNER_RESEARCH_OS_AUDIT.md"
+  lineage_ref: ".research/lineage.yaml"
+  active_review_work:
+    - pr: 44
+      title: "Add compact reviewer summary for gradient clipping evidence"
+      classification: "derivative-reviewability-only"
+      claim_bearing_evidence_modified: false
+      scientific_execution_expected: false
+
+existing_confirmatory_backend:
+  preserve:
+    - "frozen/versioned scientific contracts"
+    - "fixed-target runtime controls"
+    - "guarded reviewer execution bridge"
+    - "isolated execution principal/security boundaries"
+    - "producer evidence"
+    - "independent persisted-evidence validation"
+    - "content-addressed/sealed evidence"
+    - "consumed-run/no-rerun semantics"
+    - "held-out restrictions"
+    - "reviewer-only scientific interpretation"
+  research_os_replacement_required: false
+
+verified_research_os_gaps:
+  - "single research-question/claim/study lineage index"
+  - "future versioned Evaluation Contract distinct from intervention-specific Study Protocol"
+  - "explicit measurement/eval calibration lifecycle and construct-validity threat tracking"
+  - "validity-audit role/process distinct from persisted-evidence validator"
+  - "future statistical design/power-or-precision rationale before new confirmatory studies"
+  - "central negative/invalid/replication decision linkage"
+  - "structured literature/prior-art linkage to questions/claims/evals/studies"
+
+not_gaps:
+  - "versioned/frozen study protocols"
+  - "implementation/source/runtime provenance"
+  - "independent persisted-evidence validation"
+  - "adversarial tamper coverage"
+  - "fixed-target execution"
+  - "held-out restrictions"
+  - "reviewer-owned scientific interpretation"
+
+migration_policy:
+  current_gradient_clipping_round: "index-only; do not rewrite"
+  future_new_studies: "eligible for OS-native RQ -> CLM -> EVAL -> STU workflow"
+  first_enforcement_step: "advisory validation only"
+  required_ci_gate_now: false

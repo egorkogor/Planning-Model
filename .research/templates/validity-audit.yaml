@@ -1,0 +1,54 @@
+version: "research-os-validity-audit/0.1"
+status: "TEMPLATE_ONLY"
+research_os_required_gate: false
+
+id: "AUD-PLN-XXX"
+study_ref: "STU-PLN-XXX"
+evaluation_ref: "EVAL-PLN-XXX"
+evidence_validation_ref: ""
+
+independence:
+  auditor_role: "independent-validity-auditor"
+  implementation_or_producer_owner: false
+  evidence_validator_owner: false
+  scientific_decision_owner: false
+
+checks:
+  construct_measured_as_intended:
+    status: "NOT_REVIEWED"
+    findings: []
+  shortcut_or_leakage:
+    status: "NOT_REVIEWED"
+    findings: []
+  task_or_dataset_validity:
+    status: "NOT_REVIEWED"
+    findings: []
+  grader_or_verifier_validity:
+    status: "NOT_REVIEWED"
+    findings: []
+  harness_or_runtime_confounders:
+    status: "NOT_REVIEWED"
+    findings: []
+  intervention_isolation:
+    status: "NOT_REVIEWED"
+    findings: []
+  infrastructure_failures:
+    status: "NOT_REVIEWED"
+    findings: []
+  post_hoc_selection_or_analysis_drift:
+    status: "NOT_REVIEWED"
+    findings: []
+
+verdict:
+  status: "PENDING"
+  allowed_statuses:
+    - "PENDING"
+    - "VALID_FOR_STATED_INFERENCE"
+    - "VALID_WITH_LIMITATIONS"
+    - "SCIENTIFICALLY_INVALID"
+  limitations: []
+  decision_owner_note: "This audit does not promote a scientific claim. Final claim status belongs to the external scientific reviewer."
+
+notes:
+  - "This is distinct from persisted-evidence validation."
+  - "Template is advisory and future-facing; existing A2 validators remain authoritative for evidence correctness."

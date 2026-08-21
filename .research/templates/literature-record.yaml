@@ -1,0 +1,36 @@
+version: "research-os-literature-record/0.1"
+status: "TEMPLATE_ONLY"
+research_os_required_gate: false
+
+id: "LIT-PLN-XXX"
+title: ""
+authors: []
+year: null
+source_type: "paper"
+source_url: ""
+doi_or_identifier: ""
+code_url: ""
+
+claims_from_source: []
+evidence_summary: []
+limitations: []
+reproducibility:
+  code_available: null
+  data_available: null
+  model_or_weights_available: null
+
+planner_links:
+  research_questions: []
+  supports_claims: []
+  contradicts_claims: []
+  motivates_evaluations: []
+  motivates_studies: []
+
+review:
+  relevance: ""
+  confidence: ""
+  notes: []
+
+notes:
+  - "Record prior art by reference; do not treat literature metadata as project scientific evidence."
+  - "Future advisory template only."
