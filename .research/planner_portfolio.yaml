@@ -1,0 +1,404 @@
+version: "planner-research-portfolio/0.1"
+status: "ADVISORY_DESIGN_ONLY"
+research_os_required_gate: false
+
+purpose: >-
+  Index the current Planner scientific frontier and propose a small future Research OS
+  portfolio without changing legacy scientific contracts, execution, evidence, or reviewer decisions.
+
+authority:
+  issue: 50
+  authoritative_base: "3fc60b5d614d42493d89dafbb3bd3a9b007acff5"
+  authority_precedence:
+    - "accepted repository scientific contracts and decision records"
+    - "external reviewer decisions"
+    - "exact Git/provenance bindings and sealed evidence"
+    - "consumed-run/no-rerun semantics"
+    - "this advisory metadata"
+  read_only_legacy_line:
+    - "current A2 learnability / budget / task-order / gradient-clipping lineage"
+    - "PR #44 derivative-only gradient-clipping review line"
+  explicit_non_authority:
+    - "This file is not scientific evidence."
+    - "This file does not authorize execution."
+    - "This file does not modify GO_LATENT = NOT EVALUATED."
+
+current_claim_graph:
+  root_question:
+    id: "RQ-PLN-001"
+    question: >-
+      Why did the historical A2 structured baseline collapse to END-only behavior under
+      development v0.1, and which training/optimization factors causally control rescue?
+  answered_or_bounded_by_accepted_legacy_authority:
+    - id: "OBS-PLN-V01-END"
+      boundary: >-
+        Development v0.1 reproducibly produced END-only behavior across A2/A3a/A4 in the
+        historical setup; because no downstream action position was reached, the run did not
+        evaluate latent-feedback usefulness and ended in REDESIGN.
+    - id: "CLM-PLN-A2-BUDGET"
+      boundary: >-
+        Accepted A2 trajectory evidence bounds insufficient optimization budget as a major
+        explanation in the tested toy regime; this is not a latent/A3 claim and is not promoted
+        beyond the accepted legacy wording.
+    - id: "CLM-PLN-A2-TASK-ORDER"
+      boundary: >-
+        Accepted sufficient-budget task-order evidence treats within-epoch task order as a
+        secondary trajectory modifier rather than an established stable primary rescue controller.
+  unresolved_legacy:
+    - id: "CLM-PLN-A2-CLIPPING"
+      boundary: >-
+        Whether canonical max_norm=1.0 gradient clipping materially delays A2 rescue remains on
+        the legacy reviewer-owned line. PR #44 is derivative/read-only and does not change the
+        scientific evidence or verdict.
+    - id: "CLM-PLN-LATENT"
+      boundary: >-
+        Causal usefulness of latent/semantic feedback has not been evaluated by the END-only
+        historical result. GO_LATENT remains NOT EVALUATED.
+  competing_explanations_not_independent_programs:
+    - "insufficient optimization budget"
+    - "within-epoch task order / transient sequential dynamics"
+    - "gradient clipping policy"
+  conductor_interpretation: >-
+    Budget, task order, and gradient clipping are competing explanations within one legacy A2
+    learnability question. They should not be multiplied into separate future Research OS programs.
+
+proposed_research_questions:
+  - id: "RQ-PLN-SEMANTIC-001"
+    canonical_question: >-
+      Under a learnable Planner baseline, does semantically aligned continuous feedback make a
+      causal contribution to downstream planning beyond information-matched structured semantics,
+      random-code capacity, and same-checkpoint zero/shuffled-feedback controls?
+    evidence_class_first_round: "DISCOVERY"
+    relation_to_existing_authority:
+      - "Uses the already defined A2c/A3/A3r/A4/A5 causal roles as authority; does not rewrite them."
+      - "A3 versus A2c is an architecture-bundle comparison, not a representation-only claim."
+      - "A3/A4/A5 same-checkpoint constraints are the preferred feedback-necessity controls."
+      - "A3r is the preferred parameter/training-matched random-code semantic-specificity control."
+    claim_boundary:
+      in_scope:
+        - "causal usefulness of semantic feedback on downstream action generation in the stated Planner task distribution"
+        - "feedback necessity/order sensitivity through same-checkpoint A4/A5 interventions"
+        - "semantic-target specificity through A3 versus A3r under the frozen target-difference contract"
+      out_of_scope:
+        - "pure representation-only superiority of A3 over A2c"
+        - "general claims about large-model reasoning or real-world planning"
+        - "A3b authorization"
+        - "any change to GO_LATENT before reviewer decision"
+    competing_hypotheses:
+      H_semantic_feedback: >-
+        Semantically aligned feedback contributes task-relevant information that is used at
+        downstream planning positions.
+      H_bundle_capacity_or_projection: >-
+        Any A3 advantage is explained by active capacity/projection-path differences rather than
+        semantic geometry.
+      H_nonsemantic_code_capacity: >-
+        A random or arbitrary code of matched architecture/training utility performs similarly,
+        so semantic alignment is unnecessary.
+      H_feedback_not_causally_used: >-
+        Zeroing or shuffling feedback does not materially alter downstream behavior, indicating
+        that the feedback path is not carrying the useful causal signal.
+    causal_isolation:
+      - "Preserve A2c and A3 source semantic-signature identity."
+      - "Preserve A3r architecture/training schedule; only the frozen semantic target code differs."
+      - "Require A4/A5 checkpoint identity with A3 and forbid retraining of the interventions."
+      - "Validate that measured episodes actually contain downstream positions where feedback can act."
+      - "Separate goal/action validity from semantic-feedback interpretation."
+      - "Do not materialize or inspect legacy forbidden held-out bw-00000004/05 in Discovery."
+    required_baselines_and_controls:
+      - "A2c information-matched structured semantic baseline"
+      - "A3r frozen random-code matched control"
+      - "A4 same-checkpoint zero-feedback intervention"
+      - "A5 same-checkpoint shuffled-feedback intervention"
+      - "A1/A2 only as reference baselines where the existing scientific contract requires them"
+    reusable_components:
+      - "existing task/domain action semantics and executable-goal verifier"
+      - "existing source/provenance and independent-validation patterns"
+      - "existing fixed-target/runtime backend only if a later accepted study actually requires canonical execution"
+      - "existing semantic target and A2c/A3/A3r/A4/A5 control definitions as read-only authority"
+    isolated_components:
+      - "new OS-native Evaluation Contract and validity audit for semantic-feedback construct validity"
+      - "study-specific Discovery fixtures/results; never overwrite legacy A2 evidence"
+    cheapest_discovery:
+      phase_0_no_training:
+        - "Instantiate an advisory Evaluation Contract for the semantic-feedback construct."
+        - "Enumerate shortcut/proxy risks and expected behavior of A3r/A4/A5 controls."
+        - "Use synthetic positive/negative fixtures to prove the endpoint can distinguish useful downstream feedback from zero/shuffled/random-code cases."
+        - "Independently verify null/censoring semantics when no downstream feedback position exists."
+      phase_1_only_after_separate_reviewer_authorization: >-
+        If a real-model Discovery probe is still needed, create a separate versioned non-confirmatory
+        study contract and use the smallest development-only execution that exercises a downstream
+        feedback position. Do not reinterpret or mutate the frozen v1.21 scientific lock.
+    criteria:
+      kill:
+        - "The measurement cannot distinguish a known useful positive-control signal from zero/shuffled controls."
+        - "Downstream feedback exposure cannot be established without violating legacy/held-out boundaries."
+      redesign:
+        - "A signal is inseparable from active-capacity/projection differences or task/ID shortcuts."
+        - "Random-code control performs indistinguishably for reasons the current Evaluation Contract cannot resolve."
+      promote: >-
+        Promote only to a reviewer-authorized Measurement/Pilot design after construct calibration,
+        causal-control validity, and independent validity review are satisfactory. No confirmatory
+        effect threshold is frozen by this portfolio.
+
+  - id: "RQ-PLN-BOTTLENECK-001"
+    canonical_question: >-
+      If cross-step planning is forced through an explicitly bounded LatentConceptStep interface,
+      is the semantic content of that interface causally necessary and usable when hidden-state,
+      KV-cache, autoregressive text-history, and metadata bypass channels are closed?
+    evidence_class_first_round: "DISCOVERY"
+    relation_to_existing_authority:
+      - "Motivated by the non-normative Cognitive Planner future-architecture roadmap."
+      - "Does not make that roadmap normative and does not implement A3b."
+      - "Actual scientific execution remains downstream of a separately accepted versioned contract and any applicable Stage 2A gate."
+    claim_boundary:
+      in_scope:
+        - "causal closure of a concept-level cross-step interface"
+        - "ability of an allowed semantic channel to carry usable planning information"
+        - "separation of semantic content from grounding/tool metadata leakage"
+      out_of_scope:
+        - "claim that the future architecture is already implemented"
+        - "claim that concept bottlenecks outperform token planners"
+        - "claim about natural-language verbalization quality"
+        - "A3b GO or confirmatory authorization"
+    competing_hypotheses:
+      H_closed_semantic_bottleneck: >-
+        A bounded concept interface can carry the task-relevant cross-step information, and
+        downstream behavior depends on its semantic content.
+      H_hidden_bypass: >-
+        Apparent performance survives because hidden state, KV cache, token history, or another
+        prohibited cross-step channel still carries the solution.
+      H_metadata_leakage: >-
+        grounding_refs, tool_ref, planning-state metadata, or another allowed field encodes enough
+        action/role information to bypass z_semantic.
+      H_decoder_or_capacity: >-
+        Performance is driven by downstream decoder/capacity rather than the semantic content of
+        the bounded interface.
+    causal_isolation:
+      - "Define an exact allowed-context manifest and fail closed on undeclared cross-step state."
+      - "Forbid hidden-state, KV-cache, and autoregressive text-history carryover across concept steps in the causal arm."
+      - "Keep grounding_refs set-valued/minimal and exclude operator, relation, and argument-role leakage."
+      - "Keep tool_ref free of tool arguments or ready-made calls."
+      - "Use same-checkpoint zero/shuffle/wrong-interface interventions where a future contract adopts them."
+      - "Add a forbidden-channel canary whose solution is available only through a prohibited bypass path."
+      - "Add an oracle concept-step positive control to prove the downstream resolver can use the allowed path."
+    required_baselines_and_controls:
+      - "token-level A1 reference where appropriate"
+      - "structured semantic A2c reference where appropriate"
+      - "current technical A3 channel only as a read-only reference, not proof of a bottleneck"
+      - "same-interface zero/shuffled semantic content"
+      - "refs-only / metadata-only control"
+      - "oracle semantic positive control and forbidden-channel canary"
+    reusable_components:
+      - "existing domain/action semantics and plan verifier"
+      - "existing provenance, hashing, and independent validation patterns"
+      - "future-architecture field definitions only as non-normative design input"
+    isolated_components:
+      - "new channel-closure/leakage Evaluation Contract"
+      - "new concept-bottleneck implementation only after explicit SCIENTIFIC authorization"
+      - "study-specific canary and oracle fixtures"
+    cheapest_discovery:
+      phase_0_no_training:
+        - "Perform a static data-flow/channel-closure audit of the proposed interface."
+        - "Specify forbidden-channel canary and metadata-leakage tests before model implementation."
+        - "Specify an oracle LatentConceptStep positive-control fixture and zero/shuffle negatives."
+      phase_1_only_after_separate_reviewer_authorization: >-
+        Build the smallest isolated functional prototype that proves permitted-channel usability and
+        prohibited-channel closure. Do not train or evaluate the full scientific architecture until
+        the Measurement loop passes and a versioned scientific Work Package is accepted.
+    criteria:
+      kill:
+        - "A prohibited bypass cannot be mechanically excluded or independently audited."
+        - "The forbidden-channel canary succeeds despite the declared closure contract."
+      redesign:
+        - "The oracle concept positive control cannot drive the downstream resolver."
+        - "grounding/tool/context metadata alone reconstructs the intended action semantics."
+      promote: >-
+        Promote only after independent channel-closure audit plus oracle/negative-control calibration.
+        A scientific bottleneck study additionally requires a separate accepted versioned contract;
+        this portfolio does not authorize it.
+
+atomic_study_dag:
+  nodes:
+    - id: "STU-PLN-SEM-EVAL-CAL-001"
+      rq: "RQ-PLN-SEMANTIC-001"
+      class: "DISCOVERY"
+      purpose: "calibrate semantic-feedback construct, endpoints, null semantics, and controls"
+      scientific_execution: false
+    - id: "STU-PLN-SEM-DISC-001"
+      rq: "RQ-PLN-SEMANTIC-001"
+      class: "DISCOVERY"
+      purpose: "smallest later reviewer-authorized real-model semantic-feedback causal probe"
+      scientific_execution: "FUTURE_SEPARATE_AUTHORIZATION_REQUIRED"
+    - id: "STU-PLN-SEM-ROBUST-001"
+      rq: "RQ-PLN-SEMANTIC-001"
+      class: "DISCOVERY_OR_MEASUREMENT"
+      purpose: >-
+        test whether a promoted semantic-feedback signal survives predeclared horizon/size/task-family
+        stress rather than treating robustness as a separate research program
+      scientific_execution: "FUTURE_SEPARATE_AUTHORIZATION_REQUIRED"
+    - id: "STU-PLN-BYPASS-AUD-001"
+      rq: "RQ-PLN-BOTTLENECK-001"
+      class: "DISCOVERY"
+      purpose: "static channel-closure, metadata-leakage, and forbidden-bypass audit"
+      scientific_execution: false
+    - id: "STU-PLN-BYPASS-ORACLE-001"
+      rq: "RQ-PLN-BOTTLENECK-001"
+      class: "DISCOVERY"
+      purpose: "oracle allowed-channel positive control plus zero/shuffle/canary negatives"
+      scientific_execution: false
+    - id: "STU-PLN-BOTTLENECK-DISC-001"
+      rq: "RQ-PLN-BOTTLENECK-001"
+      class: "DISCOVERY"
+      purpose: "later causal concept-bottleneck scientific probe"
+      scientific_execution: "FUTURE_SEPARATE_AUTHORIZATION_REQUIRED"
+  edges:
+    - from: "STU-PLN-SEM-EVAL-CAL-001"
+      to: "STU-PLN-SEM-DISC-001"
+      reason: "real-model causal interpretation requires a calibrated semantic-feedback construct"
+    - from: "STU-PLN-SEM-DISC-001"
+      to: "STU-PLN-SEM-ROBUST-001"
+      reason: "robustness is meaningful only after a Discovery signal is worth stress-testing"
+    - from: "STU-PLN-BYPASS-AUD-001"
+      to: "STU-PLN-BYPASS-ORACLE-001"
+      reason: "oracle/negative control semantics require an explicit closed-channel contract"
+    - from: "STU-PLN-BYPASS-ORACLE-001"
+      to: "STU-PLN-BOTTLENECK-DISC-001"
+      reason: "scientific bottleneck execution is uninterpretable until channel closure and control calibration pass"
+    - from: "STU-PLN-SEM-DISC-001"
+      to: "STU-PLN-BOTTLENECK-DISC-001"
+      reason: >-
+        the roadmap's stronger bottleneck execution should not bypass the existing Stage 2A/latent
+        decision boundary; design/audit work may still proceed earlier
+  explicit_non_dependencies:
+    - >-
+      PR #44 derivative review does not block advisory semantic-EVAL design or static bottleneck
+      channel-closure audit; it remains read-only.
+    - >-
+      STU-PLN-SEM-EVAL-CAL-001 and STU-PLN-BYPASS-AUD-001 may proceed in parallel because they
+      write disjoint advisory surfaces and do not execute science.
+    - >-
+      Horizon/size robustness is not a third independent RQ; it is a downstream validity study for
+      RQ-PLN-SEMANTIC-001.
+
+ownership:
+  current_round_single_writer:
+    surface: ".research/planner_portfolio.yaml"
+    owner: "issue #50 / research-os/issue-50-planner-portfolio"
+  shared_read_only_authority:
+    - "docs/evaluations/A2_* and accepted A2 decision lineage"
+    - "docs/architecture/planner_scientific_contract_v1.yaml"
+    - "docs/semantic/semantic_target_v1.yaml"
+    - "docs/architecture/COGNITIVE_PLANNER_FUTURE_ARCHITECTURE_RU.md"
+    - "existing task/domain/evaluation/runtime/provenance/validator surfaces"
+    - "sealed/consumed scientific evidence"
+    - "PR #44"
+  proposed_future_single_writer_surfaces:
+    - surface: "one versioned OS-native semantic-feedback Evaluation Contract"
+      ownership: "one dedicated Work Package/branch; all study workers read-only until reviewer release"
+    - surface: "one versioned concept-bottleneck channel-closure Evaluation Contract"
+      ownership: "one dedicated Work Package/branch; semantic study workers read-only"
+    - surface: "study-specific implementation/evidence paths"
+      ownership: "one study Work Package each; no shared runtime/evidence writer"
+  prohibited_shared_writes_without_new_authority:
+    - "fixed-target runtime"
+    - "reviewer bridge/security principal"
+    - "held-out datasets/policy"
+    - "legacy A2 producers/validators/evidence"
+    - "consumed-run ledgers or sealed evidence"
+
+infrastructure_classification:
+  current_portfolio_metadata:
+    class: "ADDITIVE"
+    reason: "new advisory .research metadata only; no runtime consumer"
+  first_semantic_eval_contract:
+    class: "ADDITIVE"
+    reason: "advisory construct/measurement definition before any producer wiring"
+  first_bypass_audit_contract:
+    class: "ADDITIVE"
+    reason: "advisory/static audit semantics before model wiring"
+  reuse_existing_execution_backend:
+    class: "NONE"
+    reason: "no shared backend change is required for the proposed first Discovery work"
+  wiring_new_checks_into_existing_outcome_paths:
+    class: "BEHAVIORAL"
+    reason: "would change execution behavior and therefore requires separate review; not proposed now"
+  changing_model_channel_training_task_distribution_or_arm_semantics:
+    class: "SCIENTIFIC"
+    reason: "outcome-bearing scientific change; requires an explicit versioned scientific Work Package"
+  concept_bottleneck_implementation:
+    class: "SCIENTIFIC"
+    reason: "new outcome-bearing architecture, not infrastructure"
+
+bounded_discovery_plan:
+  current_round:
+    training_runs: 0
+    scientific_workflows: 0
+    heldout_access: 0
+  worker_budget:
+    - >-
+      Window A: one <=1-hour worker authors the semantic-feedback Evaluation Contract and control/
+      shortcut matrix; no training and no shared runtime writes.
+    - >-
+      Window B: one <=1-hour worker, parallel with A, authors the concept-bottleneck channel-closure
+      audit/canary/oracle design; no training and no shared runtime writes.
+    - >-
+      Window C: one <=1-hour worker independently reviews/calibrates the semantic Evaluation Contract
+      against synthetic positive/negative fixtures; starts only after A is reviewable.
+  compute_policy: >-
+    Zero-training/static falsification comes first. Any reduced real-model Discovery execution is a
+    later separately authorized Work Package, development-only, non-confirmatory, and must use the
+    smallest predeclared fixture that reaches the causal mechanism. No canonical fixed-target run is
+    justified merely to calibrate the construct.
+  concurrency:
+    max_initial_parallel_workers: 2
+    safe_parallel_nodes:
+      - "STU-PLN-SEM-EVAL-CAL-001"
+      - "STU-PLN-BYPASS-AUD-001"
+    serialization_reason: >-
+      Later scientific nodes serialize only on real semantic dependencies or shared write ownership,
+      not because they belong to the same portfolio.
+
+first_bounded_work_package_proposals:
+  note: >-
+    These are reusable proposals only. Live Work Package instances and queue state must be created
+    in GitHub Issues/comments under WORK_PACKAGE_CONTRACT.md, not stored here.
+  packages:
+    - id: "WP-SEM-EVAL-001"
+      objective: "Author and calibrate the OS-native semantic-feedback Evaluation Contract."
+      writable_surface: "new advisory semantic EVAL metadata only"
+      read_only_authority:
+        - "planner_scientific_contract_v1.yaml"
+        - "semantic_target_v1.yaml"
+        - "legacy A2 decision/learnability lineage"
+      single_window_target: >-
+        construct definition, endpoints/null semantics, shortcut matrix, A2c/A3r/A4/A5 control
+        mapping, and synthetic calibration fixtures/specification
+      forbidden: "training, bridge/status/preflight, held-out, legacy evidence mutation"
+      stop: "REVIEW after advisory EVAL is internally coherent; external reviewer decides next step"
+    - id: "WP-BYPASS-AUDIT-001"
+      objective: "Define and adversarially audit concept-bottleneck channel closure before implementation."
+      writable_surface: "new advisory bottleneck audit/EVAL metadata only"
+      read_only_authority:
+        - "COGNITIVE_PLANNER_FUTURE_ARCHITECTURE_RU.md"
+        - "existing task/domain semantics"
+      single_window_target: >-
+        allowed/forbidden channel table, forbidden-channel canary, metadata leakage tests, oracle
+        concept positive control, and fail-closed audit criteria
+      forbidden: "model implementation/training, A3b authorization, bridge/status/preflight, held-out"
+      stop: "REVIEW after the channel-closure design is falsifiable and independently auditable"
+    - id: "WP-SEM-CAL-REVIEW-001"
+      objective: "Independently challenge semantic-EVAL construct validity with synthetic fixtures."
+      writable_surface: "study-specific advisory validity-audit metadata only"
+      dependency: "WP-SEM-EVAL-001 reviewable"
+      single_window_target: >-
+        identify shortcut/confounder failures; return VALID_FOR_STATED_INFERENCE / limitations / invalid
+        only as an Evaluation validity audit, never as a scientific claim verdict
+      forbidden: "scientific execution, held-out, legacy evidence changes"
+      stop: "REVIEW for external decision on whether any real-model Discovery study should be authorized"
+
+round_boundaries:
+  scientific_execution_performed: false
+  claim_bearing_evidence_modified: false
+  consumed_run_rerun: false
+  existing_scientific_behavior_changed: false
+  go_latent: "NOT EVALUATED"
