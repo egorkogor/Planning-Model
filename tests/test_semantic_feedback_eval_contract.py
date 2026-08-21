@@ -21,7 +21,7 @@ def _synthetic_status(case: dict) -> str:
         return "NOT_EVALUATED_NO_DOWNSTREAM_OPPORTUNITY"
     if not case["intervention_applicable"]:
         return "NOT_EVALUATED_INTERVENTION_NOT_APPLICABLE"
-    if case.get("treatment_terminated_before_planned_free_running_position", False):
+    if case.get("treatment_terminated_before_planned_intervention", False):
         return "CENSORED_TERMINATED_BEFORE_PLANNED_INTERVENTION"
     if not case["endpoint_defined"]:
         return "NOT_APPLICABLE_ENDPOINT_UNDEFINED"
@@ -137,3 +137,21 @@ def test_contract_remains_non_outcome_bearing_and_legacy_read_only() -> None:
     assert contract["synthetic_calibration"]["outcome_bearing"] is False
     assert contract["promotion_boundary"]["confirmatory_freeze"] == "NOT_AUTHORIZED"
     assert contract["promotion_boundary"]["go_latent"] == "NOT EVALUATED"
+
+
+def test_os_native_eval_sections_are_explicit() -> None:
+    contract = _contract()
+    for section in (
+        "task_distribution",
+        "data_governance",
+        "endpoints",
+        "graders_or_verifiers",
+        "harness_assumptions",
+        "baselines_and_controls",
+        "validity_threats",
+        "versioning",
+    ):
+        assert section in contract
+    assert contract["data_governance"]["private_holdout_policy"] == "FORBIDDEN"
+    assert contract["endpoints"]["scientific_outcome_thresholds"] == "NOT_FROZEN"
+    assert contract["harness_assumptions"]["scientific_runtime"] == "NOT_INVOKED"
