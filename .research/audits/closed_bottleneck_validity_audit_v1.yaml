@@ -1,0 +1,271 @@
+version: "research-os-bottleneck-audit/0.1"
+status: "ADVISORY_DISCOVERY_DESIGN_NON_OUTCOME_BEARING"
+id: "AUD-PLN-CLOSED-BOTTLENECK-001"
+rq: "RQ-PLN-BOTTLENECK-001"
+study_node: "STU-PLN-BYPASS-AUD-001"
+
+authority:
+  issue: 53
+  authoritative_base: "744837335f6d4e21bdc18b729c57b752b93a3a72"
+  accepted_portfolio: ".research/planner_portfolio.yaml"
+  independent_validity_comment: 5372914356
+  roadmap: "docs/architecture/COGNITIVE_PLANNER_FUTURE_ARCHITECTURE_RU.md"
+  frozen_v1_21_read_only: true
+  explicit_non_authority:
+    - "This audit does not authorize a concept-bottleneck implementation."
+    - "This audit does not authorize model training, model inference, held-out access, or scientific execution."
+    - "This audit does not freeze confirmatory thresholds, effects, seeds, datasets, or trial counts."
+    - "This audit cannot emit a scientific GO/NO-GO verdict or change GO_LATENT = NOT EVALUATED."
+
+claim_decomposition:
+  mechanical_channel_closure:
+    question: "Can any undeclared cross-step state reach the downstream resolver?"
+    required_for_future_claim: true
+    interpretation: "Closure is a transport/data-flow property only; it is not semantic necessity."
+  allowed_channel_usability:
+    question: "Can the downstream resolver use the declared concept channel when an oracle concept is supplied?"
+    required_for_future_claim: true
+    interpretation: "Oracle success proves channel usability, not normal trained-model reliance."
+  semantic_content_necessity:
+    question: "Holding allowed non-concept inputs fixed, does changing concept content change the required downstream decision?"
+    required_for_future_claim: true
+    interpretation: "Requires future separately authorized causal execution after closure and calibration pass."
+  collapse_into_single_claim: "FORBIDDEN"
+
+stateless_boundary:
+  required: true
+  unit: "one concept-step to downstream-resolution call"
+  per_step_reset:
+    model_hidden_state: "FRESH_OR_EMPTY"
+    kv_cache: "FRESH_OR_EMPTY"
+    autoregressive_token_history: "ABSENT"
+    previous_decoder_objects: "ABSENT_UNLESS_EXPLICITLY_IN_ALLOWED_CONTEXT_MANIFEST"
+    process_local_memoization: "DISABLED_OR_EPISODE_SCOPED_AND_DECLARED"
+  serialization_boundary: >-
+    The downstream resolver may receive only the exact serialized allowed-context manifest plus the
+    current concept-interface fields. Any Python object, tensor, cache handle, closure, global,
+    mutable singleton, prior-token buffer, or undeclared state crossing the boundary invalidates closure.
+  fail_closed_conditions:
+    - "non-empty hidden state at resolver entry"
+    - "non-empty or reused KV cache at resolver entry"
+    - "prior generated token IDs/text supplied outside the manifest"
+    - "undeclared cross-step object identity reachable by the resolver"
+    - "runtime input field absent from the exact allowed-context manifest"
+    - "canary target recoverable through a prohibited channel"
+
+allowed_context_manifest:
+  exact_fields:
+    - "task_encoding_hash"
+    - "initial_public_state_hash"
+    - "planning_state_mode"
+    - "planning_state_hash_when_mode_requires_it"
+    - "entity_catalog_hash"
+    - "tool_catalog_hash"
+    - "experiment_config_hash"
+    - "model_checkpoint_identity"
+    - "position_index"
+  conditional_fields:
+    observation_prefix_hash:
+      allowed_only_when: "a future separately authorized closed-loop contract explicitly permits observations"
+      default: "FORBIDDEN_IN_THIS_AUDIT_DESIGN"
+  forbidden_fields:
+    - "prior natural-language reasoning text"
+    - "prior generated token IDs"
+    - "prior hidden states"
+    - "prior KV cache"
+    - "future/gold action or plan suffix"
+    - "operator labels derived from the target action"
+    - "ordered argument-role labels derived from the target action"
+    - "undeclared episode-history summaries"
+  equality_rule_for_counterfactuals: >-
+    History-collision and oracle-counterfactual pairs must have byte-identical allowed non-concept
+    context. The concept content is the only intended causal difference.
+
+concept_interface:
+  fields:
+    z_semantic:
+      class: "CONCEPT_CONTENT"
+      future_role: "semantic content under test"
+    grounding_refs:
+      class: "ALLOWED_AUXILIARY_METADATA_SUBJECT_TO_LEAKAGE_AUDIT"
+      requirements:
+        - "unordered set semantics"
+        - "canonical per-episode opaque entity IDs"
+        - "no operator/action type"
+        - "no relations"
+        - "no argument roles such as source/target/moving/support"
+        - "no arbitrary text or ready-made command"
+        - "same refs in history-collision pairs unless the pair explicitly tests ref leakage"
+    tool_ref:
+      class: "ALLOWED_AUXILIARY_METADATA_SUBJECT_TO_LEAKAGE_AUDIT"
+      requirements:
+        - "canonical per-episode opaque tool ID"
+        - "no arguments"
+        - "no operator/argument-role encoding"
+        - "same tool_ref in history-collision pairs unless the pair explicitly tests tool leakage"
+  stable_identifier_semantics: "FORBIDDEN"
+  per_episode_permutation_required: true
+
+opaque_reference_policy:
+  entity_ids:
+    generated_per_episode: true
+    permutation_independent_of_semantics: true
+    stable_across_episode: true
+    stable_across_episodes: false
+  tool_ids:
+    generated_per_episode: true
+    permutation_independent_of_semantics: true
+    stable_across_episode: true
+    stable_across_episodes: false
+  audit:
+    - "permute IDs while preserving underlying state and concept semantics; target behavior must remain invariant"
+    - "counterfactually swap metadata labels while preserving semantic role; target behavior must not follow label identity"
+
+metadata_only_baseline:
+  required: true
+  concept_fields_removed:
+    - "z_semantic"
+  inputs: "exactly the same allowed non-concept manifest plus grounding_refs/tool_ref allowed in the causal arm"
+  no_extra_history: true
+  purpose: >-
+    Detect re-planning or direct target reconstruction from public state, position, refs, tool identity,
+    or other allowed metadata without using concept content.
+  invalidity_rule: >-
+    If the metadata-only baseline can solve the history-collision fixture above the fixture's deterministic
+    impossibility criterion, the fixture cannot support a closed semantic-bottleneck claim.
+
+history_collision_counterfactual:
+  required: true
+  construction:
+    allowed_nonconcept_context: "BYTE_IDENTICAL_ACROSS_PAIR"
+    grounding_refs_and_tool_ref: "BYTE_IDENTICAL_ACROSS_PAIR"
+    concept_content: "DIFFERENT"
+    required_next_action: "DIFFERENT"
+  purpose: >-
+    Prevent a downstream decoder from solving by re-planning from full public state or stable metadata.
+    The pair is valid only when the prior concept is necessary to distinguish the required next action.
+  fail_closed:
+    - "allowed context differs across pair"
+    - "position differs across pair"
+    - "refs/tool metadata encode which target action is required"
+    - "required next action is identical across pair"
+
+counterfactual_oracle_control:
+  required: true
+  construction:
+    allowed_nonconcept_context: "BYTE_IDENTICAL"
+    oracle_concept_A: "VALID_FOR_TARGET_A"
+    oracle_concept_B: "VALID_FOR_TARGET_B"
+    expected_action_A: "DIFFERS_FROM_B"
+    expected_action_B: "DIFFERS_FROM_A"
+  interpretation:
+    success: "The resolver can use the allowed concept channel."
+    forbidden_inference: "The trained model normally uses the channel."
+    failure: "REDESIGN_REQUIRED_BEFORE_ANY_SCIENTIFIC_BOTTLENECK_STUDY"
+
+content_interventions:
+  zero:
+    required_later: true
+    warning: "May be out of distribution; insufficient alone for semantic-content necessity."
+  shuffle:
+    required_later: true
+    warning: "May be distributionally implausible; donor matching must be declared."
+  matched_in_distribution_wrong_concept_donor:
+    required: true
+    matching_requirements:
+      - "same authorized development distribution"
+      - "same checkpoint"
+      - "same allowed non-concept context class"
+      - "same position/horizon bucket when applicable"
+      - "same grounding/tool metadata where the counterfactual permits"
+      - "different semantic content"
+    purpose: "Test content sensitivity without relying only on zero/shuffle distribution shift."
+
+forbidden_channel_canary:
+  required: true
+  target_generation:
+    balanced: true
+    unpredictable_from_allowed_metadata: true
+    independent_of_concept_semantics: true
+  placement: "available only through one prohibited cross-step channel in the adversarial harness"
+  expected_under_valid_closure: "CHANCE_OR_DETERMINISTIC_NON_RECOVERY"
+  failure: "INVALID_MECHANICAL_CLOSURE"
+  examples_of_prohibited_carrier:
+    - "reused KV cache"
+    - "prior hidden-state tensor"
+    - "undeclared token-history buffer"
+
+shortcut_audit:
+  task_or_position_lookup:
+    defense: "history-collision pairs with identical task/context/position but different concept-dependent targets"
+  entity_ref_lookup:
+    defense: "per-episode opaque permutation plus ref-only baseline"
+  ref_ordering:
+    defense: "set semantics and canonical ordering independent of argument roles"
+  tool_identity_lookup:
+    defense: "opaque tool IDs plus tool-only/metadata-only baseline"
+  public_state_replanning:
+    defense: "history collision with byte-identical allowed public-state context"
+  target_signature_leakage:
+    defense: "forbid signature/action labels from allowed metadata"
+  fail_closed_rule: >-
+    Any shortcut baseline that deterministically reconstructs the target on a fixture intended to
+    demonstrate concept necessity invalidates that fixture rather than becoming evidence for the concept channel.
+
+static_fixture_matrix:
+  - id: "STATeless-boundary-negative-kv"
+    kind: "mechanical_closure"
+    prohibited_carrier: "reused_kv_cache"
+    expected_status: "INVALID_MECHANICAL_CLOSURE"
+  - id: "opaque-id-invariance"
+    kind: "metadata_leakage"
+    transformation: "per_episode_entity_and_tool_id_permutation"
+    expected_status: "VALID_ONLY_IF_TARGET_INVARIANT"
+  - id: "metadata-only-no-concept"
+    kind: "replanning_shortcut"
+    concept_present: false
+    expected_status: "MUST_NOT_RESOLVE_HISTORY_COLLISION"
+  - id: "history-collision-pair"
+    kind: "necessity_fixture"
+    nonconcept_context_equal: true
+    target_actions_differ: true
+    expected_status: "VALID_CONSTRUCTION"
+  - id: "oracle-concept-counterfactual"
+    kind: "allowed_channel_positive_control"
+    nonconcept_context_equal: true
+    oracle_concepts_differ: true
+    target_actions_differ: true
+    expected_status: "CHANNEL_USABILITY_ONLY"
+  - id: "wrong-concept-donor"
+    kind: "content_intervention"
+    in_distribution: true
+    expected_status: "REQUIRED_FUTURE_CONTROL"
+  - id: "forbidden-channel-canary"
+    kind: "mechanical_closure"
+    target_predictable_from_allowed_metadata: false
+    expected_status: "MUST_NOT_BE_RECOVERED"
+
+promotion_boundary:
+  current_round: "STATIC_DESIGN_ONLY"
+  scientific_execution: "FORBIDDEN"
+  concept_bottleneck_implementation: "NOT_AUTHORIZED"
+  real_model_discovery: "FUTURE_SEPARATE_REVIEWER_AUTHORIZATION_REQUIRED"
+  required_before_future_execution:
+    - "independent mechanical closure review"
+    - "metadata-only/history-collision construct calibration"
+    - "oracle allowed-channel usability calibration"
+    - "forbidden-channel canary calibration"
+    - "matched wrong-concept donor design accepted"
+  go_latent: "NOT EVALUATED"
+
+prior_art:
+  novelty_boundary: >-
+    Concept/latent bottlenecks are established. The potentially distinctive object is a mechanically
+    closed, leakage-audited cross-step Planner interface with explicit shortcut falsification.
+  primary_sources:
+    - "https://proceedings.mlr.press/v119/koh20a.html"
+    - "https://arxiv.org/abs/2209.09056"
+    - "https://arxiv.org/abs/1612.00410"
+    - "https://papers.nips.cc/paper_files/paper/2017/hash/7a98af17e63a0ac09ce2e96d03992fbc-Abstract.html"
+    - "https://arxiv.org/abs/1811.04551"
+    - "https://arxiv.org/abs/1912.01603"
