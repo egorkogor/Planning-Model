@@ -53,13 +53,24 @@ Research OS must not duplicate or weaken these.
 
 ## Advisory additions
 
-This bootstrap adds only:
+The bootstrap adds only:
 
 - a cross-study research/claim/evaluation index;
 - a gap audit;
 - templates for future Evaluation Contracts, statistical design and validity audits.
 
 No required CI gate is introduced. No existing producer, validator, workflow or scientific result imports this directory.
+
+## Operational layer
+
+Research OS v1.1 adds reusable operational semantics without adding a task database or runtime dependency:
+
+- persistent worker role: `.agents/roles/planner-research-worker.md`;
+- queue and single-writer/multi-reader semantics: `OPERATIONS.md`;
+- bounded GitHub Work Package pattern: `WORK_PACKAGE_CONTRACT.md`;
+- resumable GitHub Checkpoint/handoff pattern: `CHECKPOINT_CONTRACT.md`.
+
+Live queue state, work-package instances, checkpoints, blockers, and handoffs stay in GitHub Issues, PRs, and comments. Do not mirror them as populated files under `.research/`.
 
 ## Future transition
 
