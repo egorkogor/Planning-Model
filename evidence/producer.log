@@ -1,0 +1,1 @@
+{'canonical_identity': 'sha256:2eedae45dafcf4905490a5d95f0f7ba415cfbd14a31508195c57c663254be8a2', 'source_sha256': 'sha256:0a33fb56129cadea2599d1c21bad6cb8abc4ec033026514e8a3f10062223652c', 'arms': ['clip_1_0', 'clip_5_0', 'no_clip'], 'seeds': [17, 29, 43], 'go_latent': 'NOT EVALUATED'}

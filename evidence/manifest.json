@@ -1,0 +1,41 @@
+{
+  "bridge_source": {
+    "source_files": [
+      {
+        "path": ".github/workflows/reviewer-execution-bridge.yml",
+        "sha256": "sha256:a743f221ae52cf13f85ea78842a2bbc55da0a2fa7d39e25811e843339cbe96b6"
+      },
+      {
+        "path": "scripts/run_reviewer_execution_bridge.py",
+        "sha256": "sha256:e2f0fc623daa1fb03a7b65d5d99f75cd335231d6a7536587cee60e042fcf452a"
+      }
+    ],
+    "source_identity": "sha256:1cfc5700b30c5100a888a9f8587a86382d793a935f56dfaebb7de69f67de4d9b",
+    "workflow_sha": "ee773479cbbc84eab52f93996bc8beb64a51453c"
+  },
+  "files": {
+    "bridge-source.json": "sha256:7f3f8895da08ba09eb78dbf74733866eb77a2aa0059fb63187209e48b49f5ecc",
+    "fixed-target-preflight.json": "sha256:720314f756b15c4c9a9e3450742b05d27e31d07f74a257dc136d3b7f1e80a1e4",
+    "fixed-target-preflight.log": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "github-execution.json": "sha256:84cda83175542689c4472bc6a23fee137b90df561173a95cc48f2d9142e3c8cd",
+    "independent-validator.log": "sha256:33bd36dfd01481592df53b73ed8e2ea419c77e219008b597894b07ff5744afa1",
+    "producer-evidence/A2_GRADIENT_CLIPPING_CAUSAL.md": "sha256:1359ca2162dc3bdf07eb328457b6126855b3780c4eec9def46172d67f782e2c8",
+    "producer-evidence/a2-gradient-clipping.json": "sha256:8162190c0dc0e5af6aaccbd2527daa1e3138427c041421ff694fcf9435cdf204",
+    "producer.log": "sha256:62f3260f25cb48301d0fdd3b5af362e82bd327f8f5a81d4cb384bf530e0ce63f",
+    "request.json": "sha256:a768517ef1df39facde2ef155adea906dc1ec86f6069bb2897c514bf9ad49247",
+    "runner-identity.json": "sha256:5a76f8015bff652927027c25d917ebf89e3bcafcfd29e299f6929660ad5e3482",
+    "status.json": "sha256:25be75c85224706c1aaba0739c911bda255706695e04657929d0fd4078c3c41d",
+    "trusted-commit-validator.jsonl": "sha256:40a3ddfda6fe5cf6f6d44c07b09121916dd75a5d2f4a900a68d3543de2281ae8"
+  },
+  "implementation_sha": "ee773479cbbc84eab52f93996bc8beb64a51453c",
+  "manifest_sha256": "sha256:f8e544077929926214becd85cbb301168135ad5e59826131a2b31e3e7305e1da",
+  "request_id": "a2-gradient-clipping-20260821-01",
+  "runner_identity": {
+    "fixed_target_runner_image": "planning-model-canonical-cpu-v1|provider=aws-ec2|instance=i-0ef4e446bfb12ce21|ami=ami-05bfa4a7765f38076|type=m7i-flex.large|runtime=1.1|torch=2.12.0+cpu",
+    "runner_image_id": "planning-model-canonical-cpu-v1|provider=aws-ec2|instance=i-0ef4e446bfb12ce21|ami=ami-05bfa4a7765f38076|type=m7i-flex.large|runtime=1.1|torch=2.12.0+cpu",
+    "runner_image_id_path": "/etc/planning-model-runner-image-id",
+    "runner_name": "planning-model-canonical-cpu-v1"
+  },
+  "task": "a2-gradient-clipping-v1",
+  "version": "reviewer-execution-bridge/1.0"
+}

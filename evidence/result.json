@@ -1,0 +1,10 @@
+{
+  "archive_sha256": "sha256:7b451d6f50ad8fed52fe0acc3d5b32746be35c2bb09cb3f8214926bb5978cbbd",
+  "implementation_sha": "ee773479cbbc84eab52f93996bc8beb64a51453c",
+  "manifest_sha256": "sha256:f8e544077929926214becd85cbb301168135ad5e59826131a2b31e3e7305e1da",
+  "request_id": "a2-gradient-clipping-20260821-01",
+  "task": "a2-gradient-clipping-v1",
+  "terminal_status": "SUCCEEDED",
+  "transport_ref": "refs/heads/evidence/reviewer-bridge/a2-gradient-clipping-20260821-01",
+  "valid": true
+}

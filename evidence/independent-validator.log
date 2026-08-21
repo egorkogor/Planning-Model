@@ -1,0 +1,1 @@
+{'valid': True, 'validated_arm_seed_count': 9, 'validated_updates_per_arm_seed': 300, 'control_equivalence': 'PASS', 'heldout_accessed': False, 'source_sha256': 'sha256:0a33fb56129cadea2599d1c21bad6cb8abc4ec033026514e8a3f10062223652c', 'go_latent': 'NOT EVALUATED'}

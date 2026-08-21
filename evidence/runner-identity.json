@@ -1,0 +1,6 @@
+{
+  "fixed_target_runner_image": "planning-model-canonical-cpu-v1|provider=aws-ec2|instance=i-0ef4e446bfb12ce21|ami=ami-05bfa4a7765f38076|type=m7i-flex.large|runtime=1.1|torch=2.12.0+cpu",
+  "runner_image_id": "planning-model-canonical-cpu-v1|provider=aws-ec2|instance=i-0ef4e446bfb12ce21|ami=ami-05bfa4a7765f38076|type=m7i-flex.large|runtime=1.1|torch=2.12.0+cpu",
+  "runner_image_id_path": "/etc/planning-model-runner-image-id",
+  "runner_name": "planning-model-canonical-cpu-v1"
+}
