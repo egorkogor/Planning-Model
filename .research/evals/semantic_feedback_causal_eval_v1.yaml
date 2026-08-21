@@ -56,6 +56,98 @@ construct:
     - "distribution shift caused by zero or implausible shuffled feedback"
     - "post-treatment selection caused by intervention-dependent early termination"
 
+task_distribution:
+  execution_status: "NOT_AUTHORIZED_BY_THIS_CONTRACT"
+  intended_future_scope: >-
+    A separately authorized development-only Planner distribution that preserves the frozen v1.21
+    arm meanings and contains measurable downstream feedback opportunities.
+  task_families: "NOT_FROZEN_IN_THIS_DESIGN_ROUND"
+  inclusion_accounting: >-
+    Track every authorized unit from the pre-intervention/reference opportunity set. Units with no
+    downstream opportunity remain explicit null/NOT_EVALUATED records and are not silently dropped.
+  exclusion_rules:
+    - "legacy forbidden held-out bw-00000004/05 or any held-out materialization"
+    - "post-treatment exclusion based on positions surviving an intervention"
+
+data_governance:
+  development_policy: "future separate reviewer authorization required before any materialization/run"
+  test_policy: "NOT_AUTHORIZED"
+  private_holdout_policy: "FORBIDDEN"
+  contamination_controls:
+    - "do not inspect or materialize legacy held-out 04/05 for this Discovery design"
+    - "synthetic fixtures contain no scientific outcomes and invoke no scientific runtime"
+
+endpoints:
+  primary_validity_endpoint:
+    name: "immediate_next_step_effect"
+    scope: "fixed-prefix first common downstream feedback opportunity"
+    threshold: null
+  secondary_validity_endpoints:
+    - "free_running_total_effect kept separate from immediate effect"
+    - "reference downstream feedback exposure count and first eligible position"
+    - "intervention applicability and explicit null/censoring state"
+    - "shortcut-baseline behavior under opaque/permuted IDs and metadata counterfactuals"
+    - "random-codebook robustness and compositional/novel-signature stress status"
+  scientific_outcome_thresholds: "NOT_FROZEN"
+  censoring_or_null_semantics: "defined in exposure_and_censoring; null is never numerical zero"
+
+graders_or_verifiers:
+  semantics:
+    - "existing action validity semantics are read-only references when a later study is authorized"
+    - "existing executable-goal verifier is a read-only reference for future free-running outcomes"
+    - "this round validates only contract structure and synthetic status semantics"
+  producer_independence_change: "NONE"
+  calibration_refs:
+    - "synthetic_calibration cases in this file"
+    - "tests/test_semantic_feedback_eval_contract.py"
+
+harness_assumptions:
+  scientific_runtime: "NOT_INVOKED"
+  model_or_agent_scaffold: "frozen v1.21 arm meanings are read-only authority"
+  runtime_constraints:
+    - "A3/A4/A5 exact checkpoint identity for future same-checkpoint estimand"
+    - "no A4/A5 or same-checkpoint content-intervention retraining"
+    - "common fixed-prefix state defines immediate intervention opportunity"
+  resource_limits:
+    - "CPU-only static/schema checks in this Work Package"
+    - "zero training, zero GPU, zero outcome-bearing inference"
+  timeout_retry_semantics: "NOT_APPLICABLE_NO_EXECUTION"
+
+baselines_and_controls:
+  - "A2c information-matched structured-semantic baseline for architecture-bundle estimand"
+  - "A3r A3-matched frozen-random-code control for geometry/alignment estimand"
+  - "A4 exact-A3-checkpoint zero-feedback intervention"
+  - "A5 exact-A3-checkpoint constrained shuffled-feedback intervention"
+  - "matched in-distribution wrong-semantic donor using exact A3 checkpoint"
+  - "task-ID/ref/signature shortcut baseline with opaque/permuted identifiers"
+  - "metadata counterfactual decoupling fixtures"
+
+validity_threats:
+  construct_validity:
+    - "A3 vs A2c bundles geometry, projection path, and active capacity"
+    - "A3r random code preserves exact signature identity and is not information-free"
+    - "A3 vs A4/A5 measures same-checkpoint reliance, not A3 superiority over A2c"
+  shortcut_or_leakage:
+    - "task/ref/signature identity or stable metadata predicts target semantics"
+    - "small finite random codebook can be memorized without useful semantic geometry"
+  intervention_distribution_shift:
+    - "exact zero may be OOD"
+    - "shuffle may be implausible even when constrained"
+    - "matched wrong-semantic donor is required to separate content from OOD effects"
+  selection_and_censoring:
+    - "intervention-dependent termination changes surviving-position denominator"
+    - "zero downstream exposure makes the estimand invalid rather than zero effect"
+  provenance_and_identity:
+    - "checkpoint mismatch or retraining invalidates A3/A4/A5 reliance interpretation"
+  adversarial_checks:
+    - "known semantic positive donor"
+    - "matched wrong-semantic donor"
+    - "opaque ID/ref/signature permutation"
+    - "metadata/semantic counterfactual decoupling"
+    - "no-opportunity and not-applicable null fixtures"
+    - "post-treatment censoring trap"
+    - "A3r novel-composition lookup stress"
+
 estimands:
   - id: "EST-PLN-SEM-ARCH-BUNDLE"
     contrasts:
@@ -355,7 +447,7 @@ synthetic_calibration:
       endpoint_defined: true
       checkpoint_match: true
       shortcut_controls_pass: true
-      treatment_terminated_before_planned_free_running_position: true
+      treatment_terminated_before_planned_intervention: true
       expected_status: "CENSORED_TERMINATED_BEFORE_PLANNED_INTERVENTION"
       expected_endpoint: null
       denominator_rule: "retain unit in pre-intervention reference opportunity set"
@@ -394,6 +486,13 @@ prior_art_bindings:
   - id: "ROME causal tracing"
     primary_source: "https://arxiv.org/abs/2202.05262"
     relevance: "causal tracing/intervention methodology"
+
+versioning:
+  semantic_version: "0.1-draft"
+  amendment_policy: >-
+    Any future change to estimand meaning, intervention semantics, task distribution, endpoint,
+    shortcut control, exposure/censoring rule, or harness assumption requires an explicit new
+    version/amendment before any scientific freeze.
 
 calibration:
   current_status: "CALIBRATING_STATIC_ONLY"
