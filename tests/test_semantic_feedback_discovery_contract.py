@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import yaml
@@ -38,13 +39,44 @@ def test_random_codebooks_are_frozen_before_execution() -> None:
         "A3R-CODEBOOK-170029",
         "A3R-CODEBOOK-290043",
     ]
-    assert [item["seed"] for item in identities] == [170029, 290043]
-    assert len({item["seed"] for item in identities}) == 2
+    assert [item["legacy_label_seed"] for item in identities] == [170029, 290043]
     assert codebooks["selection_after_outcomes"] == "FORBIDDEN"
     assert codebooks["aggregation"]["primary_reporting"] == (
         "REPORT_EACH_CODEBOOK_SEPARATELY"
     )
     assert codebooks["aggregation"]["minimum_defined_codebooks"] == 2
+
+
+def test_random_codebook_generator_inputs_are_exact_distinct_and_reconstructible() -> None:
+    codebooks = _protocol()["random_codebooks"]
+    binding = codebooks["generator_contract_binding"]
+    assert binding["hash_algorithm"] == "SHA256"
+    assert binding["encoding"] == "UTF-8"
+    assert binding["analyst_override"] == "FORBIDDEN"
+    assert "seed_bytes in place of" in binding["discovery_only_parameterization"]
+
+    identities = codebooks["identities"]
+    expected_seed_hexes = [
+        "c83c21942a85cd899b0ddb764eb007f205d79f9c498bd3ec9dd94cf859d75c47",
+        "088d3f30429645884c69975744ca9414c8bbaaed4f1ac7dfea2832979396af3e",
+    ]
+    recomputed = [
+        hashlib.sha256(item["derivation_input"].encode("utf-8")).hexdigest()
+        for item in identities
+    ]
+    assert recomputed == expected_seed_hexes
+    assert [item["seed_hex"] for item in identities] == expected_seed_hexes
+    assert len(set(recomputed)) == 2
+    assert all(len(seed_hex) == 64 for seed_hex in recomputed)
+    assert all(bytes.fromhex(seed_hex) for seed_hex in recomputed)
+
+    inherited = binding["inherited_fields_unchanged"]
+    assert "code_generation.algorithm = SHAKE256_BITS_V1" in inherited
+    assert (
+        "code_generation.payload = seed_bytes || UTF8(signature_sha256)" in inherited
+    )
+    assert "code_generation.output_bytes = 48" in inherited
+    assert "code_generation.dimension = 384" in inherited
 
 
 def test_novel_signature_stress_precludes_exact_signature_lookup() -> None:
