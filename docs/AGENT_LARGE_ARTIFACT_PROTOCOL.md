@@ -140,14 +140,16 @@ It intentionally excludes the huge raw `reference_projection` and full per-updat
 
 For new executions, `scripts/run_a2_gradient_clipping.py` writes and validates the compact summary next to `producer-evidence/`.
 
-For already existing evidence, use:
+For already existing sealed evidence, use an explicit derivative output path outside the sealed evidence root and pass the accepted implementation commit:
 
 ```bash
 python -m scripts.build_a2_gradient_clipping_review_summary \
-  --producer-evidence <path-to-producer-evidence>
+  --producer-output-dir <sealed-evidence-root>/producer-evidence \
+  --implementation-commit <accepted-implementation-commit> \
+  --summary-output <path-outside-sealed-evidence-root>/a2-gradient-clipping-review-summary.json
 ```
 
-The extractor reads the large JSON locally and emits the bounded summary without printing the full artifact.
+The offline extractor first runs the independent persisted-evidence validator against the accepted implementation commit and source identity. Only after that validation succeeds does it derive the compact summary. The output path is rejected if it is inside the sealed evidence root, so the source evidence bytes/tree remain unchanged.
 
 ## Forbidden patterns
 

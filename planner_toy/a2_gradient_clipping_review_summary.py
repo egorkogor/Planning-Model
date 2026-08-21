@@ -120,14 +120,28 @@ def review_summary_path(producer_output: Path) -> Path:
     return producer_output.parent / REVIEW_SUMMARY_FILENAME
 
 
-def write_review_summary(producer_output: Path, payload: dict[str, Any]) -> Path:
-    path = review_summary_path(producer_output)
+def _resolved_summary_path(producer_output: Path, output_path: Path | None) -> Path:
+    return output_path if output_path is not None else review_summary_path(producer_output)
+
+
+def write_review_summary(
+    producer_output: Path,
+    payload: dict[str, Any],
+    *,
+    output_path: Path | None = None,
+) -> Path:
+    path = _resolved_summary_path(producer_output, output_path)
     path.write_bytes(_serialized(build_review_summary(payload)))
     return path
 
 
-def validate_review_summary(producer_output: Path, payload: dict[str, Any]) -> dict[str, Any]:
-    path = review_summary_path(producer_output)
+def validate_review_summary(
+    producer_output: Path,
+    payload: dict[str, Any],
+    *,
+    output_path: Path | None = None,
+) -> dict[str, Any]:
+    path = _resolved_summary_path(producer_output, output_path)
     if not path.is_file():
         raise ValueError("A2_CLIP_REVIEW_SUMMARY_MISSING")
     expected = build_review_summary(payload)
@@ -136,8 +150,8 @@ def validate_review_summary(producer_output: Path, payload: dict[str, Any]) -> d
     if len(actual_bytes) > MAX_REVIEW_SUMMARY_BYTES:
         raise ValueError("A2_CLIP_REVIEW_SUMMARY_TOO_LARGE")
     if actual_bytes != expected_bytes:
-        raise ValueError("A2_CLIP_REVIEW_SUMMARY_MISMATCH")
+        raise ValueError("A2_CLIP_REVIEW_SUMMMARY_MISMATCH")
     loaded = json.loads(actual_bytes)
     if loaded != expected:
-        raise ValueError("A2_CLIP_REVIEW_SUMMARY_CANONICALIZATION_MISMATCH")
+        raise ValueError("A2_CLIP_REVIEW_SUMMMARY_CANONICALIZATION_MISMATCH")
     return expected

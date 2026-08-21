@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -12,6 +14,7 @@ from planner_toy.a2_gradient_clipping_review_summary import (
     validate_review_summary,
     write_review_summary,
 )
+from scripts import build_a2_gradient_clipping_review_summary as offline_extractor
 
 
 def _payload() -> dict:
@@ -108,9 +111,7 @@ def _payload() -> dict:
             "required_status": "PASS",
             "by_seed": control_by_seed,
         },
-        "cross_seed_clipping_aggregates": {
-            arm: {"seed_count": 3} for arm in arms
-        },
+        "cross_seed_clipping_aggregates": {arm: {"seed_count": 3} for arm in arms},
         "paired_causal_contrasts": {
             "clip_5_0": {"by_seed": {}},
             "no_clip": {"by_seed": {}},
@@ -123,6 +124,26 @@ def _payload() -> dict:
             "reviewer_owns_interpretation": True,
             "p_value_testing": None,
         },
+    }
+
+
+def _write_source_evidence(producer_output: Path, payload: dict) -> None:
+    producer_output.mkdir(parents=True)
+    (producer_output / "a2-gradient-clipping.json").write_text(
+        json.dumps(payload, sort_keys=True),
+        encoding="utf-8",
+    )
+    (producer_output / "a2-gradient-clipping.md").write_text(
+        "derivative fixture\n",
+        encoding="utf-8",
+    )
+
+
+def _tree_snapshot(root: Path) -> dict[str, str]:
+    return {
+        str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
     }
 
 
@@ -164,3 +185,92 @@ def test_summary_changes_when_claim_bearing_payload_changes(tmp_path: Path) -> N
     }
     with pytest.raises(ValueError, match="A2_CLIP_REVIEW_SUMMARY_MISMATCH"):
         validate_review_summary(producer_output, changed)
+
+
+def test_summary_over_64_kib_fails_closed(tmp_path: Path) -> None:
+    payload = _payload()
+    payload["paired_causal_contrasts"]["no_clip"]["by_seed"]["17"] = {
+        "oversized": "x" * MAX_REVIEW_SUMMARY_BYTES
+    }
+    producer_output = tmp_path / "producer-evidence"
+    producer_output.mkdir()
+    summary_path = tmp_path / REVIEW_SUMMARY_FILENAME
+
+    with pytest.raises(ValueError, match="A2_CLIP_REVIEW_SUMMARY_TOO_LARGE"):
+        write_review_summary(producer_output, payload)
+    assert not summary_path.exists()
+
+
+def test_offline_extractor_rejects_unvalidated_tampered_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = _payload()
+    payload["go_latent"] = "EVALUATED"
+    sealed_root = tmp_path / "sealed-evidence"
+    producer_output = sealed_root / "producer-evidence"
+    _write_source_evidence(producer_output, payload)
+    summary_output = tmp_path / "derived" / REVIEW_SUMMARY_FILENAME
+    summary_output.parent.mkdir()
+
+    def reject_validation(output: Path, *, implementation_commit: str) -> dict:
+        assert output == producer_output
+        assert implementation_commit == payload["implementation_commit"]
+        raise ValueError("A2_CLIP_VALIDATOR_SCIENCE_BOUNDARY")
+
+    monkeypatch.setattr(offline_extractor, "validate_experiment", reject_validation)
+    with pytest.raises(ValueError, match="A2_CLIP_VALIDATOR_SCIENCE_BOUNDARY"):
+        offline_extractor.build_offline_review_summary(
+            producer_output,
+            implementation_commit=payload["implementation_commit"],
+            summary_output=summary_output,
+        )
+    assert not summary_output.exists()
+
+
+def test_offline_extractor_leaves_source_evidence_tree_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = _payload()
+    sealed_root = tmp_path / "sealed-evidence"
+    producer_output = sealed_root / "producer-evidence"
+    _write_source_evidence(producer_output, payload)
+    (sealed_root / "SEALED").write_text("immutable\n", encoding="utf-8")
+    before = _tree_snapshot(sealed_root)
+    summary_output = tmp_path / "derived" / REVIEW_SUMMARY_FILENAME
+    summary_output.parent.mkdir()
+
+    def accept_validation(output: Path, *, implementation_commit: str) -> dict:
+        assert output == producer_output
+        assert implementation_commit == payload["implementation_commit"]
+        return {"valid": True, "source_sha256": payload["source_sha256"]}
+
+    monkeypatch.setattr(offline_extractor, "validate_experiment", accept_validation)
+    summary_path, summary, validation = offline_extractor.build_offline_review_summary(
+        producer_output,
+        implementation_commit=payload["implementation_commit"],
+        summary_output=summary_output,
+    )
+
+    assert summary_path == summary_output.resolve()
+    assert summary["implementation_commit"] == payload["implementation_commit"]
+    assert validation["source_sha256"] == payload["source_sha256"]
+    assert _tree_snapshot(sealed_root) == before
+    assert summary_output.is_file()
+
+
+def test_offline_extractor_rejects_output_inside_sealed_tree(tmp_path: Path) -> None:
+    payload = _payload()
+    sealed_root = tmp_path / "sealed-evidence"
+    producer_output = sealed_root / "producer-evidence"
+    _write_source_evidence(producer_output, payload)
+    summary_output = sealed_root / REVIEW_SUMMARY_FILENAME
+
+    with pytest.raises(
+        ValueError,
+        match="A2_CLIP_REVIEW_SUMMARY_OUTPUT_INSIDE_SEALED_EVIDENCE_ROOT",
+    ):
+        offline_extractor.build_offline_review_summary(
+            producer_output,
+            implementation_commit=payload["implementation_commit"],
+            summary_output=summary_output,
+        )
