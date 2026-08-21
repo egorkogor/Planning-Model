@@ -1,0 +1,52 @@
+research_os_version: "1.0-bootstrap"
+project_id: "planning-model"
+project_name: "Planning-Model"
+mode: "advisory"
+integration: "read-only-adapter"
+
+governance:
+  existing_project_authority_precedence: true
+  legacy_rounds_finish_under_existing_rules: true
+  new_required_gates_enabled: false
+  scientific_runtime_dependency: false
+
+current_state:
+  governance: "legacy-bound"
+  authoritative_branch: "main"
+  authoritative_base_at_bootstrap: "ee773479cbbc84eab52f93996bc8beb64a51453c"
+  active_scientific_program: "A2 causal-discrimination / gradient-clipping line"
+  active_review_work:
+    - pr: 44
+      title: "Add compact reviewer summary for gradient clipping evidence"
+      classification: "derivative-reviewability-only"
+      claim_bearing_evidence_modified: false
+      scientific_execution_expected: false
+
+existing_confirmatory_backend:
+  preserve:
+    - "frozen/versioned scientific contracts"
+    - "fixed-target runtime controls"
+    - "guarded reviewer execution bridge"
+    - "isolated execution principal/security boundaries"
+    - "producer evidence"
+    - "independent persisted-evidence validation"
+    - "content-addressed/sealed evidence"
+    - "consumed-run/no-rerun semantics"
+    - "held-out restrictions"
+    - "reviewer-only scientific interpretation"
+
+research_os_focus:
+  missing_or_underformalized:
+    - "research-question registry"
+    - "claim/competing-hypothesis graph"
+    - "versioned Evaluation Contracts"
+    - "measurement/eval calibration lifecycle"
+    - "explicit validity-audit layer separate from evidence validation"
+    - "statistical design/power rationale before new confirmatory studies"
+    - "negative/invalid/replication decision registry"
+    - "literature/prior-art linkage to claims and studies"
+
+migration_policy:
+  current_gradient_clipping_round: "index-only; do not rewrite"
+  future_new_studies: "eligible for OS-native RQ -> CLM -> EVAL -> STU workflow"
+  first_enforcement_step: "advisory validation only"
