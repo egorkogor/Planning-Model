@@ -66,7 +66,7 @@ Every package must define a stop condition and an exact next atomic action so a 
 
 ### Rule
 
-Shared scientific/evaluation/runtime surfaces are **single-writer, multi-reader** while a package is `ACTIVE` or `PARTIAL` and retains ownership.
+Shared scientific/evaluation/runtime surfaces are **single-writer, multi-reader** while a package holds ownership.
 
 Multiple workers may inspect the same surface. Only the package that explicitly owns that writable surface may modify it. A second worker must use a disjoint surface or remain read-only.
 
@@ -96,9 +96,9 @@ A Work Package must list:
 
 Ownership is operational coordination, not permission to weaken scientific authority. Existing reviewer/security/provenance controls still apply.
 
-If two active packages need the same writable surface, the later package becomes `BLOCKED` until ownership is released or the reviewer explicitly rebases/reassigns the work. Do not solve the conflict with concurrent edits and later merge conflict resolution on scientific surfaces.
+If two packages need the same writable surface, the later package becomes `BLOCKED` until ownership is released or the reviewer explicitly rebases/reassigns the work. Do not solve the conflict with concurrent edits and later merge conflict resolution on scientific surfaces.
 
-A package releases its write claim when it reaches `REVIEW`, `DONE`, or `CANCELLED`, unless the reviewer explicitly keeps the surface reserved during review. `PARTIAL` retains ownership by default; `BLOCKED` must state whether ownership is retained or released.
+`ACTIVE` and `PARTIAL` retain ownership by default. Shared scientific/evaluation/runtime surfaces also remain owned through `REVIEW` by default so repair work cannot race another writer. `BLOCKED` must state whether ownership is retained or released. `DONE` and `CANCELLED` release ownership. An authorized reviewer may explicitly release or reassign a surface earlier.
 
 ## Current Planner compatibility boundary
 
