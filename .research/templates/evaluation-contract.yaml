@@ -1,0 +1,67 @@
+version: "research-os-evaluation-contract/0.1"
+status: "TEMPLATE_ONLY"
+research_os_required_gate: false
+
+id: "EVAL-PLN-XXX"
+construct:
+  name: ""
+  operational_definition: ""
+  intended_inference: ""
+  known_proxies_or_shortcuts: []
+
+task_distribution:
+  description: ""
+  task_families: []
+  inclusion_rules: []
+  exclusion_rules: []
+
+data_governance:
+  dev_policy: ""
+  test_policy: ""
+  private_holdout_policy: ""
+  contamination_controls: []
+
+endpoints:
+  primary: []
+  secondary: []
+  censoring_or_null_semantics: ""
+
+graders_or_verifiers:
+  semantics: []
+  independent_from_producer: null
+  calibration_refs: []
+
+harness_assumptions:
+  model_or_agent_scaffold: ""
+  tools: []
+  runtime_constraints: []
+  resource_limits: []
+  timeout_retry_semantics: ""
+
+baselines_and_controls: []
+
+validity_threats:
+  construct_validity: []
+  shortcut_or_leakage: []
+  grader_bias_or_failure: []
+  harness_confounders: []
+  infrastructure_failures: []
+  adversarial_checks: []
+
+calibration:
+  status: "UNVALIDATED"
+  allowed_statuses:
+    - "UNVALIDATED"
+    - "CALIBRATING"
+    - "VALIDATED_FOR_STATED_INFERENCE"
+    - "INVALID"
+  evidence_refs: []
+  reviewer: null
+
+versioning:
+  semantic_version: "0.1-draft"
+  amendment_policy: "Any construct/task/endpoint/grader/harness change that can alter the intended inference requires a new version or explicit amendment before a future confirmatory freeze."
+
+notes:
+  - "Template applies to future OS-native studies only."
+  - "Do not retrofit current legacy-bound A2 studies or override existing project contracts."
