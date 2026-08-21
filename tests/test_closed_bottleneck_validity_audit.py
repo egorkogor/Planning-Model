@@ -20,7 +20,8 @@ def test_claims_are_decomposed_and_not_collapsed() -> None:
     assert claims["semantic_content_necessity"]["required_for_future_claim"] is True
     assert claims["collapse_into_single_claim"] == "FORBIDDEN"
     assert "not semantic necessity" in claims["mechanical_channel_closure"]["interpretation"]
-    assert "not normal trained-model reliance" in claims["allowed_channel_usability"]["interpretation"]
+    usability = claims["allowed_channel_usability"]["interpretation"]
+    assert "not normal trained-model reliance" in usability
 
 
 def test_stateless_boundary_resets_all_prohibited_cross_step_state() -> None:
@@ -98,7 +99,8 @@ def test_oracle_proves_usability_not_trained_model_reliance() -> None:
     oracle = audit["counterfactual_oracle_control"]
     assert oracle["required"] is True
     assert oracle["construction"]["allowed_nonconcept_context"] == "BYTE_IDENTICAL"
-    assert oracle["interpretation"]["success"] == "The resolver can use the allowed concept channel."
+    success = oracle["interpretation"]["success"]
+    assert success == "The resolver can use the allowed concept channel."
     assert oracle["interpretation"]["forbidden_inference"] == (
         "The trained model normally uses the channel."
     )
