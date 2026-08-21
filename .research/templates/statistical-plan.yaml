@@ -1,0 +1,30 @@
+version: "research-os-statistical-plan/0.1"
+status: "TEMPLATE_ONLY"
+research_os_required_gate: false
+
+study_ref: "STU-PLN-XXX"
+primary_endpoint: ""
+unit_of_analysis: ""
+nesting_and_dependence: []
+design:
+  paired_or_unpaired: ""
+  pairing_keys: []
+  task_families: []
+  seeds: []
+  repetitions_per_seed: null
+uncertainty:
+  interval_method: ""
+  alpha_or_coverage: null
+minimum_effect_worth_detecting: null
+power_or_precision_rationale: ""
+multiple_comparisons_policy: ""
+missing_censored_null_semantics: ""
+stopping_rule: ""
+invalid_run_policy: ""
+retry_policy: ""
+pre_result_freeze_required: true
+
+notes:
+  - "Do not infer that three seeds are sufficient merely because legacy studies used seeds 17/29/43."
+  - "Prefer paired comparisons where arms share task, seed, initialization, or other controlled conditions."
+  - "Future template only; no statistical semantics of current legacy-bound A2 studies are changed."
