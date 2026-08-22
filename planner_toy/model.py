@@ -1,4 +1,4 @@
-"""Contract-locked PyTorch planner used by the non-confirmatory toy slice."""
+"""Contract-locked PyTorch A2 model used by the non-confirmatory toy slice."""
 
 from __future__ import annotations
 
@@ -57,13 +57,11 @@ def _inventory() -> dict:
         return yaml.safe_load(handle)
 
 
-VARIANTS = ("A2", "A3", "A3r", "A4")
-SEMANTIC_VARIANTS = frozenset({"A3", "A3r", "A4"})
-SEMANTIC_INTERVENTIONS = frozenset({"ZERO", "FOREIGN", "WRONG_SEMANTIC_DONOR"})
+VARIANTS = ("A2", "A3", "A4")
 
 
 class LockedPlanner(nn.Module):
-    """Development planner with one inventory and explicit activation masks."""
+    """Development planner with one inventory and explicit A2/A3/A4 activation masks."""
 
     def __init__(self, seed: int = SEED, variant: str = "A2"):
         super().__init__()
@@ -76,10 +74,9 @@ class LockedPlanner(nn.Module):
         for item in self.inventory:
             _install(self, item["name"], item["shape"])
         self.reset_parameters(seed)
-        # A3r is parameter-matched to A3. A4 preserves the historical A3-shaped
-        # training path; same-checkpoint causal interventions use A3 + the
-        # explicit semantic_intervention keyword below.
-        arm = "A3" if variant in SEMANTIC_VARIANTS else "A2"
+        # A4 computes the exact A3 path. Its semantic-feedback zero makes the
+        # projection task-gradient zero by design; the semantic head is trained.
+        arm = "A3" if variant in {"A3", "A4"} else "A2"
         active = {x["name"] for x in self.inventory if arm in x["active_arms"]}
         for name, parameter in self.named_parameters():
             parameter.requires_grad_(name in active)
@@ -173,35 +170,14 @@ class LockedPlanner(nn.Module):
         if not torch.isfinite(z).all():
             raise ValueError("LATENT_NONFINITE")
         module = self.semantic.latent_feedback
-        projected = F.linear(
-            F.gelu(F.linear(z, module.linear1.weight, module.linear1.bias)),
-            module.linear2.weight,
-            module.linear2.bias,
-        )
+        projected = F.linear(F.gelu(F.linear(z, module.linear1.weight, module.linear1.bias)),
+                             module.linear2.weight, module.linear2.bias)
         return F.layer_norm(projected, (256,), module.norm.weight, module.norm.bias, 1e-5)
 
     def forward(
-        self,
-        encoded: TaskEncoding,
-        actions: torch.Tensor,
-        arg1: torch.Tensor,
-        arg2: torch.Tensor,
-        *,
-        semantic_feedback: torch.Tensor | None = None,
-        semantic_intervention: str | None = None,
-        foreign_semantic_feedback: torch.Tensor | None = None,
+        self, encoded: TaskEncoding, actions: torch.Tensor, arg1: torch.Tensor, arg2: torch.Tensor,
+        *, semantic_feedback: torch.Tensor | None = None,
     ) -> SimpleNamespace:
-        if semantic_intervention is not None:
-            if self.variant != "A3":
-                raise ValueError("same-checkpoint semantic interventions require exact A3 variant")
-            if semantic_intervention not in SEMANTIC_INTERVENTIONS:
-                raise ValueError("unsupported semantic intervention")
-            if semantic_intervention in {"FOREIGN", "WRONG_SEMANTIC_DONOR"}:
-                if foreign_semantic_feedback is None:
-                    raise ValueError("foreign semantic feedback required")
-            elif foreign_semantic_feedback is not None:
-                raise ValueError("foreign semantic feedback forbidden for ZERO intervention")
-
         memory = self.encode(encoded)
         steps = actions.shape[1]
         pos = torch.arange(steps, device=actions.device)
@@ -220,21 +196,15 @@ class LockedPlanner(nn.Module):
         x = x + F.linear(r2, self.concept_packer.previous_arg2_projection.weight)
         semantic_component = torch.zeros_like(x)
         projected_semantic = None
-        if self.variant in SEMANTIC_VARIANTS:
+        if self.variant in {"A3", "A4"}:
             if semantic_feedback is None:
                 semantic_feedback = torch.zeros((*x.shape[:2], 384), device=x.device)
-            projection_input = semantic_feedback
-            if semantic_intervention in {"FOREIGN", "WRONG_SEMANTIC_DONOR"}:
-                assert foreign_semantic_feedback is not None
-                if foreign_semantic_feedback.shape != semantic_feedback.shape:
-                    raise ValueError("foreign semantic feedback shape mismatch")
-                projection_input = foreign_semantic_feedback
-            projected_semantic = self.project_semantic(projection_input)
+            projected_semantic = self.project_semantic(semantic_feedback)
+            # Position zero has no predecessor under every mode.
             projected_semantic = projected_semantic.clone()
             projected_semantic[:, 0] = 0
             semantic_component = projected_semantic
-            if self.variant == "A4" or semantic_intervention == "ZERO":
-                # Frozen intervention surface: after A3 projection + normalization.
+            if self.variant == "A4":
                 semantic_component = torch.zeros_like(projected_semantic)
         x = x + semantic_component
         x = F.layer_norm(
@@ -262,17 +232,11 @@ class LockedPlanner(nn.Module):
         action_logits = F.linear(x, self.heads.action.weight, self.heads.action.bias)
         arg1_logits = (x @ self.heads.arg1_pointer.weight) @ refs.transpose(1, 2)
         arg2_logits = (x @ self.heads.arg2_pointer.weight) @ refs.transpose(1, 2)
-        z_semantic = self.latent(x) if self.variant in SEMANTIC_VARIANTS else None
-        return SimpleNamespace(
-            action=action_logits,
-            arg1=arg1_logits,
-            arg2=arg2_logits,
-            hidden=x,
-            z_semantic=z_semantic,
-            projected_semantic=projected_semantic,
-            semantic_component=semantic_component,
-            semantic_intervention=semantic_intervention,
-        )
+        z_semantic = self.latent(x) if self.variant in {"A3", "A4"} else None
+        return SimpleNamespace(action=action_logits, arg1=arg1_logits, arg2=arg2_logits,
+                               hidden=x, z_semantic=z_semantic,
+                               projected_semantic=projected_semantic,
+                               semantic_component=semantic_component)
 
 
 class LockedA2(LockedPlanner):
