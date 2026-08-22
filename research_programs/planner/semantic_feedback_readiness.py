@@ -4,9 +4,10 @@ import hashlib
 import json
 import math
 import struct
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 CONFIG_PATH = Path(".research/readiness/semantic_feedback_discovery_execution_v1.json")
 ALLOWED_METADATA_FIELDS = (
@@ -73,7 +74,10 @@ def generate_code(seed: bytes, signature_sha256: str) -> tuple[float, ...]:
     return tuple(values)
 
 
-def reconstruct_codebooks(config: dict[str, Any], signatures: Iterable[str]) -> dict[str, dict[str, tuple[float, ...]]]:
+def reconstruct_codebooks(
+    config: dict[str, Any],
+    signatures: Iterable[str],
+) -> dict[str, dict[str, tuple[float, ...]]]:
     ordered = sorted(signatures)
     if len(set(ordered)) != len(ordered):
         raise ReadinessError("duplicate signature identity")
@@ -118,7 +122,10 @@ class DonorUnit:
     feedback_norm_raw: float
 
 
-def select_wrong_semantic_donor(target: DonorUnit, candidates: Iterable[DonorUnit]) -> DonorUnit | None:
+def select_wrong_semantic_donor(
+    target: DonorUnit,
+    candidates: Iterable[DonorUnit],
+) -> DonorUnit | None:
     eligible = [
         c
         for c in candidates
@@ -150,12 +157,18 @@ def validate_collision_fixture(config: dict[str, Any]) -> dict[str, Any]:
     a, b = fixture["collision_pair"]
     if canonical_json(_metadata(a)) != canonical_json(_metadata(b)):
         raise ReadinessError("INVALID_SHORTCUT_NOT_EXCLUDED")
-    if a["semantic_feedback"] == b["semantic_feedback"] or a["required_next_action"] == b["required_next_action"]:
+    if (
+        a["semantic_feedback"] == b["semantic_feedback"]
+        or a["required_next_action"] == b["required_next_action"]
+    ):
         raise ReadinessError("INVALID_SEMANTIC_CHANNEL_NOT_USABLE")
     ia, ib = fixture["inverse_metadata_pair"]
     if canonical_json(_metadata(ia)) == canonical_json(_metadata(ib)):
         raise ReadinessError("inverse metadata must differ")
-    if ia["semantic_feedback"] != ib["semantic_feedback"] or ia["required_next_action"] != ib["required_next_action"]:
+    if (
+        ia["semantic_feedback"] != ib["semantic_feedback"]
+        or ia["required_next_action"] != ib["required_next_action"]
+    ):
         raise ReadinessError("INVALID_METADATA_INVARIANCE")
     return {
         "fixture_id": fixture["id"],
@@ -319,7 +332,11 @@ def readiness_replay(config: dict[str, Any]) -> dict[str, Any]:
         "split": split,
         "collision": collision,
         "collision_paths": collision_paths,
-        "selected_donor": None if donor is None else {"episode_id": donor.episode_id, "unit_id": donor.unit_id},
+        "selected_donor": (
+            None
+            if donor is None
+            else {"episode_id": donor.episode_id, "unit_id": donor.unit_id}
+        ),
         "checkpoint_state": checkpoint_state,
         "preintervention_exposure": exposure,
         "validity_branches": branches,
