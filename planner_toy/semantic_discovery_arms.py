@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 import torch
 
@@ -119,7 +120,10 @@ def a3r_targets(
         raise SemanticArmError("A3r signature count must be in [1, total_steps]")
     identity = _codebook_identity(codebook_id, readiness_path)
     seed = reconstruct_seed(identity)
-    rows = [torch.tensor(generate_code(seed, signature), dtype=torch.float32) for signature in signatures]
+    rows = [
+        torch.tensor(generate_code(seed, signature), dtype=torch.float32)
+        for signature in signatures
+    ]
     rows.extend(
         torch.zeros(SEMANTIC_DIMENSION, dtype=torch.float32)
         for _ in range(total_steps - len(rows))
@@ -181,6 +185,25 @@ def _edge_key(source: A5Unit, candidate: A5Unit, contract_hash: str) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _augment_matching(
+    source_hash: str,
+    visited: set[str],
+    candidate_for_source: Mapping[str, list[str]],
+    candidate_owner: dict[str, str],
+) -> bool:
+    for candidate_hash in candidate_for_source[source_hash]:
+        if candidate_hash in visited:
+            continue
+        visited.add(candidate_hash)
+        owner = candidate_owner.get(candidate_hash)
+        if owner is None or _augment_matching(
+            owner, visited, candidate_for_source, candidate_owner
+        ):
+            candidate_owner[candidate_hash] = source_hash
+            return True
+    return False
+
+
 def a5_contract_sha256(path: Path = A5_CONTRACT_PATH) -> str:
     if not path.is_file():
         raise SemanticArmError("frozen A5 ablation contract is missing")
@@ -206,25 +229,21 @@ def construct_a5_derangement(
         by_hash = {row.unit_hash: row for row in source_rows}
         candidate_for_source: dict[str, list[str]] = {}
         for source in source_rows:
-            candidates = [candidate for candidate in source_rows if _foreign_allowed(source, candidate)]
+            candidates = [
+                candidate
+                for candidate in source_rows
+                if _foreign_allowed(source, candidate)
+            ]
             candidates.sort(key=lambda candidate: _edge_key(source, candidate, contract_hash))
-            candidate_for_source[source.unit_hash] = [candidate.unit_hash for candidate in candidates]
+            candidate_for_source[source.unit_hash] = [
+                candidate.unit_hash for candidate in candidates
+            ]
 
         candidate_owner: dict[str, str] = {}
-
-        def augment(source_hash: str, visited: set[str]) -> bool:
-            for candidate_hash in candidate_for_source[source_hash]:
-                if candidate_hash in visited:
-                    continue
-                visited.add(candidate_hash)
-                owner = candidate_owner.get(candidate_hash)
-                if owner is None or augment(owner, visited):
-                    candidate_owner[candidate_hash] = source_hash
-                    return True
-            return False
-
         for source in source_rows:
-            if not augment(source.unit_hash, set()):
+            if not _augment_matching(
+                source.unit_hash, set(), candidate_for_source, candidate_owner
+            ):
                 raise SemanticArmError("BLOCKED_CONTROL_CONSTRUCTION")
 
         mapping = {
