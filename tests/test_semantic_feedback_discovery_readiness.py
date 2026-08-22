@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import math
 from pathlib import Path
@@ -11,32 +12,51 @@ from research_programs.planner.semantic_feedback_readiness import (
     code_hex,
     encode_state,
     generate_code,
+    git_blob_sha1,
     load_config,
     preintervention_opportunity,
     readiness_replay,
     reconstruct_codebooks,
     reconstruct_seed,
     select_wrong_semantic_donor,
+    validate_authority_binding,
     validate_checkpoint_binding,
     validate_collision_fixture,
     validate_composition_split,
 )
 
 
-def test_readiness_config_is_bound_to_accepted_authority_text():
+def test_readiness_config_is_mechanically_bound_to_accepted_authorities():
     config = load_config()
-    protocol = Path(config["protocol"]["path"]).read_text(encoding="utf-8")
-    generator = Path(config["generator_contract"]["path"]).read_text(encoding="utf-8")
-    for identity in config["codebooks"]:
-        assert identity["id"] in protocol
-        assert identity["derivation_input"] in protocol
-        assert identity["seed_hex"] in protocol
-    for signature in config["composition_split"]["train"] + config["composition_split"]["stress"]:
-        assert signature in protocol
-    assert "algorithm: SHAKE256_BITS_V1" in generator
-    assert "payload: seed_bytes || UTF8(signature_sha256)" in generator
-    assert "output_bytes: 48" in generator
-    assert "dimension: 384" in generator
+    binding = validate_authority_binding(config)
+    protocol_bytes = Path(config["protocol"]["path"]).read_bytes()
+    generator_bytes = Path(config["generator_contract"]["path"]).read_bytes()
+    assert binding == {
+        "protocol_git_blob": git_blob_sha1(protocol_bytes),
+        "generator_contract_git_blob": git_blob_sha1(generator_bytes),
+    }
+    assert binding["protocol_git_blob"] == config["protocol"]["git_blob"]
+    assert (
+        binding["generator_contract_git_blob"]
+        == config["generator_contract"]["git_blob"]
+    )
+
+
+def test_copied_frozen_choice_tamper_fails_authority_binding():
+    config = copy.deepcopy(load_config())
+    config["composition_split"]["stress"] = ["RIGHT_OF|NEAR", "UNDER|NEAR"]
+    with pytest.raises(ReadinessError, match="authority mismatch: composition_split.stress"):
+        validate_authority_binding(config)
+
+
+def test_authority_file_blob_mismatch_fails_closed(tmp_path):
+    config = copy.deepcopy(load_config())
+    original = Path(config["protocol"]["path"]).read_bytes()
+    tampered = tmp_path / "semantic_feedback_discovery_v1.yaml"
+    tampered.write_bytes(original + b"\n# tampered\n")
+    config["protocol"]["path"] = str(tampered)
+    with pytest.raises(ReadinessError, match="protocol git blob mismatch"):
+        validate_authority_binding(config)
 
 
 def test_frozen_codebook_seeds_reconstruct_exactly_and_are_distinct():
@@ -51,7 +71,9 @@ def test_frozen_codebook_seeds_reconstruct_exactly_and_are_distinct():
 
 def test_codebook_generation_is_deterministic_and_exact_sha_ke_bits():
     config = load_config()
-    signatures = [hashlib.sha256(value.encode()).hexdigest() for value in ("zeta", "alpha")]
+    signatures = [
+        hashlib.sha256(value.encode()).hexdigest() for value in ("zeta", "alpha")
+    ]
     first = reconstruct_codebooks(config, signatures)
     second = reconstruct_codebooks(config, reversed(signatures))
     assert first == second
@@ -65,8 +87,12 @@ def test_codebook_generation_is_deterministic_and_exact_sha_ke_bits():
     raw = bytes.fromhex(code_hex(seed, signatures[0]))
     vector = generate_code(seed, signatures[0])
     expected_first_bit = 1.0 if raw[0] & 0x80 else -1.0
-    assert math.isclose(vector[0], expected_first_bit / math.sqrt(384), rel_tol=0, abs_tol=1e-8)
-    assert vector[0] != expected_first_bit / math.sqrt(384) or isinstance(vector[0], float)
+    assert math.isclose(
+        vector[0], expected_first_bit / math.sqrt(384), rel_tol=0, abs_tol=1e-8
+    )
+    assert vector[0] != expected_first_bit / math.sqrt(384) or isinstance(
+        vector[0], float
+    )
 
 
 def test_seed_tamper_fails_closed():
@@ -87,8 +113,12 @@ def test_composition_split_reconstructs_frozen_holdout():
 
 def test_composition_overlap_fails_closed():
     config = load_config()
-    config["composition_split"]["stress"] = [config["composition_split"]["train"][0]]
-    with pytest.raises(ReadinessError, match="INVALID_GEOMETRY_ESTIMAND_SIGNATURE_OVERLAP"):
+    config["composition_split"]["stress"] = [
+        config["composition_split"]["train"][0]
+    ]
+    with pytest.raises(
+        ReadinessError, match="INVALID_GEOMETRY_ESTIMAND_SIGNATURE_OVERLAP"
+    ):
         validate_composition_split(config)
 
 
@@ -124,7 +154,10 @@ def test_wrong_semantic_donor_exact_filter_and_tie_break():
 
 def test_wrong_semantic_donor_unavailable_is_explicit_null():
     target = _unit("target", "e9", "sig-a", 1.0)
-    assert select_wrong_semantic_donor(target, [_unit("x", "e1", "sig-a", 1.0)]) is None
+    assert (
+        select_wrong_semantic_donor(target, [_unit("x", "e1", "sig-a", 1.0)])
+        is None
+    )
     assert encode_state(donor_available=False) == "NOT_EVALUATED_DONOR_UNAVAILABLE"
 
 
@@ -152,11 +185,16 @@ def test_collision_metadata_tamper_fails_closed():
 
 
 def test_checkpoint_guards_require_exact_a3_and_no_retraining():
-    exact = {arm: "ckpt-a3" for arm in ("A3", "A4", "A5", "WRONG_SEMANTIC_DONOR")}
+    exact = {
+        arm: "ckpt-a3" for arm in ("A3", "A4", "A5", "WRONG_SEMANTIC_DONOR")
+    }
     assert validate_checkpoint_binding("ckpt-a3", exact) == "EVALUATED"
     drift = dict(exact)
     drift["A5"] = "other"
-    assert validate_checkpoint_binding("ckpt-a3", drift) == "INVALID_CHECKPOINT_OR_RETRAINING"
+    assert (
+        validate_checkpoint_binding("ckpt-a3", drift)
+        == "INVALID_CHECKPOINT_OR_RETRAINING"
+    )
     assert (
         validate_checkpoint_binding("ckpt-a3", exact, ["A4"])
         == "INVALID_CHECKPOINT_OR_RETRAINING"
@@ -164,18 +202,22 @@ def test_checkpoint_guards_require_exact_a3_and_no_retraining():
 
 
 def test_preintervention_exposure_is_fixed_from_reference_prefix_only():
-    result = preintervention_opportunity([
-        {"position": 1, "feedback_eligible": False},
-        {"position": 3, "feedback_eligible": True},
-        {"position": 5, "feedback_eligible": True},
-    ])
+    result = preintervention_opportunity(
+        [
+            {"position": 1, "feedback_eligible": False},
+            {"position": 3, "feedback_eligible": True},
+            {"position": 5, "feedback_eligible": True},
+        ]
+    )
     assert result == {
         "source": "PRE_INTERVENTION_REFERENCE_PREFIX_ONLY",
         "opportunity_count": 2,
         "first_feedback_position": 3,
         "post_treatment_survivor_conditioning": False,
     }
-    empty = preintervention_opportunity([{"position": 1, "feedback_eligible": False}])
+    empty = preintervention_opportunity(
+        [{"position": 1, "feedback_eligible": False}]
+    )
     assert empty["opportunity_count"] == 0
     assert empty["first_feedback_position"] is None
 
@@ -209,6 +251,13 @@ def test_readiness_replay_is_deterministic_non_outcome_bearing_and_complete():
     assert first == second
     assert len(first["config_digest"]) == 64
     assert len(first["implementation_digest"]) == 64
+    assert len(first["protocol_git_blob"]) == 40
+    assert len(first["generator_contract_git_blob"]) == 40
+    assert first["protocol_git_blob"] == config["protocol"]["git_blob"]
+    assert (
+        first["generator_contract_git_blob"]
+        == config["generator_contract"]["git_blob"]
+    )
     assert len(first["replay_digest"]) == 64
     assert first["scientific_execution"] is False
     assert first["held_out_access"] is False
@@ -221,4 +270,6 @@ def test_readiness_replay_is_deterministic_non_outcome_bearing_and_complete():
         "free_running_total_effect": None,
         "outcome_bearing": False,
     }
-    assert set(first["validity_branches"].values()) == set(config["null_precedence"])
+    assert set(first["validity_branches"].values()) == set(
+        config["null_precedence"]
+    )
