@@ -14,7 +14,15 @@ authority:
     - "issue 64 conductor repair comment 5381987477"
     - "issue 64 independent ACCEPT comment 5382001767"
     - "issue 63 independent portfolio review"
+  repaired_authority:
+    - "PR #67 independent reviewer REPAIR finding: pullrequestreview-5000883351 (construct-identity conflation blocker)"
+    - "issue 64 conductor authority clarification: comment 5382416684 (frozen A3 vs development A3a-codebook identity)"
+    - "issue 65 Work Package authority amendment: comment 5382417840 (required worker repair on PR #67)"
+  repaired_authority_precedence: >-
+    Where the repaired_authority comments above conflict with older #63/#64/#65 wording (including
+    the original body of this contract before this repair), the repaired_authority comments govern.
   frozen_v1_21_read_only: true
+  frozen_semantic_target_authority: "docs/semantic/semantic_target_v1.yaml"
   random_codebook_contract: "docs/controls/random_codebook_contract_v1.yaml"
   taxonomy_source: ".research/studies/semantic_feedback_discovery_v1.yaml"
   explicit_non_authority:
@@ -25,13 +33,25 @@ authority:
     - "This contract does not touch issue #61 / PR #62 owned runtime/intervention/test surfaces."
     - "This contract does not reinterpret EST-PLN-SEM-GEOMETRY."
     - "Current hash-derived A3a is admissible only as a calibration/negative-check reference; neither passing nor failing this calibration is emergent-semantic-structure evidence for real z."
+    - >-
+      This contract does not calibrate, and does not claim shared generator family with, the frozen
+      v1.21 A3 semantic target defined in docs/semantic/semantic_target_v1.yaml (a normalized 384-d
+      sentence-transformers/all-MiniLM-L6-v2 embedding). Frozen A3 and the development A3a-codebook
+      prototype are distinct objects; see construct_identity below.
+    - >-
+      ARM-4-FULL-SIGNATURE is a development-codebook construction-family reference / negative-check
+      reference only. It must never be described as frozen A3, semantic A3, the MiniLM target,
+      semantic-target machinery, or a semantic positive control.
 
 purpose: >-
-  Define and mechanically calibrate a representation-validity purity/mutual-information measurement
-  construct against frozen synthetic controls, so the construct's discriminability is established
-  before it is ever considered for application to real trained latent outcomes (not authorized here).
-  This contract answers only whether the purity/MI machinery can distinguish frozen synthetic
-  controls under the same code-generation family as the Planner semantic-target machinery.
+  Stage-0 measurement-instrument floor calibration: define and mechanically calibrate a
+  purity/mutual-information measurement construct against predeclared synthetic/codebook controls,
+  so the construct's discriminability is established before it is ever considered for application
+  to any real representation (not authorized here). This contract answers only whether the
+  purity/MI/permutation-null machinery can discriminate these predeclared synthetic controls from a
+  matched synthetic null. It does not calibrate, and is not evidence about, the frozen v1.21 A3
+  semantic target (`docs/semantic/semantic_target_v1.yaml`, a MiniLM sentence embedding) or any real
+  trained `z`. See `construct_identity` below for the exact object boundaries.
 
 scope_boundary:
   in_scope:
@@ -51,6 +71,40 @@ scope_boundary:
     - "held-out 04/05 access or materialization"
     - "confirmatory thresholds or claim promotion"
     - "changing GO_LATENT"
+
+construct_identity:
+  purpose: >-
+    Frozen v1.21 A3, the development A3a-codebook prototype, and the synthetic SHAKE controls in
+    this contract are three distinct objects with three distinct epistemic roles. None may be used
+    as a stand-in for another.
+  frozen_A3:
+    target: "normalized 384-d sentence-transformers/all-MiniLM-L6-v2 embedding of canonical semantic-signature text"
+    authority: "docs/semantic/semantic_target_v1.yaml"
+    role_in_this_WP: "READ_ONLY_NOT_CALIBRATED"
+    calibrated_by_this_contract: false
+    shares_generator_family_with_SHAKE_controls: false
+    note: >-
+      Frozen A3 is a pretrained sentence-transformer embedding, not a SHAKE256/codebook
+      construction. This contract makes no claim about it and does not touch
+      docs/semantic/semantic_target_v1.yaml.
+  development_A3a_codebook:
+    target: >-
+      deterministic SHA-derived 384-d development-only codebook prototype described in
+      docs/architecture/COGNITIVE_PLANNER_FUTURE_ARCHITECTURE_RU.md section 19 (non-normative
+      roadmap; current implementation, not frozen scientific authority)
+    role_in_this_WP: "CONSTRUCTION_FAMILY_REFERENCE_ONLY"
+    is_frozen_A3: false
+    is_semantic_geometry_evidence: false
+  synthetic_SHAKE_controls:
+    role_in_this_WP: "MEASUREMENT_INSTRUMENT_CALIBRATION_ONLY"
+    calibrates: >-
+      the purity/MI/permutation-null measurement machinery's ability to discriminate predeclared
+      synthetic structure (ARM-2/ARM-3) from a matched synthetic null (ARM-1), plus a non-gating
+      development-codebook-style reference (ARM-4)
+    does_not_calibrate:
+      - "frozen v1.21 A3 (MiniLM semantic target, docs/semantic/semantic_target_v1.yaml)"
+      - "real A3/A3r trained z"
+      - "any future A3s-semantic-target"
 
 generator_binding:
   contract: "docs/controls/random_codebook_contract_v1.yaml"
@@ -171,21 +225,32 @@ fixture_construction:
       cross_check_axis: "operator_axis"
       cross_check_expectation: "no operator leakage: not required to separate at operator_axis"
     - id: "ARM-4-FULL-SIGNATURE"
-      role: "full-signature keyed calibration/negative-check reference"
+      role: "development-codebook construction-family reference / negative-check reference"
       class_signal_present: true
       base_vector_payload_key_template: "SIGNATURE|{relation_atom}|{distance_atom}"
       generator_seed_ref: "FULL-SIGNATURE-ARM-SEED"
       noise_seed_ref: "NOISE-SEED"
       gating_axis: "none"
       non_gating: true
+      forbidden_labels_for_this_arm:
+        - "frozen A3"
+        - "semantic A3"
+        - "MiniLM target"
+        - "semantic-target machinery"
+        - "semantic positive control"
       interpretation_boundary: >-
-        This arm mirrors the construction pattern of the currently implemented A3a target, which is a
-        deterministic hash of the full joint action signature. Its operator_axis and topic_axis
-        result, whether at floor or not, is recorded as a calibration/negative-check reference only
-        and MUST NOT be interpreted as evidence for or against emergent operator/topic semantic
-        structure in any real representation. Only its joint_axis behavior (recoverability of the
-        full 8-way signature) is expected to separate from null, and even that remains a calibration
-        fact about the generator family, not a claim about real z.
+        This arm mirrors the construction pattern of the currently implemented development
+        A3a-codebook prototype (docs/architecture/COGNITIVE_PLANNER_FUTURE_ARCHITECTURE_RU.md
+        section 19), which is a deterministic hash of the full joint action signature. It is a
+        development-codebook construction-family reference / negative-check reference ONLY, and MUST
+        NOT be called frozen A3, semantic A3, the MiniLM target, semantic-target machinery, or a
+        semantic positive control — it is not the frozen v1.21 A3 semantic target defined in
+        docs/semantic/semantic_target_v1.yaml. Its operator_axis and topic_axis result, whether at
+        floor or not, is recorded as a calibration/negative-check reference only and MUST NOT be
+        interpreted as evidence for or against emergent operator/topic semantic structure in any real
+        representation. Only its joint_axis behavior (recoverability of the full 8-way signature) is
+        expected to separate from null, and even that remains a calibration fact about the synthetic
+        generator family, not a claim about real z or about frozen A3.
 
 fit_evaluation_split:
   rule: "within_class_index parity: even -> FIT, odd -> EVAL"
@@ -226,6 +291,17 @@ label_permutation_null:
     at_or_below_floor: "either observed statistic does not exceed its 0.95 quantile"
   predeclared_before_outcome: true
 
+pass_semantics:
+  pass_means: >-
+    The purity/MI/permutation-null measurement machinery discriminates these predeclared synthetic
+    controls (ARM-2/ARM-3 vs ARM-1) under the fixed K/N/fit-eval/estimator/null design below.
+  pass_does_not_mean:
+    - "that the machinery is validated for the frozen v1.21 A3 semantic target (MiniLM embedding)"
+    - "that frozen A3 has semantic geometry"
+    - "that current trained z has semantic structure"
+    - "that a future A3s-semantic-target will be measurable by this instrument"
+    - "that EST-PLN-SEM-GEOMETRY is supported"
+
 fail_closed_calibration_criteria:
   gate_1_operator_positive_control:
     arm: "ARM-2-OPERATOR-ONLY"
@@ -256,6 +332,24 @@ real_z_interpretation_boundary:
     a genuinely semantic, non-hash-derived target/arm (e.g. a future A3s-semantic-target) and a
     separate reviewer-authorized Work Package
 
+future_application_boundary:
+  purpose: >-
+    This contract fails closed on target-specific interpretation: passing this synthetic
+    calibration authorizes nothing about any specific real object below without separate,
+    target-specific reviewer authority.
+  frozen_MiniLM_A3_application:
+    status: "NOT_AUTHORIZED_BY_THIS_CONTRACT"
+    requires: >-
+      a separate reviewer-authorized MiniLM/semantic-target-specific validity design; the SHAKE
+      positive controls in this file alone are insufficient for that
+  development_A3a_codebook_real_output_application:
+    status: "NON_SEMANTIC_CONSTRUCTION_PROTOTYPE_ANALYSIS_ONLY"
+    cannot_support: "an emergent-semantic-geometry claim"
+  future_A3s_semantic_target_application:
+    status: "NOT_AUTHORIZED_BY_THIS_CONTRACT"
+    requires: "separate accepted target-specific calibration/application authority for A3s-semantic-target"
+  no_real_z_application_authorized_this_round: true
+
 promotion_boundary:
   current_round: "SYNTHETIC_CALIBRATION_ONLY"
   model_training: "FORBIDDEN"
@@ -267,7 +361,17 @@ promotion_boundary:
   go_latent: "NOT EVALUATED"
 
 versioning:
-  contract_version: "0.1"
+  contract_version: "0.2"
+  changelog:
+    "0.2": >-
+      Independent-review repair (pullrequestreview-5000883351, issue #64 comment 5382416684, issue
+      #65 comment 5382417840): removed the "same generator family as the Planner semantic-target
+      machinery" conflation; added the explicit construct_identity table separating frozen v1.21 A3
+      (MiniLM, docs/semantic/semantic_target_v1.yaml) from the development A3a-codebook prototype and
+      from these synthetic SHAKE controls; reframed ARM-4-FULL-SIGNATURE as a development-codebook
+      construction-family reference only; added pass_semantics and future_application_boundary. No
+      change to K/N/fit-eval split/estimator/permutation/seed values or any other outcome-sensitive
+      degree of freedom.
   immutable_after_outcome_inspection: true
   amendment_rule: >-
     Any change to payload semantics, K bindings, N, split rule, estimator definitions, permutation

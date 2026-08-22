@@ -159,6 +159,165 @@ def test_full_signature_arm_is_non_gating_with_interpretation_boundary() -> None
 
 
 # ---------------------------------------------------------------------------
+# Construct-identity repair (pullrequestreview-5000883351, issue #64 comment
+# 5382416684, issue #65 comment 5382417840): frozen v1.21 A3 (MiniLM) and the
+# development A3a-codebook prototype are distinct objects, and this contract's
+# SHAKE controls calibrate the measurement instrument only.
+# ---------------------------------------------------------------------------
+
+FORBIDDEN_CONFLATION_PHRASES = (
+    "same generator family as the planner semantic-target machinery",
+    "same code-generation family as the planner semantic-target machinery",
+    "same generator family as the real semantic target",
+    "calibration validates real representation validity",
+    "calibration validates frozen representation validity",
+    "calibration validates real a3",
+    "calibration validates frozen a3",
+)
+
+
+def _full_text_lower(calibration: dict[str, Any]) -> str:
+    return yaml.safe_dump(calibration).lower()
+
+
+def test_frozen_a3_is_explicitly_identified_as_minilm_semantic_target() -> None:
+    calibration = _calibration()
+    frozen_a3 = calibration["construct_identity"]["frozen_A3"]
+    assert frozen_a3["authority"] == "docs/semantic/semantic_target_v1.yaml"
+    assert "all-MiniLM-L6-v2" in frozen_a3["target"]
+    assert frozen_a3["role_in_this_WP"] == "READ_ONLY_NOT_CALIBRATED"
+    assert frozen_a3["calibrated_by_this_contract"] is False
+    assert frozen_a3["shares_generator_family_with_SHAKE_controls"] is False
+    assert calibration["authority"]["frozen_semantic_target_authority"] == (
+        "docs/semantic/semantic_target_v1.yaml"
+    )
+
+
+def test_development_a3a_codebook_is_explicitly_distinct_from_frozen_a3() -> None:
+    calibration = _calibration()
+    identity = calibration["construct_identity"]
+    development = identity["development_A3a_codebook"]
+    assert development["role_in_this_WP"] == "CONSTRUCTION_FAMILY_REFERENCE_ONLY"
+    assert development["is_frozen_A3"] is False
+    assert development["is_semantic_geometry_evidence"] is False
+    assert development["target"] != identity["frozen_A3"]["target"]
+
+
+def test_shake_controls_are_measurement_instrument_controls_only() -> None:
+    calibration = _calibration()
+    synthetic = calibration["construct_identity"]["synthetic_SHAKE_controls"]
+    assert synthetic["role_in_this_WP"] == "MEASUREMENT_INSTRUMENT_CALIBRATION_ONLY"
+    does_not_calibrate = " ".join(synthetic["does_not_calibrate"])
+    assert "frozen v1.21 A3" in does_not_calibrate
+    assert "real A3/A3r trained z" in does_not_calibrate
+    assert "A3s-semantic-target" in does_not_calibrate
+
+
+def test_contract_never_claims_shake_is_the_frozen_a3_generator() -> None:
+    calibration = _calibration()
+    full_text = _full_text_lower(calibration)
+    for phrase in FORBIDDEN_CONFLATION_PHRASES:
+        assert phrase not in full_text, phrase
+
+
+def test_pass_semantics_do_not_validate_frozen_a3_or_real_z() -> None:
+    calibration = _calibration()
+    pass_semantics = calibration["pass_semantics"]
+    assert "discriminates these predeclared synthetic controls" in pass_semantics["pass_means"]
+    does_not_mean = " ".join(pass_semantics["pass_does_not_mean"])
+    assert "validated for the frozen v1.21 A3 semantic target" in does_not_mean
+    assert "frozen A3 has semantic geometry" in does_not_mean
+    assert "current trained z has semantic structure" in does_not_mean
+    assert "future A3s-semantic-target will be measurable" in does_not_mean
+    assert "EST-PLN-SEM-GEOMETRY is supported" in does_not_mean
+
+
+def test_arm_4_is_development_codebook_reference_only() -> None:
+    calibration = _calibration()
+    arms = _arm_lookup(calibration)
+    full_signature = arms["ARM-4-FULL-SIGNATURE"]
+    assert full_signature["role"] == (
+        "development-codebook construction-family reference / negative-check reference"
+    )
+    forbidden_labels = set(full_signature["forbidden_labels_for_this_arm"])
+    assert forbidden_labels == {
+        "frozen A3",
+        "semantic A3",
+        "MiniLM target",
+        "semantic-target machinery",
+        "semantic positive control",
+    }
+    boundary = full_signature["interpretation_boundary"]
+    assert "MUST NOT be called frozen A3, semantic A3, the MiniLM target" in boundary
+    assert "not the frozen v1.21 A3 semantic target" in boundary
+
+    # None of the forbidden labels may appear anywhere describing ARM-4 as if it were that object.
+    full_text_lower = _full_text_lower(calibration)
+    assert "arm-4-full-signature is frozen a3" not in full_text_lower
+    assert "arm-4-full-signature is the minilm target" not in full_text_lower
+
+
+def test_future_frozen_a3_application_requires_separate_target_specific_authority() -> None:
+    calibration = _calibration()
+    boundary = calibration["future_application_boundary"]
+    frozen = boundary["frozen_MiniLM_A3_application"]
+    assert frozen["status"] == "NOT_AUTHORIZED_BY_THIS_CONTRACT"
+    assert "MiniLM/semantic-target-specific validity design" in frozen["requires"]
+    assert "SHAKE positive controls" in frozen["requires"]
+
+    development = boundary["development_A3a_codebook_real_output_application"]
+    assert development["status"] == "NON_SEMANTIC_CONSTRUCTION_PROTOTYPE_ANALYSIS_ONLY"
+    assert development["cannot_support"] == "an emergent-semantic-geometry claim"
+
+    future_semantic = boundary["future_A3s_semantic_target_application"]
+    assert future_semantic["status"] == "NOT_AUTHORIZED_BY_THIS_CONTRACT"
+    assert "A3s-semantic-target" in future_semantic["requires"]
+
+    assert boundary["no_real_z_application_authorized_this_round"] is True
+
+
+def test_repaired_authority_chain_is_recorded_and_takes_precedence() -> None:
+    calibration = _calibration()
+    authority = calibration["authority"]
+    repaired = " ".join(authority["repaired_authority"])
+    assert "pullrequestreview-5000883351" in repaired
+    assert "5382416684" in repaired
+    assert "5382417840" in repaired
+    assert "govern" in authority["repaired_authority_precedence"]
+
+
+def test_outcome_sensitive_degrees_of_freedom_are_unchanged_by_this_identity_repair() -> None:
+    """This repair touches interpretation/identity text only; the observed synthetic outcomes
+    were already produced under these exact numeric values, so none may have silently moved."""
+    calibration = _calibration()
+    taxonomy = calibration["taxonomy"]
+    assert taxonomy["operator_axis"]["cardinality_K"] == 4
+    assert taxonomy["topic_axis"]["cardinality_K"] == 2
+    assert taxonomy["joint_axis"]["cardinality_K"] == 8
+
+    fixture = calibration["fixture_construction"]
+    assert fixture["points_per_joint_class"] == 50
+    assert fixture["total_N_per_arm"] == 400
+    assert fixture["class_signal_weight_alpha"] == 0.6
+    assert fixture["noise_weight_beta"] == 0.8
+
+    split = calibration["fit_evaluation_split"]
+    assert split["rule"] == "within_class_index parity: even -> FIT, odd -> EVAL"
+
+    mi = calibration["estimators"]["mutual_information"]
+    assert mi["bias_corrected"]["method"] == "Miller-Madow"
+    assert mi["both_required"] is True
+
+    null_cfg = calibration["label_permutation_null"]
+    assert null_cfg["permutation_count"] == 1000
+    assert null_cfg["seed"] == 20260822
+    assert null_cfg["quantile_decision_rule"] == 0.95
+
+    assert calibration["clustering_procedure"]["init_seed"] == 20260822
+    assert calibration["promotion_boundary"]["go_latent"] == "NOT EVALUATED"
+
+
+# ---------------------------------------------------------------------------
 # Mechanical calibration: reproduce the frozen generator family and run the
 # predeclared purity/MI/permutation-null pipeline on synthetic fixtures.
 # ---------------------------------------------------------------------------
