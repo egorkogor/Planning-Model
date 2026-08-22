@@ -40,6 +40,15 @@ def _sha256(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
+def _validate_sha256(value: str, label: str) -> None:
+    if not value.startswith("sha256:") or len(value) != 71:
+        raise SemanticArmError(f"{label} must be sha256:<64 hex>")
+    try:
+        int(value[7:], 16)
+    except ValueError as exc:
+        raise SemanticArmError(f"{label} must be sha256:<64 hex>") from exc
+
+
 def state_dict_sha256(state: Mapping[str, torch.Tensor]) -> str:
     digest = hashlib.sha256()
     for name in sorted(state):
@@ -77,6 +86,8 @@ def validate_a3r_checkpoint_independence(
 def validate_exact_a3_checkpoint(
     *, expected_a3_state_sha256: str, arm_state_sha256: str, retrained: bool
 ) -> None:
+    _validate_sha256(expected_a3_state_sha256, "expected A3 state")
+    _validate_sha256(arm_state_sha256, "arm state")
     if retrained or arm_state_sha256 != expected_a3_state_sha256:
         raise SemanticArmError("INVALID_CHECKPOINT_OR_RETRAINING")
 
@@ -106,12 +117,13 @@ def a3r_targets(
     signatures = list(signature_sha256s)
     if not signatures or len(signatures) > total_steps:
         raise SemanticArmError("A3r signature count must be in [1, total_steps]")
-    if len(set(signatures)) != len(signatures):
-        raise SemanticArmError("A3r exact semantic signature identities must be unique per step")
     identity = _codebook_identity(codebook_id, readiness_path)
     seed = reconstruct_seed(identity)
     rows = [torch.tensor(generate_code(seed, signature), dtype=torch.float32) for signature in signatures]
-    rows.extend(torch.zeros(SEMANTIC_DIMENSION, dtype=torch.float32) for _ in range(total_steps - len(rows)))
+    rows.extend(
+        torch.zeros(SEMANTIC_DIMENSION, dtype=torch.float32)
+        for _ in range(total_steps - len(rows))
+    )
     result = torch.stack(rows).unsqueeze(0)
     norms = result[0, : len(signatures)].norm(dim=-1)
     if not torch.allclose(norms, torch.ones_like(norms), atol=1e-6, rtol=0):
@@ -122,6 +134,7 @@ def a3r_targets(
 @dataclass(frozen=True)
 class A5Unit:
     unit_id: str
+    unit_hash: str
     base_task_id: str
     planner_seed: int
     split: str
@@ -132,9 +145,9 @@ class A5Unit:
     intent_id: str
     semantic_artifact_sha256: str
 
-    @property
-    def unit_hash(self) -> str:
-        return hashlib.sha256(_canonical_json(self.__dict__)).hexdigest()
+    def __post_init__(self) -> None:
+        _validate_sha256(self.unit_hash, "A5 unit_hash")
+        _validate_sha256(self.semantic_artifact_sha256, "A5 semantic_artifact_sha256")
 
     @property
     def stratum(self) -> tuple[int, str, int, str, str]:
@@ -145,6 +158,10 @@ class A5Unit:
             self.remaining_distance_bucket,
             self.hand_mode,
         )
+
+    @property
+    def stratum_hash(self) -> str:
+        return _sha256(_canonical_json(self.stratum))
 
 
 def _foreign_allowed(source: A5Unit, candidate: A5Unit) -> bool:
@@ -167,15 +184,15 @@ def _edge_key(source: A5Unit, candidate: A5Unit, contract_hash: str) -> str:
 def a5_contract_sha256(path: Path = A5_CONTRACT_PATH) -> str:
     if not path.is_file():
         raise SemanticArmError("frozen A5 ablation contract is missing")
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return _sha256(path.read_bytes())
 
 
 def construct_a5_derangement(
     units: Iterable[A5Unit], *, contract_path: Path = A5_CONTRACT_PATH
 ) -> dict[str, str]:
     rows = list(units)
-    if not rows or len({row.unit_id for row in rows}) != len(rows):
-        raise SemanticArmError("A5 units must be non-empty with unique unit_id")
+    if not rows or len({row.unit_hash for row in rows}) != len(rows):
+        raise SemanticArmError("A5 units must be non-empty with unique unit_hash")
     contract_hash = a5_contract_sha256(contract_path)
     grouped: dict[tuple[int, str, int, str, str], list[A5Unit]] = {}
     for row in rows:
@@ -186,35 +203,40 @@ def construct_a5_derangement(
         source_rows = sorted(
             grouped[stratum], key=lambda row: (row.base_task_id, row.semantic_artifact_sha256)
         )
-        by_id = {row.unit_id: row for row in source_rows}
+        by_hash = {row.unit_hash: row for row in source_rows}
         candidate_for_source: dict[str, list[str]] = {}
         for source in source_rows:
             candidates = [candidate for candidate in source_rows if _foreign_allowed(source, candidate)]
             candidates.sort(key=lambda candidate: _edge_key(source, candidate, contract_hash))
-            candidate_for_source[source.unit_id] = [candidate.unit_id for candidate in candidates]
+            candidate_for_source[source.unit_hash] = [candidate.unit_hash for candidate in candidates]
 
         candidate_owner: dict[str, str] = {}
 
-        def augment(source_id: str, visited: set[str]) -> bool:
-            for candidate_id in candidate_for_source[source_id]:
-                if candidate_id in visited:
+        def augment(source_hash: str, visited: set[str]) -> bool:
+            for candidate_hash in candidate_for_source[source_hash]:
+                if candidate_hash in visited:
                     continue
-                visited.add(candidate_id)
-                owner = candidate_owner.get(candidate_id)
+                visited.add(candidate_hash)
+                owner = candidate_owner.get(candidate_hash)
                 if owner is None or augment(owner, visited):
-                    candidate_owner[candidate_id] = source_id
+                    candidate_owner[candidate_hash] = source_hash
                     return True
             return False
 
         for source in source_rows:
-            if not augment(source.unit_id, set()):
+            if not augment(source.unit_hash, set()):
                 raise SemanticArmError("BLOCKED_CONTROL_CONSTRUCTION")
 
-        mapping = {source_id: candidate_id for candidate_id, source_id in candidate_owner.items()}
-        if set(mapping) != set(by_id) or len(set(mapping.values())) != len(by_id):
+        mapping = {
+            source_hash: candidate_hash
+            for candidate_hash, source_hash in candidate_owner.items()
+        }
+        if set(mapping) != set(by_hash) or len(set(mapping.values())) != len(by_hash):
             raise SemanticArmError("A5 perfect derangement construction failed")
-        for source_id, candidate_id in mapping.items():
-            if source_id == candidate_id or not _foreign_allowed(by_id[source_id], by_id[candidate_id]):
+        for source_hash, candidate_hash in mapping.items():
+            if source_hash == candidate_hash or not _foreign_allowed(
+                by_hash[source_hash], by_hash[candidate_hash]
+            ):
                 raise SemanticArmError("A5 mapping violates frozen foreign requirements")
         full_mapping.update(mapping)
 
@@ -228,4 +250,48 @@ def a5_mapping_digest(mapping: Mapping[str, str]) -> str:
         raise SemanticArmError("A5 mapping must be complete and donor-unique")
     if any(source == donor for source, donor in mapping.items()):
         raise SemanticArmError("A5 self-assignment forbidden")
+    for source, donor in mapping.items():
+        _validate_sha256(source, "A5 source mapping hash")
+        _validate_sha256(donor, "A5 donor mapping hash")
     return _sha256(_canonical_json(dict(sorted(mapping.items()))))
+
+
+def a5_mapping_manifest(
+    *,
+    units: Iterable[A5Unit],
+    mapping: Mapping[str, str],
+    a3_checkpoint_sha256: str,
+    contract_path: Path = A5_CONTRACT_PATH,
+) -> dict[str, Any]:
+    _validate_sha256(a3_checkpoint_sha256, "A3 checkpoint")
+    rows = {unit.unit_hash: unit for unit in units}
+    if set(rows) != set(mapping) or set(rows) != set(mapping.values()):
+        raise SemanticArmError("A5 manifest requires perfect complete derangement")
+    mapping_digest = a5_mapping_digest(mapping)
+    entries: list[dict[str, Any]] = []
+    for source_hash, foreign_hash in sorted(mapping.items()):
+        source = rows[source_hash]
+        foreign = rows[foreign_hash]
+        if not _foreign_allowed(source, foreign):
+            raise SemanticArmError("A5 manifest mapping violates frozen filters")
+        entries.append(
+            {
+                "source_unit_hash": source_hash,
+                "source_base_task_id": source.base_task_id,
+                "step_index": source.step_index,
+                "foreign_unit_hash": foreign_hash,
+                "foreign_base_task_id": foreign.base_task_id,
+                "source_semantic_sha256": source.semantic_artifact_sha256,
+                "foreign_semantic_sha256": foreign.semantic_artifact_sha256,
+                "stratum_hash": source.stratum_hash,
+            }
+        )
+    payload = {
+        "schema_version": "semantic-discovery-a5-mapping/0.1",
+        "a3_checkpoint_sha256": a3_checkpoint_sha256,
+        "contract_sha256": a5_contract_sha256(contract_path),
+        "mapping_sha256": mapping_digest,
+        "mappings": entries,
+        "excluded_units": [],
+    }
+    return {**payload, "manifest_sha256": _sha256(_canonical_json(payload))}
