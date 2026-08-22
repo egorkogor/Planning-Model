@@ -1,4 +1,4 @@
-"""Deterministic, CPU-only training and evidence for the toy planner arms."""
+"""Deterministic, CPU-only training and evidence for the toy A2 arm."""
 
 from __future__ import annotations
 
@@ -11,10 +11,8 @@ import torch.nn.functional as F
 from .canonical import canonical_bytes
 from .model import SEED, LockedPlanner, canonical_task_encoding
 from .semantic import DIMENSION, TARGET_CONFIG_SHA256, TARGET_SOURCE, targets
-from .semantic_discovery_arms import a3r_codebook_identity_digest, a3r_targets
 
 ACTIONS = {"PICK_UP": 0, "UNSTACK": 1, "PUT_DOWN": 2, "STACK": 3, "END": 4}
-SEMANTIC_TRAINING_VARIANTS = frozenset({"A3", "A3r", "A4"})
 
 
 def state_dict_sha256(state: dict[str, torch.Tensor]) -> str:
@@ -59,26 +57,6 @@ def labels(row: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     )
 
 
-def _semantic_training_targets(row: dict, config: dict, variant: str) -> tuple[torch.Tensor, str | None, str | None]:
-    if variant != "A3r":
-        value = targets(row)
-        source = TARGET_SOURCE if variant in {"A3", "A4"} else None
-        config_hash = TARGET_CONFIG_SHA256 if variant in {"A3", "A4"} else None
-        return value, source, config_hash
-
-    frozen = config.get("a3r")
-    if not isinstance(frozen, dict):
-        raise ValueError("A3r requires frozen a3r config")
-    codebook_id = frozen.get("codebook_id")
-    signatures = frozen.get("semantic_signature_sha256s")
-    if not isinstance(codebook_id, str) or not isinstance(signatures, list):
-        raise ValueError("A3r codebook_id and semantic_signature_sha256s are required")
-    if len(signatures) != len(row["oracle_work_plan"]):
-        raise ValueError("A3r exact semantic signature count must equal training plan length")
-    value = a3r_targets(signatures, codebook_id=codebook_id)
-    return value, f"frozen-random-codebook:{codebook_id}", a3r_codebook_identity_digest(codebook_id)
-
-
 def train(row: dict, output: Path, *, config: dict, config_hash: str) -> tuple[LockedPlanner, dict]:
     """Run real AdamW updates and persist reproducible checkpoints/evidence."""
     torch.use_deterministic_algorithms(True)
@@ -103,11 +81,9 @@ def train(row: dict, output: Path, *, config: dict, config_hash: str) -> tuple[L
     action, arg1, arg2 = labels(row)
     valid_steps = len(row["oracle_work_plan"])
     encoded = canonical_task_encoding(row)
-    semantic_targets, latent_target_source, latent_target_config_hash = _semantic_training_targets(
-        row, config, variant
-    )
+    semantic_targets = targets(row)
     feedback_source = "none"
-    if variant in SEMANTIC_TRAINING_VARIANTS:
+    if variant in {"A3", "A4"}:
         feedback_source = "teacher-forced-current-step-target-shifted-to-next-position"
     shifted_targets = torch.cat(
         [torch.zeros_like(semantic_targets[:, :1]), semantic_targets[:, :-1]], 1
@@ -122,7 +98,7 @@ def train(row: dict, output: Path, *, config: dict, config_hash: str) -> tuple[L
             action,
             arg1,
             arg2,
-            semantic_feedback=(shifted_targets if variant in SEMANTIC_TRAINING_VARIANTS else None),
+            semantic_feedback=shifted_targets if variant in {"A3", "A4"} else None,
         )
         flat_action = action[:, :valid_steps].flatten()
         action_loss = F.cross_entropy(logits.action[:, :valid_steps].flatten(0, 1), flat_action)
@@ -144,8 +120,8 @@ def train(row: dict, output: Path, *, config: dict, config_hash: str) -> tuple[L
             )
             loss = loss + arg2_loss
         semantic_loss = torch.zeros(())
-        if variant in SEMANTIC_TRAINING_VARIANTS:
-            # Cosine distance remains unchanged; only A3r's target source differs.
+        if variant in {"A3", "A4"}:
+            # Cosine distance is the declared toy supervision objective.
             semantic_loss = (
                 1 - (logits.z_semantic[:, :valid_steps] * semantic_targets[:, :valid_steps]).sum(-1)
             ).mean()
@@ -232,8 +208,8 @@ def train(row: dict, output: Path, *, config: dict, config_hash: str) -> tuple[L
         "schema_version": "toy-planner-training/1.1",
         "variant": variant,
         "feedback_source": feedback_source,
-        "latent_target_source": latent_target_source,
-        "latent_target_config_hash": latent_target_config_hash,
+        "latent_target_source": TARGET_SOURCE if variant in {"A3", "A4"} else None,
+        "latent_target_config_hash": TARGET_CONFIG_SHA256 if variant in {"A3", "A4"} else None,
         "latent_dimension": DIMENSION,
         "semantic_loss_weight": training["semantic_loss_weight"],
         "component_losses": component_losses,
@@ -259,11 +235,9 @@ def train(row: dict, output: Path, *, config: dict, config_hash: str) -> tuple[L
         "allowed_no_gradient_parameter_names": sorted(allowed_no_gradient_names),
         "dormant_parameter_names": sorted(dormant),
         "changed_parameter_names": sorted(active_changed),
-        "latent_norm_mean": (
-            float(logits.z_semantic[:, :valid_steps].norm(dim=-1).mean().detach())
-            if logits.z_semantic is not None
-            else None
-        ),
+        "latent_norm_mean": float(logits.z_semantic[:, :valid_steps].norm(dim=-1).mean().detach())
+        if logits.z_semantic is not None
+        else None,
         "active_gradient_evidence": active_gradient_evidence,
         "active_gradients_all_finite_nonzero": all(
             active_gradient_evidence[name]["grad_present"]
@@ -284,6 +258,7 @@ def train(row: dict, output: Path, *, config: dict, config_hash: str) -> tuple[L
         "optimizer_state_all_finite_nonzero": optimizer_state_finite_nonzero,
         "gradient_norm": gradient_norm,
         "losses": losses,
+        # Content hashes deliberately exclude container serialization metadata.
         "initialization_sha256": state_dict_sha256(before),
         "trained_sha256": state_dict_sha256(model.state_dict()),
         "initialization_file_sha256": file_sha256(initial),
