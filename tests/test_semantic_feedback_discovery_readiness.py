@@ -57,7 +57,10 @@ def test_codebook_generation_is_deterministic_and_exact_sha_ke_bits():
     assert first == second
     assert sorted(first) == ["A3R-CODEBOOK-170029", "A3R-CODEBOOK-290043"]
     assert all(set(book) == set(signatures) for book in first.values())
-    assert first["A3R-CODEBOOK-170029"][signatures[0]] != first["A3R-CODEBOOK-290043"][signatures[0]]
+    assert (
+        first["A3R-CODEBOOK-170029"][signatures[0]]
+        != first["A3R-CODEBOOK-290043"][signatures[0]]
+    )
     seed = reconstruct_seed(config["codebooks"][0])
     raw = bytes.fromhex(code_hex(seed, signatures[0]))
     vector = generate_code(seed, signatures[0])
@@ -154,7 +157,10 @@ def test_checkpoint_guards_require_exact_a3_and_no_retraining():
     drift = dict(exact)
     drift["A5"] = "other"
     assert validate_checkpoint_binding("ckpt-a3", drift) == "INVALID_CHECKPOINT_OR_RETRAINING"
-    assert validate_checkpoint_binding("ckpt-a3", exact, ["A4"]) == "INVALID_CHECKPOINT_OR_RETRAINING"
+    assert (
+        validate_checkpoint_binding("ckpt-a3", exact, ["A4"])
+        == "INVALID_CHECKPOINT_OR_RETRAINING"
+    )
 
 
 def test_preintervention_exposure_is_fixed_from_reference_prefix_only():
@@ -175,7 +181,10 @@ def test_preintervention_exposure_is_fixed_from_reference_prefix_only():
 
 
 def test_validity_state_precedence_and_all_required_branches():
-    assert encode_state(checkpoint_valid=False, shortcut_valid=False) == "INVALID_CHECKPOINT_OR_RETRAINING"
+    assert (
+        encode_state(checkpoint_valid=False, shortcut_valid=False)
+        == "INVALID_CHECKPOINT_OR_RETRAINING"
+    )
     observed = {
         encode_state(),
         encode_state(checkpoint_valid=False),
