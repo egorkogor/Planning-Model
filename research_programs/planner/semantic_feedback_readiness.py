@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -37,6 +38,10 @@ def config_digest(config: dict[str, Any]) -> str:
     return sha256_text(canonical_json(config))
 
 
+def implementation_digest() -> str:
+    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
 def reconstruct_seed(identity: dict[str, Any]) -> bytes:
     seed = hashlib.sha256(identity["derivation_input"].encode("utf-8")).digest()
     if seed.hex() != identity["seed_hex"]:
@@ -44,17 +49,25 @@ def reconstruct_seed(identity: dict[str, Any]) -> bytes:
     return seed
 
 
-def generate_code(seed: bytes, signature_sha256: str) -> tuple[float, ...]:
+def code_hex(seed: bytes, signature_sha256: str) -> str:
     if len(signature_sha256) != 64:
         raise ReadinessError("signature_sha256 must be 64 hex chars")
     int(signature_sha256, 16)
-    raw = hashlib.shake_256(seed + signature_sha256.encode("utf-8")).digest(48)
+    return hashlib.shake_256(seed + signature_sha256.encode("utf-8")).hexdigest(48)
+
+
+def _float32(value: float) -> float:
+    return struct.unpack("!f", struct.pack("!f", value))[0]
+
+
+def generate_code(seed: bytes, signature_sha256: str) -> tuple[float, ...]:
+    raw = bytes.fromhex(code_hex(seed, signature_sha256))
     scale = math.sqrt(384.0)
     values: list[float] = []
     for byte in raw:
         for shift in range(7, -1, -1):
             bit = (byte >> shift) & 1
-            values.append((1.0 if bit else -1.0) / scale)
+            values.append(_float32((1.0 if bit else -1.0) / scale))
     if len(values) != 384:
         raise AssertionError("generator dimension drift")
     return tuple(values)
@@ -68,7 +81,7 @@ def reconstruct_codebooks(config: dict[str, Any], signatures: Iterable[str]) -> 
     for identity in config["codebooks"]:
         seed = reconstruct_seed(identity)
         result[identity["id"]] = {sig: generate_code(seed, sig) for sig in ordered}
-    if len(result) != 2 or len(set(result)) != 2:
+    if len(result) != 2:
         raise ReadinessError("exactly two distinct codebooks required")
     return result
 
@@ -83,7 +96,12 @@ def validate_composition_split(config: dict[str, Any]) -> dict[str, Any]:
     stress_atoms = {atom for sig in stress for atom in sig.split("|")}
     if not stress_atoms <= train_atoms:
         raise ReadinessError("unseen stress atom")
-    return {"id": split["id"], "train_count": len(train), "stress_count": len(stress), "atoms_seen": sorted(stress_atoms)}
+    return {
+        "id": split["id"],
+        "train_count": len(train),
+        "stress_count": len(stress),
+        "atoms_seen": sorted(stress_atoms),
+    }
 
 
 @dataclass(frozen=True)
@@ -102,7 +120,8 @@ class DonorUnit:
 
 def select_wrong_semantic_donor(target: DonorUnit, candidates: Iterable[DonorUnit]) -> DonorUnit | None:
     eligible = [
-        c for c in candidates
+        c
+        for c in candidates
         if c.unit_id != target.unit_id
         and c.semantic_signature != target.semantic_signature
         and c.planner_seed == target.planner_seed
@@ -112,7 +131,13 @@ def select_wrong_semantic_donor(target: DonorUnit, candidates: Iterable[DonorUni
         and c.hand_mode == target.hand_mode
         and c.feedback_norm_bucket == target.feedback_norm_bucket
     ]
-    eligible.sort(key=lambda c: (abs(c.feedback_norm_raw - target.feedback_norm_raw), c.episode_id, c.unit_id))
+    eligible.sort(
+        key=lambda c: (
+            abs(c.feedback_norm_raw - target.feedback_norm_raw),
+            c.episode_id,
+            c.unit_id,
+        )
+    )
     return eligible[0] if eligible else None
 
 
@@ -140,7 +165,32 @@ def validate_collision_fixture(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def validate_checkpoint_binding(expected_a3: str, arm_checkpoints: dict[str, str], retrained_arms: Iterable[str] = ()) -> str:
+def calibrate_collision_paths(config: dict[str, Any]) -> dict[str, Any]:
+    fixture = config["collision_fixture"]
+    a, b = fixture["collision_pair"]
+    ia, ib = fixture["inverse_metadata_pair"]
+    metadata_collision = canonical_json(_metadata(a)) == canonical_json(_metadata(b))
+    oracle_separates = (
+        a["semantic_feedback"] != b["semantic_feedback"]
+        and a["required_next_action"] != b["required_next_action"]
+    )
+    inverse_invariant = (
+        ia["semantic_feedback"] == ib["semantic_feedback"]
+        and ia["required_next_action"] == ib["required_next_action"]
+        and canonical_json(_metadata(ia)) != canonical_json(_metadata(ib))
+    )
+    return {
+        "metadata_only_cannot_distinguish_collision": metadata_collision,
+        "semantic_oracle_separates_collision": oracle_separates,
+        "inverse_metadata_target_invariant": inverse_invariant,
+    }
+
+
+def validate_checkpoint_binding(
+    expected_a3: str,
+    arm_checkpoints: dict[str, str],
+    retrained_arms: Iterable[str] = (),
+) -> str:
     required = {"A3", "A4", "A5", "WRONG_SEMANTIC_DONOR"}
     if set(arm_checkpoints) != required:
         return "INVALID_CHECKPOINT_OR_RETRAINING"
@@ -151,10 +201,32 @@ def validate_checkpoint_binding(expected_a3: str, arm_checkpoints: dict[str, str
     return "EVALUATED"
 
 
-def encode_state(*, checkpoint_valid: bool = True, shortcut_valid: bool = True, oracle_valid: bool = True,
-                 metadata_invariant: bool = True, split_valid: bool = True, both_codebooks_valid: bool = True,
-                 downstream_opportunities: int = 1, intervention_applicable: bool = True, donor_available: bool = True,
-                 terminated_before_intervention: bool = False, endpoint_defined: bool = True) -> str:
+def preintervention_opportunity(reference_prefix: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    rows = list(reference_prefix)
+    eligible = [row for row in rows if bool(row.get("feedback_eligible"))]
+    first = eligible[0] if eligible else None
+    return {
+        "source": "PRE_INTERVENTION_REFERENCE_PREFIX_ONLY",
+        "opportunity_count": len(eligible),
+        "first_feedback_position": None if first is None else int(first["position"]),
+        "post_treatment_survivor_conditioning": False,
+    }
+
+
+def encode_state(
+    *,
+    checkpoint_valid: bool = True,
+    shortcut_valid: bool = True,
+    oracle_valid: bool = True,
+    metadata_invariant: bool = True,
+    split_valid: bool = True,
+    both_codebooks_valid: bool = True,
+    downstream_opportunities: int = 1,
+    intervention_applicable: bool = True,
+    donor_available: bool = True,
+    terminated_before_intervention: bool = False,
+    endpoint_defined: bool = True,
+) -> str:
     if not checkpoint_valid:
         return "INVALID_CHECKPOINT_OR_RETRAINING"
     if not shortcut_valid:
@@ -190,10 +262,14 @@ def endpoint_placeholders(state: str) -> dict[str, Any]:
 
 
 def readiness_replay(config: dict[str, Any]) -> dict[str, Any]:
-    synthetic_signatures = [hashlib.sha256(s.encode("utf-8")).hexdigest() for s in ("alpha", "beta", "gamma")]
+    synthetic_signatures = [
+        hashlib.sha256(s.encode("utf-8")).hexdigest()
+        for s in ("alpha", "beta", "gamma")
+    ]
     codebooks = reconstruct_codebooks(config, synthetic_signatures)
     split = validate_composition_split(config)
     collision = validate_collision_fixture(config)
+    collision_paths = calibrate_collision_paths(config)
 
     target = DonorUnit("u-target", "e-9", "sig-a", 17, "dev", 3, "r2", "left", "n1", 1.0)
     candidates = [
@@ -201,7 +277,17 @@ def readiness_replay(config: dict[str, Any]) -> dict[str, Any]:
         DonorUnit("u-a", "e-1", "sig-c", 17, "dev", 3, "r2", "left", "n1", 0.8),
     ]
     donor = select_wrong_semantic_donor(target, candidates)
-    checkpoint_state = validate_checkpoint_binding("ckpt-A3", {k: "ckpt-A3" for k in ("A3", "A4", "A5", "WRONG_SEMANTIC_DONOR")})
+    checkpoint_state = validate_checkpoint_binding(
+        "ckpt-A3",
+        {k: "ckpt-A3" for k in ("A3", "A4", "A5", "WRONG_SEMANTIC_DONOR")},
+    )
+    exposure = preintervention_opportunity(
+        [
+            {"position": 1, "feedback_eligible": False},
+            {"position": 3, "feedback_eligible": True},
+            {"position": 5, "feedback_eligible": True},
+        ]
+    )
 
     branches = {
         "valid": encode_state(),
@@ -217,17 +303,25 @@ def readiness_replay(config: dict[str, Any]) -> dict[str, Any]:
         "censored": encode_state(terminated_before_intervention=True),
         "endpoint_undefined": encode_state(endpoint_defined=False),
     }
+    code_hex_probe = {
+        identity["id"]: {
+            sig: code_hex(reconstruct_seed(identity), sig)
+            for sig in synthetic_signatures
+        }
+        for identity in config["codebooks"]
+    }
     payload = {
         "readiness_id": config["id"],
         "config_digest": config_digest(config),
+        "implementation_digest": implementation_digest(),
         "codebook_ids": sorted(codebooks),
-        "codebook_probe_digest": sha256_text(canonical_json({
-            key: {sig: list(vector[:8]) for sig, vector in value.items()} for key, value in codebooks.items()
-        })),
+        "codebook_probe_digest": sha256_text(canonical_json(code_hex_probe)),
         "split": split,
         "collision": collision,
+        "collision_paths": collision_paths,
         "selected_donor": None if donor is None else {"episode_id": donor.episode_id, "unit_id": donor.unit_id},
         "checkpoint_state": checkpoint_state,
+        "preintervention_exposure": exposure,
         "validity_branches": branches,
         "endpoint_placeholders": endpoint_placeholders("EVALUATED"),
         "scientific_execution": False,
