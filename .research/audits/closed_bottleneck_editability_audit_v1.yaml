@@ -1,0 +1,464 @@
+version: "research-os-bottleneck-editability-audit/0.1"
+status: "ADVISORY_DISCOVERY_DESIGN_NON_OUTCOME_BEARING"
+id: "AUD-PLN-CLOSED-BOTTLENECK-EDITABILITY-001"
+rq: "RQ-PLN-BOTTLENECK-001"
+study_node: "STU-PLN-BYPASS-ORACLE-001"
+extends_audit: "AUD-PLN-CLOSED-BOTTLENECK-001"
+proposed_estimand: "EST-PLN-BOTTLENECK-EDIT-PRECISION"
+
+authority:
+  issue: 66
+  authoritative_base: "4ed5b5c5843d14ede5ef93a459d3a292e018ec1a"
+  parent_gate_issue: 64
+  parent_gate_comments: [5381816791, 5381987477, 5382001767]
+  parent_gate_decision: >-
+    H3 — editability/directional-precision is an extension of RQ-PLN-BOTTLENECK-001, not a third
+    causal program; single-writer target is the bottleneck-audit lineage, not the semantic EVAL.
+  independent_portfolio_review_issue: 63
+  accepted_portfolio: ".research/planner_portfolio.yaml"
+  roadmap: "docs/architecture/COGNITIVE_PLANNER_FUTURE_ARCHITECTURE_RU.md"
+  frozen_v1_21_read_only: true
+  evidence_class: "DISCOVERY_DESIGN_NON_OUTCOME_BEARING"
+  explicit_non_authority:
+    - "This amendment does not authorize a targeted-edit runtime intervention, model training, model inference, held-out access, or scientific execution."
+    - "This amendment does not modify closed_bottleneck_validity_audit_v1.yaml or semantic_feedback_causal_eval_v1.yaml."
+    - "This amendment does not freeze confirmatory thresholds, effect sizes, seeds, edit magnitudes, or trial counts."
+    - "This amendment cannot emit a scientific GO/NO-GO verdict, SUPPORTED/REFUTED claim, or change GO_LATENT = NOT EVALUATED."
+    - "This amendment does not authorize, implement, or specify ORACLE-FULL."
+
+read_only_parent_authorities:
+  closed_bottleneck_validity_audit:
+    path: ".research/audits/closed_bottleneck_validity_audit_v1.yaml"
+    owner_issues: [53, 56]
+    access: "READ_ONLY_REFERENCE"
+    reused_mechanisms:
+      - "counterfactual_oracle_control"
+      - "content_interventions.zero"
+      - "content_interventions.shuffle"
+      - "content_interventions.matched_in_distribution_wrong_concept_donor"
+      - "stateless_boundary"
+      - "forbidden_channel_canary"
+      - "shortcut_audit"
+    amendment_policy: >-
+      Referenced by field name only. This file does not rewrite, fork, or duplicate the above
+      logic, and does not change closed_bottleneck_validity_audit_v1.yaml in place.
+  semantic_feedback_causal_eval:
+    path: ".research/evals/semantic_feedback_causal_eval_v1.yaml"
+    owner_issues: [52, 54]
+    access: "READ_ONLY_REFERENCE"
+    reused_mechanisms:
+      - "EST-PLN-SEM-RELIANCE"
+    amendment_policy: >-
+      May reference EST-PLN-SEM-RELIANCE as the normal-trained-model-reliance construct. Must not
+      edit or fork this contract.
+
+single_writer:
+  this_package_writable_surface:
+    - ".research/audits/closed_bottleneck_editability_audit_v1.yaml"
+    - "tests/test_closed_bottleneck_editability_audit.py"
+  owner: "issue #66"
+  forbidden_writes:
+    - ".research/audits/closed_bottleneck_validity_audit_v1.yaml"
+    - ".research/evals/semantic_feedback_causal_eval_v1.yaml"
+    - ".research/planner_portfolio.yaml"
+    - "any #61/#62-owned runtime/intervention/test surface"
+
+purpose: >-
+  Define, as an additive amendment layered on the accepted closed-bottleneck validity audit, the
+  measurement construct a future editability study would need: separating channel usability,
+  normal trained-model reliance, targeted editability, directional edit precision, and
+  edit-strength dose-response, plus an explicit oracle-tier boundary — without performing any
+  intervention on a trained model and without touching the accepted parent surfaces.
+
+construct_decomposition:
+  collapse_into_single_construct: "FORBIDDEN"
+  allowed_channel_usability:
+    question: "Can the downstream resolver use the declared concept channel at all, when supplied an oracle concept?"
+    established_by: "closed_bottleneck_validity_audit_v1.yaml#counterfactual_oracle_control (read-only)"
+    this_audit_adds: "NONE — reference only, no new mechanism"
+    forbidden_inference: "that the unedited trained model normally relies on the channel"
+  normal_trained_model_reliance:
+    question: >-
+      Under zero/shuffle/wrong-donor same-checkpoint interventions, does the unedited trained
+      model's behavior depend on feedback path/content/order?
+    established_by: "semantic_feedback_causal_eval_v1.yaml#EST-PLN-SEM-RELIANCE (read-only)"
+    this_audit_adds: "NONE — reference only, no new mechanism"
+    forbidden_inference: "that reliance implies the representation is human-factorized or that targeted edits are precise"
+  targeted_editability:
+    question: >-
+      Given a trained model state and a declared edit to concept content, can the edit cause the
+      downstream resolver to reach a specific, predeclared intended target decision — as opposed
+      to merely causing any change relative to the unedited baseline?
+    new_in_this_audit: true
+    distinguishes: "intended-target success vs merely-any-change"
+    forbidden_inference: "that targeted editability implies the unedited model normally uses this coordinate for the same purpose"
+  directional_edit_precision:
+    question: >-
+      When an edit is constructed to move concept content toward a specific declared target (as
+      opposed to an undirected move away from current content), does the downstream decision move
+      toward the intended target and not toward an unintended alternative?
+    new_in_this_audit: true
+    requires: "matched non-concept context and an explicit intended target action/policy consequence declared before scoring"
+  edit_strength_dose_response:
+    question: >-
+      As edit strength/magnitude is varied along a predeclared graded scale, does the probability
+      or degree of reaching the intended target respond in a predeclared, reportable functional
+      form, as opposed to being step-function-invariant across all nonzero strengths?
+    new_in_this_audit: true
+    scope: "defines what a dose-response measurement would need to identify; does not run one"
+
+estimand:
+  id: "EST-PLN-BOTTLENECK-EDIT-PRECISION"
+  rq: "RQ-PLN-BOTTLENECK-001"
+  owning_surface: ".research/audits/closed_bottleneck_editability_audit_v1.yaml"
+  status: "DESIGN_ONLY_NOT_FROZEN_FOR_EXECUTION"
+  estimand_definition: >-
+    Given the closed-bottleneck allowed concept channel with mechanical closure and allowed-channel
+    usability already established by the parent audit, the directional and graded causal effect of
+    a declared edit to z_semantic on whether the downstream resolver reaches a specific predeclared
+    intended target decision — separated from (a) whether the channel can carry any signal at all
+    and (b) whether the unedited trained model relies on the channel under non-directional
+    interventions.
+  allowed_interpretation: >-
+    A future execution may show that a declared edit of a given direction/strength changes the
+    probability of reaching the specific intended target decision, conditional on matched
+    non-concept context and mechanical closure already holding.
+  forbidden_interpretation:
+    - "that editability or directional precision proves normal trained-model reliance"
+    - "that oracle-tier success proves normal trained-model reliance"
+    - "that editability or directional precision proves the unedited representation has a human-factorized or semantically decomposed coordinate system"
+    - "that a single successful edit generalizes to arbitrary targets, directions, or magnitudes"
+    - "any pooled single 'editability effect' collapsing usability/reliance/editability/precision/dose-response"
+  downstream_position_required: true
+  zero_downstream_position_semantics: "NOT_EVALUATED_NO_DOWNSTREAM_POSITION"
+
+target_hit_vs_any_change:
+  required_separate_fields:
+    - "any_change: whether the downstream decision differs from the unedited baseline decision"
+    - "target_hit: whether the downstream decision equals the single predeclared intended target decision"
+  precondition: "intended target action/policy consequence must be declared before the edit is applied/scored"
+  collapse_any_change_into_target_hit: "FORBIDDEN"
+  any_change_without_target_hit: "does not by itself support a directional-precision claim"
+
+directional_scoring_requirements:
+  matched_non_concept_context:
+    rule: >-
+      BYTE_IDENTICAL across the pre-edit reference state and the edited counterfactual, consistent
+      with closed_bottleneck_validity_audit_v1.yaml#counterfactual_oracle_control construction
+    failure: "INVALID_CONTEXT_MISMATCH"
+  intended_target_declaration:
+    rule: "the intended target action/policy consequence is declared and recorded before the downstream decision is observed"
+    failure: "INVALID_TARGET_UNDECLARED"
+  matched_pairing_for_direction:
+    rule: >-
+      directional scoring requires a construction analogous to the parent audit's matched
+      in-distribution wrong-concept donor: an edit toward target A and, where directional scoring
+      is requested, a contrasting edit toward target B under the same matched non-concept context
+    unavailable_state: "NOT_EVALUATED_NO_MATCHED_PAIR"
+
+edit_strength_and_dose_response_requirements:
+  strength_parameterization: >-
+    a future study must predeclare a graded/interpolated edit-strength scale (for example, a
+    magnitude of displacement toward the target relative to a predeclared unit) before any outcome
+    is observed; this audit does not itself fix the numeric scale, units, or interpolation method
+  dose_response_grade_requirement:
+    minimum_predeclared_nonzero_intermediate_grades: 1
+    minimum_total_grades_including_zero_and_full: 3
+    insufficient_state: "INSUFFICIENT_GRADES_FOR_DOSE_RESPONSE"
+    reason: >-
+      a single discrete full-vector swap (as used by existing zero/shuffle/wrong-donor
+      interventions) is insufficient to support a dose-response claim; at least one intermediate,
+      predeclared, non-zero, non-full strength level is required in addition to zero and full
+  monotonicity_claim: "NOT_ASSUMED — a future study reports the observed functional form rather than assuming monotonicity"
+  full_vector_swap_reuse: >-
+    the zero/full-strength endpoints of a future dose-response sweep may reuse the parent audit's
+    zero/shuffle/wrong-concept-donor mechanisms by reference; this audit does not redefine them
+
+oracle_tiers:
+  collapse_into_single_oracle_tier: "FORBIDDEN"
+  ORACLE-STRUCT:
+    definition: >-
+      An oracle/control concept probe built from the concept space that is actually implemented and
+      available today: the structural/operator-derived space used by the current A3a-codebook
+      family (per docs/architecture/COGNITIVE_PLANNER_FUTURE_ARCHITECTURE_RU.md section 19, the
+      implemented target is SHA-derived from action/arg1/arg2/seed/target_config).
+    status: "SPECIFIABLE_NOW"
+    proves: "channel usability and targeted-edit mechanics within the currently available concept space"
+    forbidden_inference: "that ORACLE-STRUCT success shows the trained model's actual unedited representation is organized this way"
+  ORACLE-FULL:
+    definition: >-
+      An oracle/control concept probe built from a richer, genuinely semantic concept space that is
+      not derived from a structural/operator hash — a future target such as `A3s-semantic-target`.
+    status: "SPEC_ONLY_NOT_END_TO_END_VALIDATABLE"
+    blocking_dependency: >-
+      ORACLE-FULL cannot be end-to-end validated until a genuinely semantic target/arm such as a
+      future `A3s-semantic-target` is separately designed, accepted, and implemented under its own
+      Work Package.
+    forbidden_under_this_package:
+      - "implementing ORACLE-FULL"
+      - "executing ORACLE-FULL"
+      - "claiming ORACLE-FULL calibration or validation has occurred"
+    explicit_statement: >-
+      A future worker may not treat this section as authorization to implement or approximate
+      ORACLE-FULL. It exists here only so a future worker does not attempt to "complete" it
+      prematurely.
+
+interpretation_boundaries:
+  - "Oracle-tier success (either tier) proves channel usability, not normal reliance by an unedited trained model."
+  - "Editability, directional precision, or dose-response results cannot be interpreted as evidence that the unedited representation has a human-factorized semantic coordinate system."
+  - "Targeted editability does not imply normal trained-model reliance on the same coordinate for the same downstream purpose."
+  - "Any future runtime edit intervention or trained-model execution is a separate SCIENTIFIC Work Package requiring its own accepted authority."
+
+null_invalid_and_censoring_states:
+  precedence:
+    - "INVALID_CHECKPOINT_OR_RETRAINING"
+    - "INVALID_ORACLE_FULL_ATTEMPTED"
+    - "INVALID_ORACLE_TIER_UNSPECIFIED"
+    - "INVALID_CONTEXT_MISMATCH"
+    - "INVALID_TARGET_UNDECLARED"
+    - "NOT_EVALUATED_NO_DOWNSTREAM_POSITION"
+    - "NOT_EVALUATED_EDIT_NOT_APPLICABLE"
+    - "NOT_EVALUATED_NO_MATCHED_PAIR"
+    - "CENSORED_TERMINATED_BEFORE_PLANNED_EDIT"
+    - "EVALUATED"
+  states:
+    NOT_EVALUATED_NO_DOWNSTREAM_POSITION:
+      endpoint: null
+      trigger: "the reference trajectory has no downstream resolver position where an edit could act"
+    NOT_EVALUATED_EDIT_NOT_APPLICABLE:
+      endpoint: null
+      trigger: "a downstream position exists but the declared edit cannot be constructed or applied there"
+    NOT_EVALUATED_NO_MATCHED_PAIR:
+      endpoint: null
+      trigger: "directional scoring is requested but no matched non-concept-context counterfactual/pair is available"
+    INVALID_CHECKPOINT_OR_RETRAINING:
+      endpoint: null
+      trigger: "same-checkpoint identity mismatch or prohibited retraining, consistent with the parent EVAL/audit rule"
+    INVALID_CONTEXT_MISMATCH:
+      endpoint: null
+      trigger: "allowed non-concept context differs across the matched pair used for directional scoring"
+    INVALID_TARGET_UNDECLARED:
+      endpoint: null
+      trigger: "the intended target action/policy consequence was not declared before the downstream decision was observed"
+    INVALID_ORACLE_TIER_UNSPECIFIED:
+      endpoint: null
+      trigger: "a fixture or future result does not declare whether it is ORACLE-STRUCT or ORACLE-FULL"
+    INVALID_ORACLE_FULL_ATTEMPTED:
+      endpoint: null
+      trigger: "a fixture or future result attempts to execute, approximate, or claim validation of ORACLE-FULL before A3s-semantic-target exists"
+    CENSORED_TERMINATED_BEFORE_PLANNED_EDIT:
+      endpoint: null
+      trigger: "free-running generation terminated before the planned edit position"
+      denominator_rule: "remains in the pre-edit reference opportunity accounting; never converted to a zero/no-effect result"
+    EVALUATED:
+      endpoint: "DEFINED"
+      trigger: "all validity preconditions pass, oracle tier is declared, and both any_change and target_hit are defined"
+  null_is_not_zero_effect: true
+
+future_execution_binding:
+  checkpoint_identity: >-
+    Any future edit-precision execution must bind exact checkpoint identity and forbid retraining,
+    consistent with the parent EVAL's checkpoint_and_provenance and the parent audit's
+    same-checkpoint content-intervention rules. This audit does not itself define a new checkpoint.
+  flops_and_parameter_matching: >-
+    Any future execution inherits the frozen contract's parameter-count/FLOPs/context-matching
+    requirements by reference. This audit does not define new numeric budgets, matching
+    tolerances, or a new comparison arm.
+  new_arm_authorization: "NOT_AUTHORIZED_BY_THIS_AUDIT"
+  execution_work_package: "REQUIRES_SEPARATE_EXTERNAL_REVIEWER_AUTHORIZATION_AS_SCIENTIFIC"
+
+static_fixture_matrix:
+  - id: "edit-oracle-struct-usability-reference"
+    kind: "channel_usability_reference"
+    oracle_tier: "ORACLE-STRUCT"
+    expected_status: "CHANNEL_USABILITY_ONLY_NOT_RELIANCE"
+  - id: "edit-oracle-full-attempt-blocked"
+    kind: "oracle_tier_boundary"
+    oracle_tier: "ORACLE-FULL"
+    attempted_execution: true
+    expected_status: "INVALID_ORACLE_FULL_ATTEMPTED"
+  - id: "edit-target-hit-positive"
+    kind: "targeted_editability_positive"
+    expected_status: "EVALUATED"
+  - id: "edit-any-change-not-target"
+    kind: "any_change_without_target_hit"
+    expected_status: "EVALUATED"
+  - id: "edit-dose-response-reference"
+    kind: "dose_response_reference"
+    expected_status: "EVALUATED"
+
+null_state_calibration:
+  status: "STATIC_SCHEMA_CALIBRATION_ONLY"
+  scientific_runtime_invoked: false
+  outcome_bearing: false
+  cases:
+    - id: "CAL-EDIT-TARGET-HIT"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-STRUCT"
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: true
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_any_change: true
+      expected_target_hit: true
+      expected_status: "EVALUATED"
+    - id: "CAL-EDIT-ANY-CHANGE-NOT-TARGET"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-STRUCT"
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: true
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_any_change: true
+      expected_target_hit: false
+      expected_status: "EVALUATED"
+    - id: "CAL-EDIT-NO-DOWNSTREAM-POSITION"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-STRUCT"
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: false
+      edit_applicable: false
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: false
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_status: "NOT_EVALUATED_NO_DOWNSTREAM_POSITION"
+    - id: "CAL-EDIT-NOT-APPLICABLE"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-STRUCT"
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: false
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: false
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_status: "NOT_EVALUATED_EDIT_NOT_APPLICABLE"
+    - id: "CAL-EDIT-NO-MATCHED-PAIR"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-STRUCT"
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: true
+      matched_pair_available: false
+      terminated_before_planned_edit: false
+      expected_status: "NOT_EVALUATED_NO_MATCHED_PAIR"
+    - id: "CAL-EDIT-CHECKPOINT-MISMATCH"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-STRUCT"
+      attempted_oracle_full: false
+      checkpoint_match: false
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: true
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_status: "INVALID_CHECKPOINT_OR_RETRAINING"
+    - id: "CAL-EDIT-CONTEXT-MISMATCH"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-STRUCT"
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: false
+      target_declared: true
+      directional_scoring_requested: true
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_status: "INVALID_CONTEXT_MISMATCH"
+    - id: "CAL-EDIT-TARGET-UNDECLARED"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-STRUCT"
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: false
+      directional_scoring_requested: true
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_status: "INVALID_TARGET_UNDECLARED"
+    - id: "CAL-EDIT-ORACLE-TIER-UNSPECIFIED"
+      oracle_tier_declared: false
+      oracle_tier: null
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: true
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_status: "INVALID_ORACLE_TIER_UNSPECIFIED"
+    - id: "CAL-EDIT-ORACLE-FULL-ATTEMPTED"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-FULL"
+      attempted_oracle_full: true
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: true
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_status: "INVALID_ORACLE_FULL_ATTEMPTED"
+    - id: "CAL-EDIT-CENSORED"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-STRUCT"
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: true
+      matched_pair_available: true
+      terminated_before_planned_edit: true
+      expected_status: "CENSORED_TERMINATED_BEFORE_PLANNED_EDIT"
+
+promotion_boundary:
+  current_round: "STATIC_DESIGN_ONLY"
+  scientific_execution: "FORBIDDEN"
+  edit_intervention_implementation: "NOT_AUTHORIZED"
+  oracle_full_implementation: "NOT_AUTHORIZED"
+  real_model_discovery: "FUTURE_SEPARATE_REVIEWER_AUTHORIZATION_REQUIRED_AS_SCIENTIFIC"
+  required_before_future_execution:
+    - "independent review of this estimand/oracle-tier design"
+    - "predeclared edit-strength scale and grade count"
+    - "predeclared intended-target declaration mechanism"
+    - "matched-pair/context construction accepted"
+    - "same-checkpoint/no-retraining binding accepted"
+    - "A3s-semantic-target separately designed, accepted, and implemented before any ORACLE-FULL work"
+  go_latent: "NOT EVALUATED"
+
+versioning:
+  semantic_version: "0.1-draft"
+  amendment_policy: >-
+    Any future change to estimand meaning, oracle-tier definitions, target-declaration semantics,
+    dose-response grade requirements, or null/invalidity states requires an explicit new version
+    before any scientific freeze. This file does not amend closed_bottleneck_validity_audit_v1.yaml
+    or semantic_feedback_causal_eval_v1.yaml; those remain at their own versions.
