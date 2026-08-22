@@ -19,6 +19,7 @@ from planner_toy.semantic_discovery_arms import (
     validate_a3r_checkpoint_independence,
     validate_exact_a3_checkpoint,
 )
+from planner_toy.semantic_discovery_validation import A3rPlanner, FrozenSameCheckpointA3
 
 
 def _signature(label: str) -> str:
@@ -61,7 +62,8 @@ def _inputs():
 
 def test_a3r_is_parameter_matched_a3_but_has_separate_identity():
     a3 = LockedPlanner(17, "A3")
-    a3r = LockedPlanner(17, "A3r")
+    a3r = A3rPlanner(17)
+    assert a3r.discovery_variant == "A3r"
     assert a3.active_names == a3r.active_names
     assert parameter_shape_manifest(a3.state_dict()) == parameter_shape_manifest(
         a3r.state_dict()
@@ -133,12 +135,14 @@ def test_exact_a3_checkpoint_guard_rejects_retraining_or_drift():
 def test_same_checkpoint_zero_matches_historical_a4_surface():
     encoded, actions, arg1, arg2, feedback, _ = _inputs()
     a3 = LockedPlanner(17, "A3")
+    intervention = FrozenSameCheckpointA3(17)
+    intervention.load_state_dict(a3.state_dict())
     a4 = LockedPlanner(17, "A4")
     a4.load_state_dict(a3.state_dict())
-    a3.eval()
+    intervention.eval()
     a4.eval()
     with torch.inference_mode():
-        zero = a3(
+        zero = intervention(
             encoded,
             actions,
             arg1,
@@ -155,7 +159,9 @@ def test_same_checkpoint_zero_matches_historical_a4_surface():
 
 def test_foreign_and_wrong_donor_use_exact_a3_projection_surface():
     encoded, actions, arg1, arg2, feedback, foreign = _inputs()
-    model = LockedPlanner(17, "A3").eval()
+    a3 = LockedPlanner(17, "A3")
+    model = FrozenSameCheckpointA3(17).eval()
+    model.load_state_dict(a3.state_dict())
     with torch.inference_mode():
         foreign_out = model(
             encoded,
@@ -180,15 +186,6 @@ def test_foreign_and_wrong_donor_use_exact_a3_projection_surface():
     assert torch.equal(foreign_out.semantic_component, expected)
     assert torch.equal(wrong_out.semantic_component, expected)
 
-    with pytest.raises(ValueError, match="exact A3"):
-        LockedPlanner(17, "A4")(
-            encoded,
-            actions,
-            arg1,
-            arg2,
-            semantic_feedback=feedback,
-            semantic_intervention="ZERO",
-        )
     with pytest.raises(ValueError, match="required"):
         model(
             encoded,
