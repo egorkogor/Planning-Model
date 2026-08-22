@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 CONFIG_PATH = Path(".research/readiness/semantic_feedback_discovery_execution_v1.json")
 ALLOWED_METADATA_FIELDS = (
     "opaque_task_id",
@@ -17,6 +19,36 @@ ALLOWED_METADATA_FIELDS = (
     "position",
     "nuisance_bucket",
 )
+DONOR_FILTER_AUTHORITY = (
+    "candidate unit differs from target unit",
+    "candidate semantic signature differs from target semantic signature",
+    "candidate planner_seed equals target planner_seed",
+    "candidate split_id equals target split_id",
+    "candidate intervention_position equals target intervention_position",
+    "candidate remaining_distance_bucket equals target remaining_distance_bucket",
+    "candidate hand_mode equals target hand_mode",
+    "candidate feedback_norm_bucket equals target feedback_norm_bucket",
+)
+DONOR_ORDER_AUTHORITY = (
+    "ascending absolute difference in feedback_norm_raw",
+    "ascending candidate episode_id",
+    "ascending candidate unit_id",
+)
+DONOR_ORDER_CONFIG = (
+    "abs_feedback_norm_raw_distance",
+    "episode_id",
+    "unit_id",
+)
+GENERATOR_AUTHORITY = {
+    "algorithm": "SHAKE256_BITS_V1",
+    "payload": "seed_bytes || UTF8(signature_sha256)",
+    "output_bytes": 48,
+    "dimension": 384,
+    "bit_mapping": "0_to_minus_one; 1_to_plus_one",
+    "model_target": "float32(bit_value / sqrt(384))",
+    "signature_order": "ascending_signature_sha256",
+    "rejection_or_manual_selection": "forbidden",
+}
 
 
 class ReadinessError(ValueError):
@@ -41,6 +73,177 @@ def config_digest(config: dict[str, Any]) -> str:
 
 def implementation_digest() -> str:
     return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def git_blob_sha1(data: bytes) -> str:
+    header = f"blob {len(data)}\0".encode("ascii")
+    return hashlib.sha1(header + data).hexdigest()
+
+
+def _load_bound_yaml(binding: dict[str, Any], label: str) -> tuple[dict[str, Any], str]:
+    path = Path(binding["path"])
+    data = path.read_bytes()
+    actual_blob = git_blob_sha1(data)
+    if actual_blob != binding["git_blob"]:
+        raise ReadinessError(f"{label} git blob mismatch")
+    parsed = yaml.safe_load(data)
+    if not isinstance(parsed, dict):
+        raise ReadinessError(f"{label} authority must be a mapping")
+    return parsed, actual_blob
+
+
+def _require_equal(actual: Any, expected: Any, label: str) -> None:
+    if actual != expected:
+        raise ReadinessError(f"authority mismatch: {label}")
+
+
+def validate_authority_binding(config: dict[str, Any]) -> dict[str, str]:
+    protocol, protocol_blob = _load_bound_yaml(config["protocol"], "protocol")
+    generator, generator_blob = _load_bound_yaml(
+        config["generator_contract"], "generator contract"
+    )
+
+    _require_equal(protocol.get("id"), config["protocol"]["id"], "protocol.id")
+
+    random_codebooks = protocol["random_codebooks"]
+    _require_equal(
+        random_codebooks["generator_contract"],
+        config["generator_contract"]["path"],
+        "random_codebooks.generator_contract",
+    )
+    _require_equal(
+        random_codebooks["identities"], config["codebooks"], "random_codebooks.identities"
+    )
+
+    split = protocol["novel_compositional_signature_stress"]
+    _require_equal(
+        split["construction_id"], config["composition_split"]["id"], "composition_split.id"
+    )
+    _require_equal(
+        split["train_signatures"],
+        config["composition_split"]["train"],
+        "composition_split.train",
+    )
+    _require_equal(
+        split["stress_signatures"],
+        config["composition_split"]["stress"],
+        "composition_split.stress",
+    )
+
+    donor = protocol["wrong_semantic_donor"]
+    _require_equal(
+        tuple(donor["candidate_filter_all_required"]),
+        DONOR_FILTER_AUTHORITY,
+        "wrong_semantic_donor.candidate_filter_all_required",
+    )
+    _require_equal(
+        tuple(donor["deterministic_order"]),
+        DONOR_ORDER_AUTHORITY,
+        "wrong_semantic_donor.deterministic_order",
+    )
+    _require_equal(
+        tuple(config["donor_order"]), DONOR_ORDER_CONFIG, "wrong_semantic_donor.config_order"
+    )
+    _require_equal(
+        donor["selection"],
+        "first candidate after applying the complete filter and deterministic order",
+        "wrong_semantic_donor.selection",
+    )
+    _require_equal(donor["no_relaxation"], True, "wrong_semantic_donor.no_relaxation")
+    _require_equal(
+        donor["donor_unavailable_state"],
+        "NOT_EVALUATED_DONOR_UNAVAILABLE",
+        "wrong_semantic_donor.donor_unavailable_state",
+    )
+
+    collision = protocol["collision_fixture"]
+    expected_collision = {
+        "id": collision["fixture_id"],
+        "collision_pair": collision["collision_pair"],
+        "inverse_metadata_pair": collision["inverse_metadata_pair"],
+    }
+    _require_equal(
+        config["collision_fixture"], expected_collision, "collision_fixture"
+    )
+    _require_equal(
+        tuple(collision["allowed_metadata_fields"]),
+        ALLOWED_METADATA_FIELDS,
+        "collision_fixture.allowed_metadata_fields",
+    )
+
+    exposure = protocol["exposure_and_endpoints"]
+    _require_equal(
+        config["endpoints"],
+        [exposure["immediate"]["id"], exposure["total"]["id"]],
+        "endpoints",
+    )
+    _require_equal(
+        exposure["opportunity_set_source"],
+        "PRE_INTERVENTION_REFERENCE_PREFIX_ONLY",
+        "exposure.opportunity_set_source",
+    )
+    _require_equal(
+        exposure["post_treatment_survivor_denominator"],
+        "FORBIDDEN",
+        "exposure.post_treatment_survivor_denominator",
+    )
+    _require_equal(
+        protocol["null_and_invalidity_states"]["precedence"],
+        config["null_precedence"],
+        "null_precedence",
+    )
+
+    code_generation = generator["code_generation"]
+    for field, expected in GENERATOR_AUTHORITY.items():
+        _require_equal(code_generation[field], expected, f"generator.{field}")
+    for field in (
+        "algorithm",
+        "payload",
+        "output_bytes",
+        "dimension",
+        "signature_order",
+        "rejection_or_manual_selection",
+    ):
+        _require_equal(
+            config["generator_contract"][field],
+            GENERATOR_AUTHORITY[field],
+            f"generator_config.{field}",
+        )
+
+    inherited = tuple(
+        random_codebooks["generator_contract_binding"]["inherited_fields_unchanged"]
+    )
+    expected_inherited = (
+        "code_generation.algorithm = SHAKE256_BITS_V1",
+        "code_generation.payload = seed_bytes || UTF8(signature_sha256)",
+        "code_generation.output_bytes = 48",
+        "code_generation.dimension = 384",
+        "code_generation.bit_mapping = 0_to_minus_one; 1_to_plus_one",
+        "code_generation.model_target = float32(bit_value / sqrt(384))",
+        "code_generation.signature_order = ascending_signature_sha256",
+        "code_generation.rejection_or_manual_selection = forbidden",
+    )
+    _require_equal(inherited, expected_inherited, "generator inherited fields")
+    _require_equal(
+        random_codebooks["generator_contract_binding"]["hash_algorithm"],
+        "SHA256",
+        "codebook hash algorithm",
+    )
+    _require_equal(
+        random_codebooks["generator_contract_binding"]["encoding"],
+        "UTF-8",
+        "codebook hash encoding",
+    )
+    _require_equal(
+        random_codebooks["generator_contract_binding"]["analyst_override"],
+        "FORBIDDEN",
+        "codebook analyst override",
+    )
+
+    return {
+        "protocol_git_blob": protocol_blob,
+        "generator_contract_git_blob": generator_blob,
+    }
 
 
 def reconstruct_seed(identity: dict[str, Any]) -> bytes:
@@ -275,6 +478,7 @@ def endpoint_placeholders(state: str) -> dict[str, Any]:
 
 
 def readiness_replay(config: dict[str, Any]) -> dict[str, Any]:
+    authority = validate_authority_binding(config)
     synthetic_signatures = [
         hashlib.sha256(s.encode("utf-8")).hexdigest()
         for s in ("alpha", "beta", "gamma")
@@ -318,8 +522,7 @@ def readiness_replay(config: dict[str, Any]) -> dict[str, Any]:
     }
     code_hex_probe = {
         identity["id"]: {
-            sig: code_hex(reconstruct_seed(identity), sig)
-            for sig in synthetic_signatures
+            sig: code_hex(reconstruct_seed(identity), sig) for sig in synthetic_signatures
         }
         for identity in config["codebooks"]
     }
@@ -327,6 +530,8 @@ def readiness_replay(config: dict[str, Any]) -> dict[str, Any]:
         "readiness_id": config["id"],
         "config_digest": config_digest(config),
         "implementation_digest": implementation_digest(),
+        "protocol_git_blob": authority["protocol_git_blob"],
+        "generator_contract_git_blob": authority["generator_contract_git_blob"],
         "codebook_ids": sorted(codebooks),
         "codebook_probe_digest": sha256_text(canonical_json(code_hex_probe)),
         "split": split,
