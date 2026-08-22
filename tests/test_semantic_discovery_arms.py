@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import hashlib
 
 import pytest
@@ -13,6 +12,7 @@ from planner_toy.semantic_discovery_arms import (
     a3r_codebook_identity_digest,
     a3r_targets,
     a5_mapping_digest,
+    a5_mapping_manifest,
     construct_a5_derangement,
     parameter_shape_manifest,
     state_dict_sha256,
@@ -23,6 +23,10 @@ from planner_toy.semantic_discovery_arms import (
 
 def _signature(label: str) -> str:
     return hashlib.sha256(label.encode()).hexdigest()
+
+
+def _sha(label: str) -> str:
+    return "sha256:" + hashlib.sha256(label.encode()).hexdigest()
 
 
 def _row() -> dict:
@@ -41,14 +45,16 @@ def _row() -> dict:
 
 
 def _inputs():
-    row = _row()
-    encoded = canonical_task_encoding(row)
+    encoded = canonical_task_encoding(_row())
     actions = torch.tensor([[0, 3]])
     arg1 = torch.tensor([[0, 0]])
     arg2 = torch.tensor([[0, 1]])
     feedback = torch.nn.functional.normalize(torch.ones((1, 2, 384)), dim=-1)
     foreign = torch.nn.functional.normalize(
-        torch.cat([torch.ones((1, 2, 192)), -torch.ones((1, 2, 192))], dim=-1), dim=-1
+        torch.cat(
+            [torch.ones((1, 2, 192)), -torch.ones((1, 2, 192))], dim=-1
+        ),
+        dim=-1,
     )
     return encoded, actions, arg1, arg2, feedback, foreign
 
@@ -57,7 +63,9 @@ def test_a3r_is_parameter_matched_a3_but_has_separate_identity():
     a3 = LockedPlanner(17, "A3")
     a3r = LockedPlanner(17, "A3r")
     assert a3.active_names == a3r.active_names
-    assert parameter_shape_manifest(a3.state_dict()) == parameter_shape_manifest(a3r.state_dict())
+    assert parameter_shape_manifest(a3.state_dict()) == parameter_shape_manifest(
+        a3r.state_dict()
+    )
 
     identity = validate_a3r_checkpoint_independence(
         a3_state=a3.state_dict(),
@@ -86,15 +94,17 @@ def test_a3r_is_parameter_matched_a3_but_has_separate_identity():
         )
 
 
-def test_a3r_frozen_codebooks_are_exact_deterministic_and_distinct():
-    signatures = [_signature("sig-a"), _signature("sig-b")]
+def test_a3r_frozen_codebooks_are_exact_deterministic_distinct_and_reusable():
+    signatures = [_signature("sig-a"), _signature("sig-b"), _signature("sig-a")]
     first = a3r_targets(signatures, codebook_id="A3R-CODEBOOK-170029")
     replay = a3r_targets(signatures, codebook_id="A3R-CODEBOOK-170029")
     second = a3r_targets(signatures, codebook_id="A3R-CODEBOOK-290043")
     assert torch.equal(first, replay)
-    assert not torch.equal(first[:, :2], second[:, :2])
+    assert torch.equal(first[:, 0], first[:, 2])
+    assert not torch.equal(first[:, :3], second[:, :3])
     assert first.shape == (1, 17, 384)
-    assert a3r_codebook_identity_digest("A3R-CODEBOOK-170029").startswith("sha256:")
+    digest = a3r_codebook_identity_digest("A3R-CODEBOOK-170029")
+    assert digest.startswith("sha256:")
     with pytest.raises(Exception):
         a3r_targets(signatures, codebook_id="analyst-choice")
 
@@ -192,50 +202,65 @@ def test_foreign_and_wrong_donor_use_exact_a3_projection_surface():
 
 def _a5_units() -> list[A5Unit]:
     return [
-        A5Unit("u1", "task-a", 17, "dev", 2, "near", "empty", "sig-a", "intent-a", "a" * 64),
-        A5Unit("u2", "task-b", 17, "dev", 2, "near", "empty", "sig-b", "intent-b", "b" * 64),
-        A5Unit("u3", "task-c", 17, "dev", 2, "near", "empty", "sig-c", "intent-c", "c" * 64),
+        A5Unit(
+            "u1", _sha("u1"), "task-a", 17, "dev", 2, "near", "empty",
+            "sig-a", "intent-a", _sha("sem-a"),
+        ),
+        A5Unit(
+            "u2", _sha("u2"), "task-b", 17, "dev", 2, "near", "empty",
+            "sig-b", "intent-b", _sha("sem-b"),
+        ),
+        A5Unit(
+            "u3", _sha("u3"), "task-c", 17, "dev", 2, "near", "empty",
+            "sig-c", "intent-c", _sha("sem-c"),
+        ),
     ]
 
 
-def test_a5_perfect_derangement_is_deterministic_complete_and_unique():
+def test_a5_perfect_derangement_is_deterministic_complete_unique_and_manifested():
     units = _a5_units()
     mapping = construct_a5_derangement(units)
     replay = construct_a5_derangement(reversed(units))
+    hashes = {unit.unit_hash for unit in units}
     assert mapping == replay
-    assert set(mapping) == {unit.unit_id for unit in units}
-    assert set(mapping.values()) == {unit.unit_id for unit in units}
+    assert set(mapping) == hashes
+    assert set(mapping.values()) == hashes
     assert all(source != donor for source, donor in mapping.items())
     assert a5_mapping_digest(mapping) == a5_mapping_digest(replay)
+    manifest = a5_mapping_manifest(
+        units=units,
+        mapping=mapping,
+        a3_checkpoint_sha256=_sha("a3-checkpoint"),
+    )
+    assert manifest["excluded_units"] == []
+    assert len(manifest["mappings"]) == 3
+    assert manifest["mapping_sha256"] == a5_mapping_digest(mapping)
+    assert manifest["manifest_sha256"].startswith("sha256:")
 
 
 def test_a5_fails_closed_on_relaxed_or_impossible_construction():
     units = _a5_units()
-    impossible = [copy.copy(units[0]), copy.copy(units[1])]
-    impossible[1] = A5Unit(
-        "u2",
-        "task-b",
-        17,
-        "dev",
-        2,
-        "near",
-        "empty",
-        "sig-a",
-        "intent-b",
-        "b" * 64,
-    )
+    impossible = [
+        units[0],
+        A5Unit(
+            "u2", _sha("u2"), "task-b", 17, "dev", 2, "near", "empty",
+            "sig-a", "intent-b", _sha("sem-b"),
+        ),
+    ]
     with pytest.raises(SemanticArmError, match="BLOCKED_CONTROL_CONSTRUCTION"):
         construct_a5_derangement(impossible)
     with pytest.raises(SemanticArmError, match="donor-unique"):
-        a5_mapping_digest({"u1": "u2", "u3": "u2"})
+        a5_mapping_digest({_sha("u1"): _sha("u2"), _sha("u3"): _sha("u2")})
     with pytest.raises(SemanticArmError, match="self-assignment"):
-        a5_mapping_digest({"u1": "u1"})
+        a5_mapping_digest({_sha("u1"): _sha("u1")})
 
 
 def test_state_hash_changes_on_any_checkpoint_tensor_drift():
     model = LockedPlanner(17, "A3")
     original = state_dict_sha256(model.state_dict())
-    changed = {name: tensor.detach().clone() for name, tensor in model.state_dict().items()}
+    changed = {
+        name: tensor.detach().clone() for name, tensor in model.state_dict().items()
+    }
     first_name = sorted(changed)[0]
     changed[first_name].view(-1)[0] += 1
     assert state_dict_sha256(changed) != original
