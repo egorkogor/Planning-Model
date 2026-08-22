@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import torch
 from research_programs.planner.semantic_feedback_readiness import (
     CONFIG_PATH as READINESS_CONFIG_PATH,
     generate_code,
@@ -22,6 +21,7 @@ from research_programs.planner.semantic_feedback_readiness import (
     reconstruct_seed,
     validate_authority_binding,
 )
+import torch
 
 SEMANTIC_DIMENSION = 384
 A3R_VARIANT = "A3r"
