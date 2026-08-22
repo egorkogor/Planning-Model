@@ -33,8 +33,8 @@ def test_readiness_config_is_bound_to_accepted_authority_text():
         assert identity["seed_hex"] in protocol
     for signature in config["composition_split"]["train"] + config["composition_split"]["stress"]:
         assert signature in protocol
-    assert "algorithm: \"SHAKE256_BITS_V1\"" in generator
-    assert "payload: \"seed_bytes || UTF8(signature_sha256)\"" in generator
+    assert "algorithm: SHAKE256_BITS_V1" in generator
+    assert "payload: seed_bytes || UTF8(signature_sha256)" in generator
     assert "output_bytes: 48" in generator
     assert "dimension: 384" in generator
 
