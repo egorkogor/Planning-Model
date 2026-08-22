@@ -1,0 +1,71 @@
+{
+  "schema_version": "semantic-discovery-readiness/0.1",
+  "id": "RDY-PLN-SEM-DISC-001",
+  "status": "PREEXECUTION_NON_OUTCOME_BEARING",
+  "issue": 59,
+  "authoritative_base": "a80b689d9b2ecb6f8d36bed53c650c3976b1db09",
+  "protocol": {
+    "path": ".research/studies/semantic_feedback_discovery_v1.yaml",
+    "git_blob": "c7264159b89fe880a7a3eccef0f3e6e90327cea9",
+    "id": "STU-PLN-SEM-DISC-001"
+  },
+  "generator_contract": {
+    "path": "docs/controls/random_codebook_contract_v1.yaml",
+    "git_blob": "e3d8e63e8cf691929240d2c2fac557a68988c84e",
+    "algorithm": "SHAKE256_BITS_V1",
+    "output_bytes": 48,
+    "dimension": 384,
+    "payload": "seed_bytes || UTF8(signature_sha256)",
+    "signature_order": "ascending_signature_sha256",
+    "rejection_or_manual_selection": "forbidden"
+  },
+  "codebooks": [
+    {
+      "id": "A3R-CODEBOOK-170029",
+      "legacy_label_seed": 170029,
+      "derivation_input": "STU-PLN-SEM-DISC-001|A3R-CODEBOOK-170029|170029",
+      "seed_hex": "c83c21942a85cd899b0ddb764eb007f205d79f9c498bd3ec9dd94cf859d75c47"
+    },
+    {
+      "id": "A3R-CODEBOOK-290043",
+      "legacy_label_seed": 290043,
+      "derivation_input": "STU-PLN-SEM-DISC-001|A3R-CODEBOOK-290043|290043",
+      "seed_hex": "088d3f30429645884c69975744ca9414c8bbaaed4f1ac7dfea2832979396af3e"
+    }
+  ],
+  "composition_split": {
+    "id": "SEM-COMP-PAIR-HOLDOUT-V1",
+    "train": ["LEFT_OF|NEAR", "LEFT_OF|FAR", "RIGHT_OF|NEAR", "ON_TOP_OF|NEAR", "ON_TOP_OF|FAR", "UNDER|FAR"],
+    "stress": ["RIGHT_OF|FAR", "UNDER|NEAR"]
+  },
+  "donor_order": ["abs_feedback_norm_raw_distance", "episode_id", "unit_id"],
+  "collision_fixture": {
+    "id": "SEM-METADATA-COLLISION-V1",
+    "collision_pair": [
+      {"id":"COLLISION-A","opaque_task_id":"task-kappa","opaque_ref_ids":["ref-17","ref-29"],"opaque_signature_id":"sig-opaque-5","position":3,"nuisance_bucket":"n0","semantic_feedback":"MOVE_ALPHA_TO_BETA","required_next_action":"action-alpha"},
+      {"id":"COLLISION-B","opaque_task_id":"task-kappa","opaque_ref_ids":["ref-17","ref-29"],"opaque_signature_id":"sig-opaque-5","position":3,"nuisance_bucket":"n0","semantic_feedback":"MOVE_GAMMA_TO_DELTA","required_next_action":"action-gamma"}
+    ],
+    "inverse_metadata_pair": [
+      {"id":"INVERSE-A","opaque_task_id":"task-lambda","opaque_ref_ids":["ref-43","ref-71"],"opaque_signature_id":"sig-opaque-9","position":3,"nuisance_bucket":"n1","semantic_feedback":"MOVE_ALPHA_TO_BETA","required_next_action":"action-alpha"},
+      {"id":"INVERSE-B","opaque_task_id":"task-mu","opaque_ref_ids":["ref-101","ref-103"],"opaque_signature_id":"sig-opaque-11","position":7,"nuisance_bucket":"n2","semantic_feedback":"MOVE_ALPHA_TO_BETA","required_next_action":"action-alpha"}
+    ]
+  },
+  "endpoints": ["immediate_next_step_effect", "free_running_total_effect"],
+  "null_precedence": [
+    "INVALID_CHECKPOINT_OR_RETRAINING",
+    "INVALID_SHORTCUT_NOT_EXCLUDED",
+    "INVALID_SEMANTIC_CHANNEL_NOT_USABLE",
+    "INVALID_METADATA_INVARIANCE",
+    "INVALID_GEOMETRY_ESTIMAND_SIGNATURE_OVERLAP",
+    "INVALID_GEOMETRY_ESTIMAND_NO_PARTIAL_AGGREGATION",
+    "NOT_EVALUATED_NO_DOWNSTREAM_OPPORTUNITY",
+    "NOT_EVALUATED_INTERVENTION_NOT_APPLICABLE",
+    "NOT_EVALUATED_DONOR_UNAVAILABLE",
+    "CENSORED_TERMINATED_BEFORE_PLANNED_INTERVENTION",
+    "NOT_APPLICABLE_ENDPOINT_UNDEFINED",
+    "EVALUATED"
+  ],
+  "execution_authorized": false,
+  "held_out_04_05": "FORBIDDEN_NO_ACCESS_NO_MATERIALIZATION",
+  "go_latent": "NOT EVALUATED"
+}
