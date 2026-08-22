@@ -107,7 +107,7 @@ def test_a3r_frozen_codebooks_are_exact_deterministic_distinct_and_reusable():
     assert first.shape == (1, 17, 384)
     digest = a3r_codebook_identity_digest("A3R-CODEBOOK-170029")
     assert digest.startswith("sha256:")
-    with pytest.raises(Exception):
+    with pytest.raises(SemanticArmError, match="unknown or duplicate"):
         a3r_targets(signatures, codebook_id="analyst-choice")
 
 
