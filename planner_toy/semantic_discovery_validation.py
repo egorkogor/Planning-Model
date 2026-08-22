@@ -14,6 +14,8 @@ from research_programs.planner.semantic_feedback_readiness import (
     select_wrong_semantic_donor,
 )
 
+from .model import LockedPlanner
+
 
 class SemanticDiscoveryValidationError(ValueError):
     pass
@@ -68,6 +70,22 @@ def validate_normalized_float32_feedback(value: torch.Tensor) -> None:
     norms = torch.linalg.vector_norm(value, dim=-1)
     if not torch.allclose(norms, torch.ones_like(norms), atol=1e-6, rtol=0):
         raise SemanticDiscoveryValidationError("foreign semantic z must be l2-normalized")
+
+
+class FrozenSameCheckpointA3(LockedPlanner):
+    """A3-only intervention wrapper with no new parameters or retraining path."""
+
+    def __init__(self, seed: int = 17):
+        super().__init__(seed, "A3")
+
+    def forward(self, *args: Any, **kwargs: Any):
+        intervention = kwargs.get("semantic_intervention")
+        foreign = kwargs.get("foreign_semantic_feedback")
+        if intervention in {"FOREIGN", "WRONG_SEMANTIC_DONOR"}:
+            if not isinstance(foreign, torch.Tensor):
+                raise SemanticDiscoveryValidationError("foreign semantic feedback required")
+            validate_normalized_float32_feedback(foreign)
+        return super().forward(*args, **kwargs)
 
 
 def select_frozen_wrong_semantic_donor(
