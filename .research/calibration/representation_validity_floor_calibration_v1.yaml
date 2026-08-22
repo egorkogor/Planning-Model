@@ -1,0 +1,281 @@
+version: "research-os-calibration-contract/0.1"
+status: "ADVISORY_DISCOVERY_MEASUREMENT_NON_OUTCOME_BEARING"
+research_os_required_gate: false
+
+id: "CAL-PLN-REPR-VALIDITY-FLOOR-001"
+rq: "RQ-PLN-REPR-VALIDITY-001"
+evidence_class: "DISCOVERY_MEASUREMENT_NON_OUTCOME_BEARING"
+work_package: "WP-REPR-EVAL-CAL-001"
+
+authority:
+  issue: 65
+  authoritative_base: "4ed5b5c5843d14ede5ef93a459d3a292e018ec1a"
+  parent_authority:
+    - "issue 64 conductor repair comment 5381987477"
+    - "issue 64 independent ACCEPT comment 5382001767"
+    - "issue 63 independent portfolio review"
+  frozen_v1_21_read_only: true
+  random_codebook_contract: "docs/controls/random_codebook_contract_v1.yaml"
+  taxonomy_source: ".research/studies/semantic_feedback_discovery_v1.yaml"
+  explicit_non_authority:
+    - "This contract does not authorize model training, model inference, held-out access, or scientific execution."
+    - "This contract does not apply this measurement to real A3/A3r checkpoint outcomes."
+    - "This contract does not modify GO_LATENT = NOT EVALUATED."
+    - "This contract does not edit .research/planner_portfolio.yaml, the accepted semantic-feedback EVAL, or the closed-bottleneck audit."
+    - "This contract does not touch issue #61 / PR #62 owned runtime/intervention/test surfaces."
+    - "This contract does not reinterpret EST-PLN-SEM-GEOMETRY."
+    - "Current hash-derived A3a is admissible only as a calibration/negative-check reference; neither passing nor failing this calibration is emergent-semantic-structure evidence for real z."
+
+purpose: >-
+  Define and mechanically calibrate a representation-validity purity/mutual-information measurement
+  construct against frozen synthetic controls, so the construct's discriminability is established
+  before it is ever considered for application to real trained latent outcomes (not authorized here).
+  This contract answers only whether the purity/MI machinery can distinguish frozen synthetic
+  controls under the same code-generation family as the Planner semantic-target machinery.
+
+scope_boundary:
+  in_scope:
+    - "four predeclared synthetic calibration arms built from the frozen SHAKE256 code-generation family"
+    - "purity, naive MI, and finite-sample bias-corrected MI estimators"
+    - "exact-N/K label-permutation null and decision rule"
+    - "predeclared fit/evaluation split"
+    - "fail-closed positive-control/null discriminability gate"
+  out_of_scope:
+    - "real A3/A3r checkpoint loading or outcome collection"
+    - "applying this measurement to trained z"
+    - "model training or inference"
+    - "new semantic-target/model arm design or A3s-semantic-target implementation"
+    - "edits to .research/planner_portfolio.yaml"
+    - "edits to the accepted semantic-feedback causal EVAL or the closed-bottleneck validity audit"
+    - "edits to #61/#62-owned runtime/intervention/test files"
+    - "held-out 04/05 access or materialization"
+    - "confirmatory thresholds or claim promotion"
+    - "changing GO_LATENT"
+
+generator_binding:
+  contract: "docs/controls/random_codebook_contract_v1.yaml"
+  inherited_fields_unchanged:
+    - "code_generation.algorithm = SHAKE256_BITS_V1"
+    - "code_generation.output_bytes = 48"
+    - "code_generation.dimension = 384"
+    - "code_generation.bit_mapping = 0_to_minus_one; 1_to_plus_one"
+    - "code_generation.model_target = float32(bit_value / sqrt(384))"
+    - "code_generation.rejection_or_manual_selection = forbidden"
+  payload_formula: "seed_bytes || UTF8(payload_key)"
+  discovery_only_parameterization: >-
+    Following the same discovery-only parameterization already accepted for STU-PLN-SEM-DISC-001
+    random codebooks: for each seed identity below, compute SHA256 over the exact UTF-8
+    derivation_input string and use the resulting 32 bytes as seed_bytes in place of the frozen
+    contract's single code_generation.seed_hex. No other frozen generator field changes. Each stored
+    seed_hex is the exact expected digest of derivation_input and MUST match recomputation before any
+    calibration outcome is computed.
+  hash_algorithm: "SHA256"
+  encoding: "UTF-8"
+  analyst_override: "FORBIDDEN"
+  arbitrary_one_hot_or_simple_deterministic_encoding: "FORBIDDEN"
+  seed_identities:
+    - id: "NULL-ARM-SEED"
+      derivation_input: "CAL-PLN-REPR-VALIDITY-FLOOR-001|NULL-ARM|1"
+      seed_hex: "5bede1cd29dccdd0d3946c05d4df6ecd319978849520a431bc4d488bfb71428a"
+      used_by: "ARM-1-RANDOM-NULL point construction"
+    - id: "OPERATOR-ARM-SEED"
+      derivation_input: "CAL-PLN-REPR-VALIDITY-FLOOR-001|OPERATOR-ARM|2"
+      seed_hex: "a9c8e854eb22c60b73589131f9887d1fa2a5bff9b87904206e54c24d3bd49f36"
+      used_by: "ARM-2-OPERATOR-ONLY base-vector construction"
+    - id: "TOPIC-ARM-SEED"
+      derivation_input: "CAL-PLN-REPR-VALIDITY-FLOOR-001|TOPIC-ARM|3"
+      seed_hex: "e31757243a2f20281e63cab1e6cb55140f6352a342a6220814c6e1dc0b447963"
+      used_by: "ARM-3-TOPIC-ONLY base-vector construction"
+    - id: "FULL-SIGNATURE-ARM-SEED"
+      derivation_input: "CAL-PLN-REPR-VALIDITY-FLOOR-001|FULL-SIGNATURE-ARM|4"
+      seed_hex: "e9a1fb2168f8a03bb7a1e548589ce0b370bfc89fafd9fcd5244e8d2812043dcb"
+      used_by: "ARM-4-FULL-SIGNATURE base-vector construction (models the current hash-derived A3a construction pattern)"
+    - id: "NOISE-SEED"
+      derivation_input: "CAL-PLN-REPR-VALIDITY-FLOOR-001|NOISE-ARM|0"
+      seed_hex: "05cc9eca112c372c3dd08fc4ee839ae9f0689b37c76a1818a54704e81aa3f1ad"
+      used_by: >-
+        shared per-point noise component for ARM-2/ARM-3/ARM-4; the same point_index draws an
+        identical noise vector across those three arms so the arms form a paired comparison that
+        differs only in which label(s) key the base vector
+
+taxonomy:
+  source: ".research/studies/semantic_feedback_discovery_v1.yaml#novel_compositional_signature_stress.vocabulary"
+  operator_axis:
+    label: "relation_atom"
+    cardinality_K: 4
+    values: ["LEFT_OF", "RIGHT_OF", "ON_TOP_OF", "UNDER"]
+  topic_axis:
+    label: "distance_atom"
+    cardinality_K: 2
+    values: ["NEAR", "FAR"]
+  joint_axis:
+    label: "relation_atom|distance_atom"
+    cardinality_K: 8
+    construction: "cartesian_product(operator_axis.values, topic_axis.values)"
+    values:
+      - "LEFT_OF|NEAR"
+      - "LEFT_OF|FAR"
+      - "RIGHT_OF|NEAR"
+      - "RIGHT_OF|FAR"
+      - "ON_TOP_OF|NEAR"
+      - "ON_TOP_OF|FAR"
+      - "UNDER|NEAR"
+      - "UNDER|FAR"
+  K_selection_rule: >-
+    K is mechanically bound to the frozen taxonomy cardinality above for every arm and every axis.
+    Elbow/silhouette/post-outcome K selection is FORBIDDEN.
+
+fixture_construction:
+  points_per_joint_class: 50
+  total_N_per_arm: 400
+  point_indexing: >-
+    Enumerate the 8 joint classes in the exact order listed under taxonomy.joint_axis.values. Within
+    each joint class enumerate points_per_joint_class points with a zero-based within_class_index.
+    global_point_index = joint_class_index * points_per_joint_class + within_class_index. This
+    ordering is frozen and is identical across all four arms.
+  vector_dimension: 384
+  class_signal_weight_alpha: 0.6
+  noise_weight_beta: 0.8
+  weight_identity: "alpha^2 + beta^2 = 1.0 (0.6 / 0.8 / 1.0 exact combination)"
+  combination_rule: >-
+    For ARM-2/ARM-3/ARM-4, per-point raw_vector = alpha * base_vector(arm_payload_key) +
+    beta * noise_vector(point_index); the result is then L2-renormalized to exactly unit norm. For
+    ARM-1 (random/null), the point vector is exactly noise_vector(point_index) generated from
+    NULL-ARM-SEED with no base_vector term and no class signal.
+  arms:
+    - id: "ARM-1-RANDOM-NULL"
+      role: "random/null control"
+      class_signal_present: false
+      payload_key_template: "NULL|{global_point_index}"
+      generator_seed_ref: "NULL-ARM-SEED"
+      gating_axis: "none"
+      expected_calibration_behavior: "at or below the label-permutation null quantile on every axis"
+    - id: "ARM-2-OPERATOR-ONLY"
+      role: "operator-only keyed positive control"
+      class_signal_present: true
+      base_vector_payload_key_template: "OPERATOR|{relation_atom}"
+      generator_seed_ref: "OPERATOR-ARM-SEED"
+      noise_seed_ref: "NOISE-SEED"
+      gating_axis: "operator_axis"
+      expected_calibration_behavior: "must separate from ARM-1 at operator_axis under the predeclared decision rule (fail-closed gate)"
+      cross_check_axis: "topic_axis"
+      cross_check_expectation: "no topic leakage: not required to separate at topic_axis"
+    - id: "ARM-3-TOPIC-ONLY"
+      role: "topic-only keyed positive control"
+      class_signal_present: true
+      base_vector_payload_key_template: "TOPIC|{distance_atom}"
+      generator_seed_ref: "TOPIC-ARM-SEED"
+      noise_seed_ref: "NOISE-SEED"
+      gating_axis: "topic_axis"
+      expected_calibration_behavior: "must separate from ARM-1 at topic_axis under the predeclared decision rule (fail-closed gate)"
+      cross_check_axis: "operator_axis"
+      cross_check_expectation: "no operator leakage: not required to separate at operator_axis"
+    - id: "ARM-4-FULL-SIGNATURE"
+      role: "full-signature keyed calibration/negative-check reference"
+      class_signal_present: true
+      base_vector_payload_key_template: "SIGNATURE|{relation_atom}|{distance_atom}"
+      generator_seed_ref: "FULL-SIGNATURE-ARM-SEED"
+      noise_seed_ref: "NOISE-SEED"
+      gating_axis: "none"
+      non_gating: true
+      interpretation_boundary: >-
+        This arm mirrors the construction pattern of the currently implemented A3a target, which is a
+        deterministic hash of the full joint action signature. Its operator_axis and topic_axis
+        result, whether at floor or not, is recorded as a calibration/negative-check reference only
+        and MUST NOT be interpreted as evidence for or against emergent operator/topic semantic
+        structure in any real representation. Only its joint_axis behavior (recoverability of the
+        full 8-way signature) is expected to separate from null, and even that remains a calibration
+        fact about the generator family, not a claim about real z.
+
+fit_evaluation_split:
+  rule: "within_class_index parity: even -> FIT, odd -> EVAL"
+  applies_to: "every arm and every axis identically"
+  fit_used_for: "unsupervised centroid fitting (K forced to the axis cardinality; no label information used in fitting)"
+  eval_used_for: "cluster assignment (nearest fit centroid) and all purity/MI/permutation-null outcome computation"
+  same_examples_for_fit_and_measurement: "FORBIDDEN"
+  post_outcome_adaptation: "FORBIDDEN"
+
+clustering_procedure:
+  algorithm: "k-means, K forced to axis cardinality_K"
+  init_seed: 20260822
+  max_iterations: 100
+  init_rule: "deterministic seeded Forgy init from init_seed over FIT-split points only; empty clusters reseed deterministically from the same seeded generator"
+  fit_split_only: true
+  eval_assignment: "nearest fit centroid by Euclidean distance"
+
+estimators:
+  purity:
+    definition: "sum over predicted clusters of the max true-label count in that cluster, divided by |EVAL split|"
+  mutual_information:
+    naive:
+      definition: "plug-in MI over the EVAL split contingency table (predicted cluster x true label), in bits"
+    bias_corrected:
+      method: "Miller-Madow"
+      formula: "MI_naive_bits - (K_clusters - 1) * (K_labels - 1) / (2 * N_eval * ln(2))"
+    both_required: true
+    naive_alone_interpretation: "FORBIDDEN"
+
+label_permutation_null:
+  unit_permuted: "EVAL-split true labels only; predicted cluster assignments are held fixed"
+  exact_N_K_binding: "each permutation is a uniform random permutation of the exact EVAL-split label vector at its exact realized N and K; no resampling or bootstrap"
+  permutation_count: 1000
+  seed: 20260822
+  quantile_decision_rule: 0.95
+  decision:
+    separates_from_null: "observed purity AND observed bias-corrected MI both exceed the 0.95 quantile of their respective permutation-null distributions"
+    at_or_below_floor: "either observed statistic does not exceed its 0.95 quantile"
+  predeclared_before_outcome: true
+
+fail_closed_calibration_criteria:
+  gate_1_operator_positive_control:
+    arm: "ARM-2-OPERATOR-ONLY"
+    axis: "operator_axis"
+    required_result: "separates_from_null"
+    on_failure: "STOP_REDESIGN: the purity/MI/null machinery cannot be trusted and must not be applied to real z"
+  gate_2_topic_positive_control:
+    arm: "ARM-3-TOPIC-ONLY"
+    axis: "topic_axis"
+    required_result: "separates_from_null"
+    on_failure: "STOP_REDESIGN: the purity/MI/null machinery cannot be trusted and must not be applied to real z"
+  gate_3_null_self_check:
+    arm: "ARM-1-RANDOM-NULL"
+    axes: ["operator_axis", "topic_axis", "joint_axis"]
+    required_result: "at_or_below_floor on every axis"
+    on_failure: "STOP_REDESIGN: the null/permutation machinery produces false positives and must not be applied to real z"
+  non_gating_reference:
+    arm: "ARM-4-FULL-SIGNATURE"
+    axes: ["operator_axis", "topic_axis", "joint_axis"]
+    role: "recorded calibration/negative-check reference only; never gates PASS/STOP_REDESIGN"
+
+real_z_interpretation_boundary:
+  current_A3a_status: "calibration/negative-check reference only"
+  emergent_semantic_structure_claim: "FORBIDDEN regardless of any calibration outcome in this file"
+  floor_level_geometry_on_real_z: "neither evidence for nor against task usefulness"
+  application_to_real_trained_z: "NOT_AUTHORIZED_BY_THIS_CONTRACT"
+  required_before_real_z_application: >-
+    a genuinely semantic, non-hash-derived target/arm (e.g. a future A3s-semantic-target) and a
+    separate reviewer-authorized Work Package
+
+promotion_boundary:
+  current_round: "SYNTHETIC_CALIBRATION_ONLY"
+  model_training: "FORBIDDEN"
+  model_inference: "FORBIDDEN"
+  scientific_execution: "FORBIDDEN"
+  held_out_access: "FORBIDDEN"
+  real_z_application: "NOT_AUTHORIZED_BY_THIS_CONTRACT"
+  confirmatory_freeze: "NOT_AUTHORIZED"
+  go_latent: "NOT EVALUATED"
+
+versioning:
+  contract_version: "0.1"
+  immutable_after_outcome_inspection: true
+  amendment_rule: >-
+    Any change to payload semantics, K bindings, N, split rule, estimator definitions, permutation
+    count/seed, or decision quantile after outcomes have been inspected requires a new version and
+    external review.
+
+calibration:
+  current_status: "STATIC_CPU_ONLY_SYNTHETIC_CALIBRATION"
+  valid_for_real_model_inference: false
+  valid_for_confirmatory_freeze: false
+  reviewer_required: true
