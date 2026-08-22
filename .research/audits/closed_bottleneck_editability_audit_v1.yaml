@@ -1,4 +1,4 @@
-version: "research-os-bottleneck-editability-audit/0.1"
+version: "research-os-bottleneck-editability-audit/0.2"
 status: "ADVISORY_DISCOVERY_DESIGN_NON_OUTCOME_BEARING"
 id: "AUD-PLN-CLOSED-BOTTLENECK-EDITABILITY-001"
 rq: "RQ-PLN-BOTTLENECK-001"
@@ -24,7 +24,7 @@ authority:
     - "This amendment does not modify closed_bottleneck_validity_audit_v1.yaml or semantic_feedback_causal_eval_v1.yaml."
     - "This amendment does not freeze confirmatory thresholds, effect sizes, seeds, edit magnitudes, or trial counts."
     - "This amendment cannot emit a scientific GO/NO-GO verdict, SUPPORTED/REFUTED claim, or change GO_LATENT = NOT EVALUATED."
-    - "This amendment does not authorize, implement, or specify ORACLE-FULL."
+    - "This amendment does not operationalize, implement, execute, or validate ORACLE-FULL; it may define ORACLE-FULL's abstract/spec-only meaning and blocking dependency only."
 
 read_only_parent_authorities:
   closed_bottleneck_validity_audit:
@@ -70,12 +70,65 @@ purpose: >-
   edit-strength dose-response, plus an explicit oracle-tier boundary — without performing any
   intervention on a trained model and without touching the accepted parent surfaces.
 
+intervention_class:
+  purpose: >-
+    Editing the trained model's own latent/concept state and supplying an oracle/control concept
+    are mechanically distinct intervention classes. Every editability row MUST declare exactly one
+    of the two classes below; neither class may be silently coerced into the other.
+  collapse_into_single_intervention_class: "FORBIDDEN"
+  silent_coercion: "FORBIDDEN — a row must never be relabeled from one intervention class to the other"
+  TRAINED_STATE_EDIT:
+    definition: >-
+      Edits, substitutes, or transforms the trained model's own concept/latent state under exact
+      checkpoint identity (no retraining), at a declared downstream position, then scores whether
+      the downstream resolver reaches a predeclared intended target decision. This is the primary
+      intervention class for targeted_editability, directional_edit_precision, and
+      edit_strength_dose_response.
+    oracle_tier_requirement: "MUST_NOT_BE_REQUIRED"
+    oracle_tier_absence_effect: "absence of a declared oracle tier MUST NOT make the observation invalid"
+    oracle_semantics_applicable: false
+    status: "DESIGN_ONLY_NOT_AUTHORIZED_FOR_EXECUTION"
+    still_applies:
+      - "intended-target declaration"
+      - "matched non-concept context (for directional scoring)"
+      - "exact checkpoint identity / no-retraining"
+      - "matched-pair requirements for directional scoring"
+      - "censoring and dose-response rules"
+    forbidden_inference: "that trained-state edit success implies normal unedited-model reliance, or that it decomposes the unedited representation into human-factorized semantic coordinates"
+  ORACLE_CONTROL:
+    definition: >-
+      A control/diagnostic intervention that injects an oracle-defined concept (not the trained
+      model's own edited state) to establish allowed-channel usability, i.e. whether the downstream
+      resolver can use the declared concept channel at all.
+    oracle_tier_requirement: "MUST_BE_DECLARED"
+    allowed_oracle_tiers: ["ORACLE-STRUCT", "ORACLE-FULL"]
+    undeclared_tier_effect: "INVALID_ORACLE_TIER_UNSPECIFIED"
+    forbidden_inference: "that oracle-control success implies normal trained-model reliance, or semantic decomposition of the unedited representation"
+  type_mismatch:
+    trained_state_edit_with_oracle_tier_attached:
+      failure: "INVALID_INTERVENTION_CLASS_MISMATCH"
+      rule: >-
+        a TRAINED_STATE_EDIT row MUST NOT declare an oracle_tier; declaring one is a fail-closed
+        error, never a silent relabel to ORACLE_CONTROL.
+    oracle_control_treated_as_trained_state_edit:
+      failure: "INVALID_INTERVENTION_CLASS_MISMATCH"
+      rule: >-
+        an ORACLE_CONTROL row MUST NOT be scored under targeted_editability,
+        directional_edit_precision, or edit_strength_dose_response; those constructs bind to
+        TRAINED_STATE_EDIT only.
+    unknown_or_unspecified_intervention_class:
+      failure: "INVALID_INTERVENTION_CLASS_UNSPECIFIED"
+      rule: >-
+        every row MUST declare exactly one of TRAINED_STATE_EDIT or ORACLE_CONTROL; a missing or
+        unrecognized value is fail-closed, never defaulted to either class.
+
 construct_decomposition:
   collapse_into_single_construct: "FORBIDDEN"
   allowed_channel_usability:
     question: "Can the downstream resolver use the declared concept channel at all, when supplied an oracle concept?"
     established_by: "closed_bottleneck_validity_audit_v1.yaml#counterfactual_oracle_control (read-only)"
     this_audit_adds: "NONE — reference only, no new mechanism"
+    intervention_class: "ORACLE_CONTROL"
     forbidden_inference: "that the unedited trained model normally relies on the channel"
   normal_trained_model_reliance:
     question: >-
@@ -83,6 +136,7 @@ construct_decomposition:
       model's behavior depend on feedback path/content/order?
     established_by: "semantic_feedback_causal_eval_v1.yaml#EST-PLN-SEM-RELIANCE (read-only)"
     this_audit_adds: "NONE — reference only, no new mechanism"
+    intervention_class: "INHERITED_EXISTING_ZERO_SHUFFLE_WRONG_DONOR_CONTROLS_NOT_REDEFINED_HERE"
     forbidden_inference: "that reliance implies the representation is human-factorized or that targeted edits are precise"
   targeted_editability:
     question: >-
@@ -90,6 +144,7 @@ construct_decomposition:
       downstream resolver to reach a specific, predeclared intended target decision — as opposed
       to merely causing any change relative to the unedited baseline?
     new_in_this_audit: true
+    intervention_class: "TRAINED_STATE_EDIT"
     distinguishes: "intended-target success vs merely-any-change"
     forbidden_inference: "that targeted editability implies the unedited model normally uses this coordinate for the same purpose"
   directional_edit_precision:
@@ -98,6 +153,7 @@ construct_decomposition:
       opposed to an undirected move away from current content), does the downstream decision move
       toward the intended target and not toward an unintended alternative?
     new_in_this_audit: true
+    intervention_class: "TRAINED_STATE_EDIT"
     requires: "matched non-concept context and an explicit intended target action/policy consequence declared before scoring"
   edit_strength_dose_response:
     question: >-
@@ -105,6 +161,7 @@ construct_decomposition:
       or degree of reaching the intended target respond in a predeclared, reportable functional
       form, as opposed to being step-function-invariant across all nonzero strengths?
     new_in_this_audit: true
+    intervention_class: "TRAINED_STATE_EDIT"
     scope: "defines what a dose-response measurement would need to identify; does not run one"
 
 estimand:
@@ -141,6 +198,7 @@ target_hit_vs_any_change:
   any_change_without_target_hit: "does not by itself support a directional-precision claim"
 
 directional_scoring_requirements:
+  applies_to_intervention_class: "TRAINED_STATE_EDIT"
   matched_non_concept_context:
     rule: >-
       BYTE_IDENTICAL across the pre-edit reference state and the edited counterfactual, consistent
@@ -157,6 +215,7 @@ directional_scoring_requirements:
     unavailable_state: "NOT_EVALUATED_NO_MATCHED_PAIR"
 
 edit_strength_and_dose_response_requirements:
+  applies_to_intervention_class: "TRAINED_STATE_EDIT"
   strength_parameterization: >-
     a future study must predeclare a graded/interpolated edit-strength scale (for example, a
     magnitude of displacement toward the target relative to a predeclared unit) before any outcome
@@ -175,6 +234,8 @@ edit_strength_and_dose_response_requirements:
     zero/shuffle/wrong-concept-donor mechanisms by reference; this audit does not redefine them
 
 oracle_tiers:
+  applies_to_intervention_class: "ORACLE_CONTROL"
+  not_applicable_to: "TRAINED_STATE_EDIT — a trained-state edit row never declares an oracle tier"
   collapse_into_single_oracle_tier: "FORBIDDEN"
   ORACLE-STRUCT:
     definition: >-
@@ -208,9 +269,13 @@ interpretation_boundaries:
   - "Editability, directional precision, or dose-response results cannot be interpreted as evidence that the unedited representation has a human-factorized semantic coordinate system."
   - "Targeted editability does not imply normal trained-model reliance on the same coordinate for the same downstream purpose."
   - "Any future runtime edit intervention or trained-model execution is a separate SCIENTIFIC Work Package requiring its own accepted authority."
+  - "ORACLE_CONTROL channel-usability semantics do not collapse into, and are not evidence for or against, TRAINED_STATE_EDIT targeted editability, directional precision, or dose-response."
 
 null_invalid_and_censoring_states:
+  intervention_class_aware: true
   precedence:
+    - "INVALID_INTERVENTION_CLASS_UNSPECIFIED"
+    - "INVALID_INTERVENTION_CLASS_MISMATCH"
     - "INVALID_CHECKPOINT_OR_RETRAINING"
     - "INVALID_ORACLE_FULL_ATTEMPTED"
     - "INVALID_ORACLE_TIER_UNSPECIFIED"
@@ -222,6 +287,15 @@ null_invalid_and_censoring_states:
     - "CENSORED_TERMINATED_BEFORE_PLANNED_EDIT"
     - "EVALUATED"
   states:
+    INVALID_INTERVENTION_CLASS_UNSPECIFIED:
+      endpoint: null
+      trigger: "no intervention_class is declared, or the declared value is not one of TRAINED_STATE_EDIT / ORACLE_CONTROL"
+    INVALID_INTERVENTION_CLASS_MISMATCH:
+      endpoint: null
+      trigger: >-
+        a TRAINED_STATE_EDIT row declares an oracle_tier, or an ORACLE_CONTROL row is scored under
+        targeted_editability / directional_edit_precision / edit_strength_dose_response; neither
+        case is silently coerced into the other intervention class
     NOT_EVALUATED_NO_DOWNSTREAM_POSITION:
       endpoint: null
       trigger: "the reference trajectory has no downstream resolver position where an edit could act"
@@ -242,7 +316,11 @@ null_invalid_and_censoring_states:
       trigger: "the intended target action/policy consequence was not declared before the downstream decision was observed"
     INVALID_ORACLE_TIER_UNSPECIFIED:
       endpoint: null
-      trigger: "a fixture or future result does not declare whether it is ORACLE-STRUCT or ORACLE-FULL"
+      trigger: >-
+        intervention_class == ORACLE_CONTROL and the row does not declare whether it is
+        ORACLE-STRUCT or ORACLE-FULL. Does NOT apply to TRAINED_STATE_EDIT rows: those never
+        declare an oracle tier and an absent tier there is not a trigger for this state.
+      applies_only_to_intervention_class: "ORACLE_CONTROL"
     INVALID_ORACLE_FULL_ATTEMPTED:
       endpoint: null
       trigger: "a fixture or future result attempts to execute, approximate, or claim validation of ORACLE-FULL before A3s-semantic-target exists"
@@ -252,7 +330,12 @@ null_invalid_and_censoring_states:
       denominator_rule: "remains in the pre-edit reference opportunity accounting; never converted to a zero/no-effect result"
     EVALUATED:
       endpoint: "DEFINED"
-      trigger: "all validity preconditions pass, oracle tier is declared, and both any_change and target_hit are defined"
+      trigger: "all validity preconditions pass for the row's declared intervention_class"
+      TRAINED_STATE_EDIT_semantics: >-
+        both any_change and target_hit are defined; no oracle_tier is declared or required
+      ORACLE_CONTROL_semantics: >-
+        the declared oracle tier's channel-usability outcome is defined (ORACLE-FULL execution
+        itself remains forbidden and is intercepted earlier by INVALID_ORACLE_FULL_ATTEMPTED)
   null_is_not_zero_effect: true
 
 future_execution_binding:
@@ -270,31 +353,47 @@ future_execution_binding:
 static_fixture_matrix:
   - id: "edit-oracle-struct-usability-reference"
     kind: "channel_usability_reference"
+    intervention_class: "ORACLE_CONTROL"
     oracle_tier: "ORACLE-STRUCT"
     expected_status: "CHANNEL_USABILITY_ONLY_NOT_RELIANCE"
   - id: "edit-oracle-full-attempt-blocked"
     kind: "oracle_tier_boundary"
+    intervention_class: "ORACLE_CONTROL"
     oracle_tier: "ORACLE-FULL"
     attempted_execution: true
     expected_status: "INVALID_ORACLE_FULL_ATTEMPTED"
   - id: "edit-target-hit-positive"
     kind: "targeted_editability_positive"
+    intervention_class: "TRAINED_STATE_EDIT"
+    oracle_tier: null
     expected_status: "EVALUATED"
   - id: "edit-any-change-not-target"
     kind: "any_change_without_target_hit"
+    intervention_class: "TRAINED_STATE_EDIT"
+    oracle_tier: null
     expected_status: "EVALUATED"
   - id: "edit-dose-response-reference"
     kind: "dose_response_reference"
+    intervention_class: "TRAINED_STATE_EDIT"
+    oracle_tier: null
     expected_status: "EVALUATED"
+  - id: "edit-trained-state-edit-with-oracle-tier-blocked"
+    kind: "intervention_class_type_mismatch"
+    intervention_class: "TRAINED_STATE_EDIT"
+    oracle_tier: "ORACLE-STRUCT"
+    expected_status: "INVALID_INTERVENTION_CLASS_MISMATCH"
 
 null_state_calibration:
   status: "STATIC_SCHEMA_CALIBRATION_ONLY"
   scientific_runtime_invoked: false
   outcome_bearing: false
   cases:
-    - id: "CAL-EDIT-TARGET-HIT"
-      oracle_tier_declared: true
-      oracle_tier: "ORACLE-STRUCT"
+    # --- TRAINED_STATE_EDIT: the primary intervention class for targeted editability,
+    # directional precision, and dose-response. None of these declare an oracle tier.
+    - id: "CAL-TRAINED-EDIT-TARGET-HIT"
+      intervention_class: "TRAINED_STATE_EDIT"
+      oracle_tier_declared: false
+      oracle_tier: null
       attempted_oracle_full: false
       checkpoint_match: true
       downstream_position_exists: true
@@ -307,9 +406,10 @@ null_state_calibration:
       expected_any_change: true
       expected_target_hit: true
       expected_status: "EVALUATED"
-    - id: "CAL-EDIT-ANY-CHANGE-NOT-TARGET"
-      oracle_tier_declared: true
-      oracle_tier: "ORACLE-STRUCT"
+    - id: "CAL-TRAINED-EDIT-ANY-CHANGE-NOT-TARGET"
+      intervention_class: "TRAINED_STATE_EDIT"
+      oracle_tier_declared: false
+      oracle_tier: null
       attempted_oracle_full: false
       checkpoint_match: true
       downstream_position_exists: true
@@ -322,9 +422,10 @@ null_state_calibration:
       expected_any_change: true
       expected_target_hit: false
       expected_status: "EVALUATED"
-    - id: "CAL-EDIT-NO-DOWNSTREAM-POSITION"
-      oracle_tier_declared: true
-      oracle_tier: "ORACLE-STRUCT"
+    - id: "CAL-TRAINED-EDIT-NO-DOWNSTREAM-POSITION"
+      intervention_class: "TRAINED_STATE_EDIT"
+      oracle_tier_declared: false
+      oracle_tier: null
       attempted_oracle_full: false
       checkpoint_match: true
       downstream_position_exists: false
@@ -335,9 +436,10 @@ null_state_calibration:
       matched_pair_available: true
       terminated_before_planned_edit: false
       expected_status: "NOT_EVALUATED_NO_DOWNSTREAM_POSITION"
-    - id: "CAL-EDIT-NOT-APPLICABLE"
-      oracle_tier_declared: true
-      oracle_tier: "ORACLE-STRUCT"
+    - id: "CAL-TRAINED-EDIT-NOT-APPLICABLE"
+      intervention_class: "TRAINED_STATE_EDIT"
+      oracle_tier_declared: false
+      oracle_tier: null
       attempted_oracle_full: false
       checkpoint_match: true
       downstream_position_exists: true
@@ -348,9 +450,10 @@ null_state_calibration:
       matched_pair_available: true
       terminated_before_planned_edit: false
       expected_status: "NOT_EVALUATED_EDIT_NOT_APPLICABLE"
-    - id: "CAL-EDIT-NO-MATCHED-PAIR"
-      oracle_tier_declared: true
-      oracle_tier: "ORACLE-STRUCT"
+    - id: "CAL-TRAINED-EDIT-NO-MATCHED-PAIR"
+      intervention_class: "TRAINED_STATE_EDIT"
+      oracle_tier_declared: false
+      oracle_tier: null
       attempted_oracle_full: false
       checkpoint_match: true
       downstream_position_exists: true
@@ -361,9 +464,10 @@ null_state_calibration:
       matched_pair_available: false
       terminated_before_planned_edit: false
       expected_status: "NOT_EVALUATED_NO_MATCHED_PAIR"
-    - id: "CAL-EDIT-CHECKPOINT-MISMATCH"
-      oracle_tier_declared: true
-      oracle_tier: "ORACLE-STRUCT"
+    - id: "CAL-TRAINED-EDIT-CHECKPOINT-MISMATCH"
+      intervention_class: "TRAINED_STATE_EDIT"
+      oracle_tier_declared: false
+      oracle_tier: null
       attempted_oracle_full: false
       checkpoint_match: false
       downstream_position_exists: true
@@ -374,9 +478,10 @@ null_state_calibration:
       matched_pair_available: true
       terminated_before_planned_edit: false
       expected_status: "INVALID_CHECKPOINT_OR_RETRAINING"
-    - id: "CAL-EDIT-CONTEXT-MISMATCH"
-      oracle_tier_declared: true
-      oracle_tier: "ORACLE-STRUCT"
+    - id: "CAL-TRAINED-EDIT-CONTEXT-MISMATCH"
+      intervention_class: "TRAINED_STATE_EDIT"
+      oracle_tier_declared: false
+      oracle_tier: null
       attempted_oracle_full: false
       checkpoint_match: true
       downstream_position_exists: true
@@ -387,9 +492,10 @@ null_state_calibration:
       matched_pair_available: true
       terminated_before_planned_edit: false
       expected_status: "INVALID_CONTEXT_MISMATCH"
-    - id: "CAL-EDIT-TARGET-UNDECLARED"
-      oracle_tier_declared: true
-      oracle_tier: "ORACLE-STRUCT"
+    - id: "CAL-TRAINED-EDIT-TARGET-UNDECLARED"
+      intervention_class: "TRAINED_STATE_EDIT"
+      oracle_tier_declared: false
+      oracle_tier: null
       attempted_oracle_full: false
       checkpoint_match: true
       downstream_position_exists: true
@@ -400,7 +506,8 @@ null_state_calibration:
       matched_pair_available: true
       terminated_before_planned_edit: false
       expected_status: "INVALID_TARGET_UNDECLARED"
-    - id: "CAL-EDIT-ORACLE-TIER-UNSPECIFIED"
+    - id: "CAL-TRAINED-EDIT-CENSORED"
+      intervention_class: "TRAINED_STATE_EDIT"
       oracle_tier_declared: false
       oracle_tier: null
       attempted_oracle_full: false
@@ -411,22 +518,10 @@ null_state_calibration:
       target_declared: true
       directional_scoring_requested: true
       matched_pair_available: true
-      terminated_before_planned_edit: false
-      expected_status: "INVALID_ORACLE_TIER_UNSPECIFIED"
-    - id: "CAL-EDIT-ORACLE-FULL-ATTEMPTED"
-      oracle_tier_declared: true
-      oracle_tier: "ORACLE-FULL"
-      attempted_oracle_full: true
-      checkpoint_match: true
-      downstream_position_exists: true
-      edit_applicable: true
-      context_matched: true
-      target_declared: true
-      directional_scoring_requested: true
-      matched_pair_available: true
-      terminated_before_planned_edit: false
-      expected_status: "INVALID_ORACLE_FULL_ATTEMPTED"
-    - id: "CAL-EDIT-CENSORED"
+      terminated_before_planned_edit: true
+      expected_status: "CENSORED_TERMINATED_BEFORE_PLANNED_EDIT"
+    - id: "CAL-TRAINED-EDIT-ORACLE-TIER-ATTACHED-TYPE-MISMATCH"
+      intervention_class: "TRAINED_STATE_EDIT"
       oracle_tier_declared: true
       oracle_tier: "ORACLE-STRUCT"
       attempted_oracle_full: false
@@ -437,8 +532,99 @@ null_state_calibration:
       target_declared: true
       directional_scoring_requested: true
       matched_pair_available: true
-      terminated_before_planned_edit: true
-      expected_status: "CENSORED_TERMINATED_BEFORE_PLANNED_EDIT"
+      terminated_before_planned_edit: false
+      expected_status: "INVALID_INTERVENTION_CLASS_MISMATCH"
+
+    # --- ORACLE_CONTROL: control/diagnostic intervention establishing allowed-channel
+    # usability. Only this class requires a declared oracle tier.
+    - id: "CAL-ORACLE-CONTROL-STRUCT-VALID"
+      intervention_class: "ORACLE_CONTROL"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-STRUCT"
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: false
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_channel_usability: "CHANNEL_USABILITY_ESTABLISHED"
+      expected_status: "EVALUATED"
+    - id: "CAL-ORACLE-CONTROL-NO-TIER"
+      intervention_class: "ORACLE_CONTROL"
+      oracle_tier_declared: false
+      oracle_tier: null
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: false
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_status: "INVALID_ORACLE_TIER_UNSPECIFIED"
+    - id: "CAL-ORACLE-CONTROL-FULL-ATTEMPTED"
+      intervention_class: "ORACLE_CONTROL"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-FULL"
+      attempted_oracle_full: true
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: false
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_status: "INVALID_ORACLE_FULL_ATTEMPTED"
+    - id: "CAL-ORACLE-CONTROL-SCORED-AS-TRAINED-EDIT-TYPE-MISMATCH"
+      intervention_class: "ORACLE_CONTROL"
+      oracle_tier_declared: true
+      oracle_tier: "ORACLE-STRUCT"
+      attempted_oracle_full: false
+      scored_as_trained_state_edit: true
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: true
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_status: "INVALID_INTERVENTION_CLASS_MISMATCH"
+
+    # --- intervention_class itself missing/unrecognized.
+    - id: "CAL-INTERVENTION-CLASS-UNSPECIFIED"
+      intervention_class: null
+      oracle_tier_declared: false
+      oracle_tier: null
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: false
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_status: "INVALID_INTERVENTION_CLASS_UNSPECIFIED"
+    - id: "CAL-INTERVENTION-CLASS-UNKNOWN-VALUE"
+      intervention_class: "SOME_OTHER_CLASS"
+      oracle_tier_declared: false
+      oracle_tier: null
+      attempted_oracle_full: false
+      checkpoint_match: true
+      downstream_position_exists: true
+      edit_applicable: true
+      context_matched: true
+      target_declared: true
+      directional_scoring_requested: false
+      matched_pair_available: true
+      terminated_before_planned_edit: false
+      expected_status: "INVALID_INTERVENTION_CLASS_UNSPECIFIED"
 
 promotion_boundary:
   current_round: "STATIC_DESIGN_ONLY"
@@ -456,9 +642,18 @@ promotion_boundary:
   go_latent: "NOT EVALUATED"
 
 versioning:
-  semantic_version: "0.1-draft"
+  semantic_version: "0.2-draft"
+  changelog:
+    "0.2-draft": >-
+      Independent-review repair: introduced the explicit TRAINED_STATE_EDIT / ORACLE_CONTROL
+      intervention-class distinction so oracle_tier is required only for ORACLE_CONTROL rows;
+      added INVALID_INTERVENTION_CLASS_UNSPECIFIED / INVALID_INTERVENTION_CLASS_MISMATCH fail-closed
+      states; corrected the ORACLE-FULL non-authority wording to a non-contradictory
+      operationalize/implement/execute/validate boundary. No change to accepted parent EVAL/audit,
+      GO_LATENT, or scientific execution status.
   amendment_policy: >-
-    Any future change to estimand meaning, oracle-tier definitions, target-declaration semantics,
-    dose-response grade requirements, or null/invalidity states requires an explicit new version
-    before any scientific freeze. This file does not amend closed_bottleneck_validity_audit_v1.yaml
-    or semantic_feedback_causal_eval_v1.yaml; those remain at their own versions.
+    Any future change to estimand meaning, intervention-class semantics, oracle-tier definitions,
+    target-declaration semantics, dose-response grade requirements, or null/invalidity states
+    requires an explicit new version before any scientific freeze. This file does not amend
+    closed_bottleneck_validity_audit_v1.yaml or semantic_feedback_causal_eval_v1.yaml; those remain
+    at their own versions.
