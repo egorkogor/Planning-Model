@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 
 import torch
-
 from research_programs.planner.semantic_feedback_readiness import (
     CONFIG_PATH as READINESS_CONFIG_PATH,
     generate_code,
