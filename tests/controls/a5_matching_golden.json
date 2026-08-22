@@ -1,0 +1,36 @@
+{
+  "schema_version": "semantic-discovery-a5-golden/0.1",
+  "units": [
+    {
+      "unit_id": "u1",
+      "unit_hash": "sha256:bb82030dbc2bcaba32a90bf2e207a84a856fc5f033b77c480836ab6f77f40f19",
+      "base_task_id": "task-a",
+      "planner_seed": 17,
+      "split": "dev",
+      "step_index": 2,
+      "remaining_distance_bucket": "near",
+      "hand_mode": "empty",
+      "semantic_signature": "sig-a",
+      "intent_id": "intent-a",
+      "semantic_artifact_sha256": "sha256:be356035324ef67aab788f7514c0a94f6d9526a97cb31e01dd7ffb3733364da4"
+    },
+    {
+      "unit_id": "u2",
+      "unit_hash": "sha256:6ca202c88e549dff68c09bfafbfc60b2fac074debc1e6777e9ba4b6c703ed114",
+      "base_task_id": "task-b",
+      "planner_seed": 17,
+      "split": "dev",
+      "step_index": 2,
+      "remaining_distance_bucket": "near",
+      "hand_mode": "empty",
+      "semantic_signature": "sig-b",
+      "intent_id": "intent-b",
+      "semantic_artifact_sha256": "sha256:912092d9d5ab3f6d4382965b9aa79238884048faf76765bff826d98e794ca77c"
+    }
+  ],
+  "expected_mapping": {
+    "sha256:6ca202c88e549dff68c09bfafbfc60b2fac074debc1e6777e9ba4b6c703ed114": "sha256:bb82030dbc2bcaba32a90bf2e207a84a856fc5f033b77c480836ab6f77f40f19",
+    "sha256:bb82030dbc2bcaba32a90bf2e207a84a856fc5f033b77c480836ab6f77f40f19": "sha256:6ca202c88e549dff68c09bfafbfc60b2fac074debc1e6777e9ba4b6c703ed114"
+  },
+  "a3_checkpoint_sha256": "sha256:cfbe9d879389ecb9d4f9c0aa7ecd20a704324d65679dab1308c6a0a2a9338f82"
+}
